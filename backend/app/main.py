@@ -13,6 +13,7 @@ from app.api.routes_booking import router as booking_router
 from app.api.routes_modules import router as modules_router
 from app.api.routes_account import router as account_router
 from app.api.routes_billing import router as billing_router
+from app.api.routes_support import router as support_router
 from app.core.config import settings
 
 _bad = settings.hosted_problems()
@@ -43,6 +44,7 @@ app.include_router(booking_router)
 app.include_router(modules_router)
 app.include_router(account_router)
 app.include_router(billing_router)
+app.include_router(support_router)
 
 @app.on_event("startup")
 async def load_saved_settings():
@@ -74,6 +76,12 @@ if _web and (Path(_web)/"index.html").is_file():
     async def embed_page():
         # Same app, but this address may be shown inside other websites (booking widget).
         return FileResponse(Path(_web)/"index.html",headers={"Content-Security-Policy":"frame-ancestors *"})
+    from fastapi.responses import RedirectResponse
+    def _legal(slug):
+        async def go(): return RedirectResponse(f"/#/{slug}", status_code=302)
+        return go
+    for _slug in ("terms","privacy","trust","acceptable-use","legal-compliance"):
+        app.add_api_route(f"/{_slug}",_legal(_slug),methods=["GET"],include_in_schema=False)     # shareable addresses, e.g. for Google and Microsoft app settings
     app.mount("/",StaticFiles(directory=_web,html=True),name="web")
 else:
     @app.get("/")

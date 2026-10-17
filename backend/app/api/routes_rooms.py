@@ -4,6 +4,9 @@ from starlette.requests import HTTPConnection
 Browsers connect directly to each other (WebRTC); this server only introduces them (signalling over a WebSocket),
 hands out the STUN/TURN settings and stores recordings the host chooses to make. The room code in the link is the
 secret, so guests can join without an account. Suited to small meetings (about 8 people).
+
+A host can split a larger meeting into discussion groups. People in a group only see, hear and chat with that group (the server
+refuses signalling and chat across groups), so every browser connects to a handful of people instead of the whole meeting.
 """
 import asyncio, hmac, json, logging, os, secrets, shutil, time, uuid
 from datetime import datetime, timedelta, timezone
@@ -206,14 +209,122 @@ def _rank(p: dict) -> int:
 
 def _pub(i: str, p: dict) -> dict: return {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
 
+# ---- discussion groups ----
+MAX_GROUPS = 30
+
+def _gmeta(state: dict, gid: str | None) -> dict | None:
+    """The group's public details, or None for the main room."""
+    g = state.get("groups")
+    if not gid or not g: return None
+    for x in g["list"]:
+        if x["id"] == gid: return {"id": x["id"], "name": x["name"]}
+    return None
+
+def _view(state: dict, gid: str | None) -> list[tuple[str, dict]]:
+    """Everyone who is in one group (gid None = the main room), in the order they joined."""
+    return [(i, p) for i, p in state["peers"].items() if p.get("group") == gid]
+
+async def _to_view(state: dict, gid: str | None, msg: dict, skip: str | None = None):
+    for i, p in _view(state, gid):
+        if i != skip: await _send(p["ws"], msg)
+
+def _ends_at(state: dict) -> str | None:
+    g = state.get("groups"); return g.get("ends_at") if g else None
+
+def _roster_msg(state: dict) -> dict:
+    g = state.get("groups")
+    return {"type": "roster", "groups": [{"id": x["id"], "name": x["name"]} for x in g["list"]] if g else None, "ends_at": _ends_at(state),
+            "people": [{"id": i, "name": p["name"], "group": p.get("group"), "host": bool(p["host"]), "cohost": bool(p.get("cohost"))} for i, p in state["peers"].items()]}
+
+async def _roster_to_hosts(state: dict, force: bool = False):
+    """Hosts and co-hosts see who is in which group. Only sent while groups are open (or once more when they close)."""
+    if not state.get("groups") and not force: return
+    msg = _roster_msg(state)
+    for p in list(state["peers"].values()):
+        if p["host"]: await _send(p["ws"], msg)
+
+async def _regroup(state: dict, moves: dict[str, str | None], reason: str | None = None):
+    """Move people between groups (or back to the main room) and tell everyone whose group changed.
+
+    Each member of an affected group gets the full list of who is now in it; their browser drops connections to
+    people who are gone and connects to new ones. To avoid two browsers calling each other at once, the person who
+    moved in makes the call (and when two people move in together, the one with the smaller id does)."""
+    old: dict[str, str | None] = {}
+    for pid, gid in moves.items():
+        p = state["peers"].get(pid)
+        if not p or p.get("group") == gid: continue
+        old[pid] = p.get("group"); p["group"] = gid
+    if not old: return
+    moved_in: dict[str | None, set] = {}
+    for pid in old: moved_in.setdefault(state["peers"][pid]["group"], set()).add(pid)
+    for gid in set(old.values()) | set(moved_in):
+        members = _view(state, gid); fresh = moved_in.get(gid, set())
+        for i, p in members:
+            offer = [j for j, _ in members if j != i and (j not in fresh or i < j)] if i in fresh else []
+            await _send(p["ws"], {"type": "group", "group": _gmeta(state, gid), "peers": [_pub(j, q) for j, q in members if j != i], "offer_to": offer,
+                                  "ends_at": _ends_at(state) if gid else None, "reason": reason if i in old else None, "moved": i in old})
+
+async def _close_groups(state: dict, reason: str = "closed"):
+    g = state.get("groups")
+    if not g: return
+    task = g.get("task")
+    if task and task is not asyncio.current_task(): task.cancel()
+    moves = {i: None for i, p in state["peers"].items() if p.get("group")}
+    state["groups"] = None
+    await _regroup(state, moves, reason)
+    await _roster_to_hosts(state, force=True)
+
+async def _auto_close(state: dict, token: str, seconds: float):
+    await asyncio.sleep(seconds)
+    g = state.get("groups")
+    if g and g.get("token") == token:
+        g["task"] = None; await _close_groups(state, "time")
+
+def _split(ids: list[str], count: int) -> list[list[str]]:
+    """Share people over `count` groups as evenly as possible, keeping the order they joined in."""
+    size, extra = divmod(len(ids), count); out, at = [], 0
+    for k in range(count):
+        n = size + (1 if k < extra else 0); out.append(ids[at:at + n]); at += n
+    return out
+
+async def _groups_start(state: dict, pid: str, msg: dict):
+    me = state["peers"][pid]
+    if state.get("groups"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are already open. Bring everyone back first to start again."}); return
+    include_hosts = bool(msg.get("include_hosts"))
+    ids = [i for i, p in state["peers"].items() if p.get("group") is None and (include_hosts or _rank(p) == 0)]
+    try: count = int(msg.get("count") or 0)
+    except (TypeError, ValueError): count = 0
+    if len(ids) < 2: await _send(me["ws"], {"type": "groups-error", "message": "At least two participants (not counting hosts) are needed to make groups."}); return
+    if count < 2 or count > MAX_GROUPS: await _send(me["ws"], {"type": "groups-error", "message": f"Choose between 2 and {MAX_GROUPS} groups."}); return
+    count = min(count, len(ids))
+    token = uuid.uuid4().hex[:8]; mins = 0
+    try: mins = int(msg.get("minutes") or 0)
+    except (TypeError, ValueError): pass
+    mins = mins if 1 <= mins <= 240 else 0
+    ends = (datetime.now(timezone.utc) + timedelta(minutes=mins)).isoformat() if mins else None
+    state["groups"] = {"list": [{"id": f"g{k + 1}", "name": f"Group {k + 1}"} for k in range(count)], "token": token, "ends_at": ends, "task": None}
+    if mins: state["groups"]["task"] = asyncio.create_task(_auto_close(state, token, mins * 60))
+    moves = {}
+    for k, chunk in enumerate(_split(ids, count)):
+        for i in chunk: moves[i] = f"g{k + 1}"
+    await _regroup(state, moves, "assigned"); await _roster_to_hosts(state)
+
+async def _groups_move(state: dict, pid: str, msg: dict):
+    me = state["peers"][pid]; target = msg.get("id"); gid = msg.get("group") or None
+    if not state.get("groups"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are not open."}); return
+    if target not in state["peers"] or (gid and not _gmeta(state, gid)): await _send(me["ws"], {"type": "groups-error", "message": "That person or group is no longer there."}); return
+    await _regroup(state, {target: gid}, "moved"); await _roster_to_hosts(state)
+
 async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_host: bool, room_options: dict | None = None, user_id: str | None = None, cohost: bool = False) -> bool:
     if len(state["peers"]) >= max(2, settings.room_max_people):
         await _send(ws, {"type": "error", "message": "This meeting is full."}); return False
-    peers_before = [_pub(i, p) for i, p in state["peers"].items()]
-    state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id}
+    peers_before = [_pub(i, p) for i, p in _view(state, None)]           # a newcomer starts in the main room
+    state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None}
     await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "options": {k: v for k, v in (room_options or {}).items() if k != "invitees"},
-                     "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else []})
-    await _broadcast(code, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
+                     "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
+                     "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None})
+    await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
+    await _roster_to_hosts(state)
     return True
 
 @router.websocket("/ws/rooms/{code}")
@@ -236,7 +347,7 @@ async def room_socket(ws: WebSocket, code: str):
             ok, why = _passcode_ok(code, first.get("passcode"), passcode)
             if not ok: await _send(ws, {"type": "error", "code": "passcode", "message": why}); await ws.close(); return
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
-        state = HUB.setdefault(code, {"peers": {}, "waiting": {}, "recording": False,
+        state = HUB.setdefault(code, {"peers": {}, "waiting": {}, "recording": False, "groups": None,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
         pid = uuid.uuid4().hex[:10]
         if is_host and any(_rank(p) == 2 for p in state["peers"].values()): is_host, cohost_join = False, True      # the host role was handed to someone else: come back as co-host
@@ -252,25 +363,35 @@ async def room_socket(ws: WebSocket, code: str):
                 continue                                  # still in the waiting room: nothing else is allowed yet
             if t == "signal":
                 target = state["peers"].get(msg.get("to"))
-                if target: await _send(target["ws"], {"type": "signal", "from": pid, "data": msg.get("data")})
+                if target and target.get("group") == state["peers"][pid].get("group"): await _send(target["ws"], {"type": "signal", "from": pid, "data": msg.get("data")})
             elif t == "chat":
                 text = str(msg.get("text") or "")[:2000]
                 if text.strip():
                     out = {"type": "chat", "from": pid, "name": name, "text": text, "at": datetime.now(timezone.utc).isoformat()}
                     to = msg.get("to")
                     if isinstance(to, list) and to:      # one person or a chosen group of people in the room
-                        ids = [i for i in dict.fromkeys(str(x) for x in to[:50]) if i in state["peers"] and i != pid]
-                        if not ids: await _send(ws, {"type": "chat-error", "message": "Those people have left the meeting."}); continue
+                        ids = [i for i in dict.fromkeys(str(x) for x in to[:50]) if i in state["peers"] and i != pid and state["peers"][i].get("group") == state["peers"][pid].get("group")]
+                        if not ids: await _send(ws, {"type": "chat-error", "message": "Those people are not in your group or have left the meeting."}); continue
                         out.update({"to": ids, "to_names": [state["peers"][i]["name"] for i in ids]})
                         for i in [pid] + ids: await _send(state["peers"][i]["ws"], out)
                     else:
-                        await _broadcast(code, out)
+                        await _to_view(state, state["peers"][pid].get("group"), out)        # to everyone in the same group (or the main room)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam"))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
                     if mic and not state["policy"]["audio"]: mic = False; await _send(ws, {"type": "force", "mic": False, "reason": "policy"})
                     if cam and not state["policy"]["video"]: cam = False; await _send(ws, {"type": "force", "cam": False, "reason": "policy"})
-                await _broadcast(code, {"type": "state", "id": pid, "mic": mic, "cam": cam, "screen": bool(msg.get("screen"))}, skip=pid)
+                await _to_view(state, me.get("group"), {"type": "state", "id": pid, "mic": mic, "cam": cam, "screen": bool(msg.get("screen"))}, skip=pid)
+            elif _rank(state["peers"][pid]) >= 1 and t == "groups_start": await _groups_start(state, pid, msg)
+            elif _rank(state["peers"][pid]) >= 1 and t == "groups_move": await _groups_move(state, pid, msg)
+            elif _rank(state["peers"][pid]) >= 1 and t == "groups_end": await _close_groups(state, "closed")
+            elif _rank(state["peers"][pid]) >= 1 and t == "announce":
+                text = str(msg.get("text") or "").strip()[:300]
+                if text: await _broadcast(code, {"type": "announce", "name": state["peers"][pid]["name"], "text": text})
+            elif t == "help" and state.get("groups") and state["peers"][pid].get("group"):
+                gm = _gmeta(state, state["peers"][pid]["group"])
+                for p in list(state["peers"].values()):
+                    if p["host"]: await _send(p["ws"], {"type": "help", "name": state["peers"][pid]["name"], "group": gm["name"] if gm else ""})
             elif _rank(state["peers"][pid]) >= 1 and t in ("admit", "admit_all"):
                 ids = list(state["waiting"]) if t == "admit_all" else [msg.get("id")]
                 for wid in ids:
@@ -340,9 +461,13 @@ async def room_socket(ws: WebSocket, code: str):
         if state and pid:
             if state["waiting"].pop(pid, None) is not None: await _tell_hosts(state)
             if pid in state["peers"]:
-                state["peers"].pop(pid, None)
-                await _broadcast(code, {"type": "peer-left", "id": pid})
-            if not state["peers"] and not state["waiting"]: HUB.pop(code, None)
+                gone = state["peers"].pop(pid, None)
+                await _to_view(state, gone.get("group") if gone else None, {"type": "peer-left", "id": pid})
+                await _roster_to_hosts(state)
+            if not state["peers"] and not state["waiting"]:
+                task = (state.get("groups") or {}).get("task")
+                if task: task.cancel()
+                HUB.pop(code, None)
 
 async def end_room(db: AsyncSession, room: Room, cancel_meeting: bool) -> None:
     """Close a meeting room for everyone and, if asked, mark its calendar entry cancelled."""

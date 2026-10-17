@@ -1304,3 +1304,143 @@ def test_setup_status_reports_ai_ready_with_groq_only(client, monkeypatch):
     monkeypatch.setattr(settings, "groq_api_key", "gsk_x")
     items = {i["key"]: i for i in client.get("/api/v1/admin/setup-status", headers=h).json()["items"]}
     assert items["ai"]["ok"] is True and items["transcription"]["ok"] is True
+
+
+# ---------------- discussion groups ----------------
+import contextlib
+
+def _until(w, typ, pred=lambda m: True, limit=80):
+    for _ in range(limit):
+        m = w.receive_json()
+        if m["type"] == typ and pred(m): return m
+    raise AssertionError("never received " + typ)
+
+@contextlib.contextmanager
+def _meeting_of(client, n_guests):
+    """A room with a host and n guests inside (no waiting room). Yields (code, host_ws, host_id, [(ws, id)]) and always closes every socket,
+    so a failing assertion cannot leave the test client waiting on open connections."""
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    opened = []
+    try:
+        hs, host = join(client, r["code"], token=tok); opened.append(hs); hid = host.receive_json()["id"]
+        guests = []
+        for k in range(n_guests):
+            gs, g = join(client, r["code"], name=f"G{k + 1}"); opened.append(gs); wel = g.receive_json(); assert wel["type"] == "welcome"
+            guests.append((g, wel["id"]))
+        yield r["code"], host, hid, guests, opened
+    finally:
+        for o in reversed(opened):
+            with contextlib.suppress(Exception): o.__exit__(None, None, None)
+
+def test_discussion_groups_split_isolate_move_and_close(client):
+    from app.api.routes_rooms import HUB
+    with _meeting_of(client, 4) as (code, host, hid, gs, opened):
+        ids = [g[1] for g in gs]; w = [g[0] for g in gs]
+        # a participant cannot open groups
+        w[0].send_json({"type": "groups_start", "count": 2}); w[0].send_json({"type": "chat", "text": "sync"}); _until(w[0], "chat")
+        assert HUB[code]["groups"] is None
+        # the host splits four people into two groups of two; the host stays in the main room
+        host.send_json({"type": "groups_start", "count": 2})
+        ros = _until(host, "roster", lambda m: m["groups"])
+        assert [g["name"] for g in ros["groups"]] == ["Group 1", "Group 2"] and {p["id"]: p["group"] for p in ros["people"]} == {hid: None, ids[0]: "g1", ids[1]: "g1", ids[2]: "g2", ids[3]: "g2"}
+        m0 = _until(w[0], "group"); m1 = _until(w[1], "group"); m2 = _until(w[2], "group")
+        assert m0["group"]["name"] == "Group 1" and [p["id"] for p in m0["peers"]] == [ids[1]] and m2["group"]["name"] == "Group 2" and [p["id"] for p in m2["peers"]] == [ids[3]]
+        lo = min(ids[0], ids[1])           # when two people arrive together only the one with the smaller id calls
+        assert (m0["offer_to"] == [ids[1]]) == (ids[0] == lo) and (m1["offer_to"] == [ids[0]]) == (ids[1] == lo) and (len(m0["offer_to"]) + len(m1["offer_to"]) == 1)
+        # chat and signalling stay inside the group
+        w[0].send_json({"type": "chat", "text": "hello group one"}); assert _until(w[1], "chat")["text"] == "hello group one"
+        w[0].send_json({"type": "signal", "to": ids[2], "data": {"x": 1}})
+        w[2].send_json({"type": "chat", "text": "g2 sync"}); assert _until(w[2], "chat")["text"] == "g2 sync"       # nothing from group one arrived first
+        w[0].send_json({"type": "chat", "text": "psst", "to": [ids[2]]}); assert _until(w[0], "chat-error")
+        # starting again is refused
+        host.send_json({"type": "groups_start", "count": 2}); assert "already open" in _until(host, "groups-error")["message"]
+        # help and announcements
+        w[0].send_json({"type": "help"}); hp = _until(host, "help"); assert hp["name"] == "G1" and hp["group"] == "Group 1"
+        host.send_json({"type": "announce", "text": "Five minutes left"})
+        for x in w: assert _until(x, "announce")["text"] == "Five minutes left"
+        # the host moves one person from group two into group one
+        host.send_json({"type": "groups_move", "id": ids[3], "group": "g1"})
+        mv = _until(w[3], "group", lambda m: m["moved"]); assert mv["group"]["id"] == "g1" and sorted(p["id"] for p in mv["peers"]) == sorted(ids[:2]) and sorted(mv["offer_to"]) == sorted(ids[:2])
+        stay = _until(w[0], "group", lambda m: len(m["peers"]) == 2); assert stay["offer_to"] == [] and not stay["moved"]
+        left = _until(w[2], "group", lambda m: m["group"] and m["group"]["id"] == "g2" and not m["peers"]); assert left["peers"] == []
+        w[3].send_json({"type": "chat", "text": "now in one"}); assert _until(w[0], "chat", lambda m: m["text"] == "now in one")
+        # a person who joins during the discussion starts in the main room and does not see the groups
+        ls, late = join(client, code, name="Late"); opened.append(ls); wel = late.receive_json()
+        assert wel["groups_open"] is True and [p["id"] for p in wel["peers"]] == [hid]
+        # the host brings everyone back
+        host.send_json({"type": "groups_end"})
+        for x in w:
+            back = _until(x, "group", lambda m: m["reason"] == "closed"); assert back["group"] is None
+        assert HUB[code]["groups"] is None and len(_until(host, "roster", lambda m: m["groups"] is None)["people"]) >= 6
+
+def test_groups_need_enough_people_and_a_sensible_count(client):
+    with _meeting_of(client, 1) as (code, host, hid, gs, opened):
+        host.send_json({"type": "groups_start", "count": 2}); assert "At least two" in _until(host, "groups-error")["message"]
+    with _meeting_of(client, 3) as (code, host, hid, gs, opened):
+        host.send_json({"type": "groups_start", "count": 1}); assert "between 2 and" in _until(host, "groups-error")["message"]
+        host.send_json({"type": "groups_start", "count": 99}); assert "between 2 and" in _until(host, "groups-error")["message"]
+        host.send_json({"type": "groups_start", "count": 2, "include_hosts": True})        # hosts can take part too
+        ros = _until(host, "roster", lambda m: m["groups"]); assert sorted(p["group"] for p in ros["people"]) == ["g1", "g1", "g2", "g2"]
+
+def test_group_split_is_even_and_the_timer_closes_groups():
+    import asyncio
+    from app.api import routes_rooms as rr
+    assert [len(x) for x in rr._split(list("abcdefghijklmnopqrstu"), 2)] == [11, 10] and [len(x) for x in rr._split(list("abcdefghijklmnopqrstu"), 3)] == [7, 7, 7]
+    assert [len(x) for x in rr._split([str(i) for i in range(35)], 4)] == [9, 9, 9, 8]
+    sent = []
+    class FakeWs:
+        def __init__(self, n): self.n = n
+        async def send_text(self, t): sent.append((self.n, __import__("json").loads(t)))
+    state = {"peers": {"a": {"ws": FakeWs("a"), "name": "A", "host": False, "group": "g1"}, "b": {"ws": FakeWs("b"), "name": "B", "host": False, "group": "g1"}, "h": {"ws": FakeWs("h"), "name": "H", "host": True, "group": None}},
+             "waiting": {}, "groups": {"list": [{"id": "g1", "name": "Group 1"}], "token": "t1", "ends_at": "x", "task": None}}
+    asyncio.run(rr._auto_close(state, "other", 0)); assert state["groups"] is not None      # an old timer does nothing
+    asyncio.run(rr._auto_close(state, "t1", 0)); assert state["groups"] is None and all(p["group"] is None for p in state["peers"].values())
+    assert any(n == "a" and m["type"] == "group" and m["group"] is None and m["reason"] == "time" for n, m in sent) and any(n == "h" and m["type"] == "roster" for n, m in sent)
+
+
+# ---------------- customer chat assistant ----------------
+def test_support_chat_answers_from_facts_without_groq_and_uses_the_saved_model_with_it(client, monkeypatch):
+    from app.core.config import settings
+    from app.services import groq
+    monkeypatch.setattr(settings, "groq_api_key", "")
+    r = client.post("/api/v1/support/chat", json={"messages": [{"role": "user", "content": "How much does it cost?"}]}); assert r.status_code == 200
+    assert r.json()["ai"] is False and "Basic is free" in r.json()["reply"]
+    assert "info@isift.au" in client.post("/api/v1/support/chat", json={"messages": [{"role": "user", "content": "xyzzy plugh"}]}).json()["reply"]
+    seen = {}
+    class R:
+        status_code = 200
+        def json(self): return {"choices": [{"message": {"content": "Basic is free."}}]}
+    class C:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None): seen.update(url=url, body=json, auth=headers["Authorization"]); return R()
+    monkeypatch.setattr(groq.httpx, "AsyncClient", C); monkeypatch.setattr(settings, "groq_api_key", "gsk_x"); monkeypatch.setattr(settings, "groq_model", "llama-3.1-8b-instant")
+    r = client.post("/api/v1/support/chat", json={"messages": [{"role": "assistant", "content": "Hi"}, {"role": "user", "content": "Is it free?"}]}).json()
+    assert r == {"reply": "Basic is free.", "ai": True} and seen["body"]["model"] == "llama-3.1-8b-instant" and seen["body"]["messages"][0]["role"] == "system" and "Never invent" in seen["body"]["messages"][0]["content"]
+    assert seen["body"]["messages"][-1] == {"role": "user", "content": "Is it free?"} and "gsk_x" not in str(seen["body"])
+
+def test_support_chat_checks_input_and_limits_repeat_use(client, monkeypatch):
+    from app.core.config import settings
+    from app.api import routes_support as rs
+    monkeypatch.setattr(settings, "groq_api_key", ""); rs._SEEN.clear()
+    assert client.post("/api/v1/support/chat", json={"messages": []}).status_code == 422
+    assert client.post("/api/v1/support/chat", json={"messages": [{"role": "assistant", "content": "hi"}]}).status_code == 422
+    codes = [client.post("/api/v1/support/chat", json={"messages": [{"role": "user", "content": "hi"}]}, headers={"x-forwarded-for": "9.9.9.9"}).status_code for _ in range(rs.LIMIT + 2)]
+    assert codes[:rs.LIMIT] == [200] * rs.LIMIT and codes[-1] == 429
+    rs._SEEN.clear()
+
+def test_a_broken_groq_falls_back_to_fixed_answers(client, monkeypatch):
+    from app.core.config import settings
+    from app.services import groq
+    class R:
+        status_code = 500
+        def json(self): return {}
+    class C:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **k): return R()
+    monkeypatch.setattr(groq.httpx, "AsyncClient", C); monkeypatch.setattr(settings, "groq_api_key", "gsk_x")
+    r = client.post("/api/v1/support/chat", json={"messages": [{"role": "user", "content": "can I record?"}]}).json()
+    assert r["ai"] is False and "Recording banner" in r["reply"]

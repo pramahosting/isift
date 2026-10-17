@@ -73,3 +73,18 @@ async def ping() -> tuple[bool, str]:
         if r.status_code in (401, 403): return False, f"Groq did not accept the key ({r.status_code}{': ' + _why(r) if _why(r) else ''}). Create a new key at console.groq.com, API Keys. It starts with gsk_."
         return False, f"Groq answered {r.status_code}. {_why(r)}"
     except Exception as exc: return False, f"Could not reach Groq ({type(exc).__name__}). Check the internet connection of this computer."
+
+
+async def converse(system: str, messages: list[dict], max_tokens: int = 450) -> str | None:
+    """Plain chat with the saved Groq model (used by the customer chat assistant). Returns None when Groq is not set up or fails,
+    so the caller can fall back to fixed answers."""
+    if not configured(): return None
+    try:
+        async with httpx.AsyncClient(timeout=25) as c:
+            r = await c.post(URL, headers={"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"},
+                             json={"model": (settings.groq_model or "llama-3.3-70b-versatile").strip(), "temperature": 0.4, "max_tokens": max_tokens,
+                                   "messages": [{"role": "system", "content": system}, *messages]})
+        if r.status_code >= 400: log.warning("groq chat answered %s", r.status_code); return None
+        return (r.json()["choices"][0]["message"]["content"] or "").strip() or None
+    except Exception as exc:
+        log.warning("groq chat failed: %s", type(exc).__name__); return None
