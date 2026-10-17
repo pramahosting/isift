@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {Modal} from './Workspace';
-import {Link2,Trash2,RefreshCw,Video,CalendarPlus,CheckCircle2,AlertTriangle,Upload,Plus,Mail,LogIn} from 'lucide-react';
+import {Link2,Trash2,RefreshCw,Video,CalendarPlus,CheckCircle2,AlertTriangle,Upload,Plus,Mail,LogIn,Download} from 'lucide-react';
 
 export const PROVIDER_LABEL:Record<string,string>={room:'Meeting room',zoom:'Zoom',teams:'Teams',meet:'Google Meet',webex:'Webex',calcom:'Cal.com video'};
 export function providerOf(url?:string|null){
@@ -155,16 +155,21 @@ export function JoinWindowButton({request,name,tile}:{request?:any;name?:string;
   return <>{tile?<button className="tile cobalt" onClick={()=>setOpen(true)}><span className="ticon"><Plus size={24}/></span><b>Join</b><small>With a meeting ID or link</small></button>:<button className="secondary" onClick={()=>setOpen(true)}><LogIn size={16}/> Join with an ID</button>}{open&&<JoinDialog request={request} name={name} onClose={()=>setOpen(false)}/>}</>;
 }
 
-export function RecordingsPanel({request,download,refreshKey}:{request:any;download:(p:string,n:string)=>void;refreshKey:number}){
-  const [rows,setRows]=useState<any[]>([]);
-  const load=()=>request('/recordings').then(setRows).catch(()=>{});
-  useEffect(()=>{load()},[refreshKey]);
-  if(!rows.length)return null;
+/** The Recordings tab: a table of the person's own meeting recordings kept in the cloud, each with Download and Delete. */
+export function RecordingsTable({request,download}:{request:any;download:(p:string,n:string)=>void}){
+  const [rows,setRows]=useState<any[]|null>(null);const [err,setErr]=useState('');const [busy,setBusy]=useState('');
+  const load=()=>request('/recordings').then((r:any)=>{setRows(r);setErr('')}).catch((e:any)=>setErr(e.message||'Recordings could not be loaded.'));
+  useEffect(()=>{load()},[]);
   const mb=(n:number)=>n>=1048576?`${(n/1048576).toFixed(1)} MB`:`${Math.max(1,Math.round(n/1024))} KB`;
-  return <section className="panel"><div className="panelhead"><h2>Meeting recordings</h2><span className="muted">Cloud copies only. Recordings are always saved to your own computer too. Only you, the host, can see these</span></div>
-    {rows.map(r=><div className="conn-row" key={r.id}><div><Video size={16}/></div><div className="grow"><b>{r.title}</b><small>{new Date(r.created_at).toLocaleString()} · {r.has_video?'video':'audio'} · {mb(r.size_bytes)}{r.expires_at&&<> · <span className="syncerr">cloud copy removed {new Date(r.expires_at).toLocaleString()} (Basic plan)</span></>}{r.available===false&&<> · <span className="syncerr">file missing on this computer</span></>}</small></div>
-      <button className="secondary" disabled={r.available===false} title={r.available===false?'The recording file is not in the recordings folder (docs/data/audio/recordings).':''} onClick={()=>download(`/recordings/${r.id}/file`,`${r.title||'meeting'}.${r.storage==='r2'&&r.has_video?'mp4':'webm'}`)}>Download</button>
-      <button className="iconbtn" title="Delete recording" onClick={()=>window.confirm('Delete this recording permanently?')&&request(`/recordings/${r.id}`,{method:'DELETE'}).then(load)}><Trash2 size={16}/></button></div>)}
+  const del=async(r:any)=>{if(!window.confirm(`Delete the recording of "${r.title||'this meeting'}" permanently? This cannot be undone.`))return;setBusy(r.id);try{await request(`/recordings/${r.id}`,{method:'DELETE'});await load()}catch(e:any){setErr(e.message||'Could not delete.')}finally{setBusy('')}};
+  return <section className="panel"><div className="panelhead"><h2>Meeting recordings</h2><span className="muted">Only you, the host, can see these</span></div>
+    {err&&<p className="syncerr" role="alert">{err}</p>}
+    {rows===null&&!err&&<p className="muted">Loading…</p>}
+    {rows&&!rows.length&&<div className="empty">No recordings stored in iSift yet. Recordings are always saved to your own computer when you stop recording; tick Also store in cloud during a meeting to keep a copy here as well.</div>}
+    {rows&&rows.length>0&&<div className="tablewrap"><table className="modtable rec-table"><thead><tr><th>Meeting</th><th>Recorded</th><th>Type</th><th>Size</th><th>Kept until</th><th aria-label="Actions"/></tr></thead><tbody>
+      {rows.map(r=><tr key={r.id}><td data-label="Meeting"><b>{r.title||'Meeting'}</b></td><td data-label="Recorded">{new Date(r.created_at).toLocaleString()}</td><td data-label="Type">{r.has_video?'Video':'Audio'}</td><td data-label="Size">{mb(r.size_bytes)}</td><td data-label="Kept until">{r.expires_at?new Date(r.expires_at).toLocaleDateString():'Until deleted'}</td>
+        <td className="rec-act"><button className="secondary" disabled={r.available===false||busy===r.id} title={r.available===false?'The recording file is no longer available.':'Save a copy to this computer'} onClick={()=>download(`/recordings/${r.id}/file`,`${r.title||'meeting'}.${r.storage==='r2'&&r.has_video?'mp4':'webm'}`)}><Download size={14}/> Download</button>
+          <button className="secondary danger" disabled={busy===r.id} onClick={()=>del(r)}><Trash2 size={14}/> Delete</button></td></tr>)}</tbody></table></div>}
   </section>;
 }
 

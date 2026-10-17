@@ -957,3 +957,25 @@ body{background:var(--canvas)}
 .bill-rec{border:1px solid #d5e4ee;border-radius:10px;padding:10px 12px;margin:10px 0;display:grid;gap:6px}.bill-rec-opts{display:grid;gap:6px;padding-left:4px}
 .bill-rec-n{width:64px;padding:4px 6px}.bill-rec-opts input[type=date]{padding:4px 6px}
 .endedat{color:#28724e!important;font-weight:700}
+
+/* the Join box sits at the top right, level with "Human-reviewed by design" */
+.hero-top{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:12px 20px;flex-wrap:wrap;margin-bottom:-12px}
+.hero-top .hero-kicker{margin-bottom:0}.hero-top .hero-join{flex-wrap:nowrap;margin:0}.hero-top .hero-join input{width:260px;max-width:60vw}
+.hero-top .hero-join .syncerr{position:absolute;right:28px;margin-top:64px}
+@media(max-width:650px){.hero-top{margin-bottom:0}.hero-top .hero-join{width:100%}.hero-top .hero-join input{flex:1;width:auto;max-width:none}}
+/* highlight one person: double-click a tile */
+.rm-tile[title]{cursor:zoom-in}
+.rm-spot{flex:1;min-height:0;display:flex;gap:10px;padding:10px}
+.rm-spot-main{flex:1;min-width:0;min-height:0;position:relative;display:grid}.rm-spot-main .rm-tile{height:100%}
+.rm-spot-tag{position:absolute;left:12px;top:12px;display:flex;gap:10px;align-items:center;background:#0d1320cc;color:#fff;border-radius:10px;padding:6px 10px;font-size:12px;backdrop-filter:blur(4px)}
+.rm-spot-tag button{border:0;border-radius:7px;background:#ffffff26;color:#fff;font-size:12px;padding:4px 8px;cursor:pointer}.rm-spot-tag button:hover{background:#ffffff40}
+.rm-spot-strip{width:190px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0}.rm-spot-strip .rm-wrap{flex-shrink:0;height:120px}.rm-spot-strip .rm-tile{min-height:0}
+@media(max-width:800px){.rm-spot{flex-direction:column}.rm-spot-strip{width:auto;flex-direction:row;height:96px}.rm-spot-strip .rm-wrap{width:130px;height:90px}}
+/* landing top row: a few pixels tighter */
+.landing-hero{padding-top:50px}
+.hero-top{margin-bottom:-22px}.hero-top .hero-kicker{padding:5px 12px}
+.hero-top .hero-join input{padding:6px 11px;font-size:14px}.hero-top .hero-join button{padding:6px 12px}
+.hero-top .hero-join .syncerr{margin-top:48px}
+@media(max-width:650px){.hero-top{margin-bottom:0}}
+.rec-table td.rec-act{white-space:nowrap;text-align:right}.rec-table td.rec-act button{margin-left:6px}.tablewrap{overflow-x:auto}
+@media(max-width:650px){.rec-table thead{display:none}.rec-table tr{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #edf1f2}.rec-table td{display:flex;justify-content:space-between;gap:12px;border:0;padding:2px 0}.rec-table td[data-label]::before{content:attr(data-label);color:#778891;font-size:12px}.rec-table td.rec-act{justify-content:flex-end}}

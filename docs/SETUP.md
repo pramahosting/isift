@@ -230,3 +230,6 @@ It must be on in three places, otherwise the meeting shows only the gallery: **A
 
 ## Card payment pop-up and recurring monthly payments
 Paying for a plan opens a pop-up with Square's secure card form (the page behind it never holds card fields). Yearly plans renew automatically. For monthly plans the customer ticks **Recurring** and chooses **how many months** (1 to 60) or an **end date**; unticked means one month and no renewal. The renewal run (`run_due`) stops charging once the plan has run to that date and the account returns to Basic.
+
+## Highlighting a participant, Recordings tab, host controls
+Double-click a person's tile to enlarge them (double-click again to return); this is local to each viewer. **Meetings > Recordings** lists your cloud recording copies with Download and Delete (copies kept on the host's computer are not listed). Only the host (and co-hosts, for people below them) can mute, stop video, ask people to unmute or start video, or remove people; the server ignores these from plain participants.
