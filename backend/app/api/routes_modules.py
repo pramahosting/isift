@@ -13,7 +13,7 @@ MODULES = [
     ("minutes", "Minutes", "AI-written meeting minutes, reviewed by a person."),
     ("actions", "Action items", "Owners, due dates and status for follow-ups."),
     ("briefings", "Briefings", "The morning briefing."),
-    ("scheduling", "Scheduling", "Booking pages and the Share booking link button."),
+    ("scheduling", "Booking", "Booking pages and the Share booking link button."),
     ("mail", "Commbox: Mail", "Read and send mail from your accounts."),
     ("calendar", "Commbox: Calendar", "The combined calendar."),
     ("contacts", "Commbox: Contacts", "People and groups."),

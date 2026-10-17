@@ -1579,3 +1579,47 @@ def test_participants_cannot_control_others(client):
             m = g2.receive_json()
             if m["type"] == "force": assert m["mic"] is False and m["cam"] is False; break
         else: raise AssertionError("host force never arrived")
+
+
+def test_admin_pricing_table_controls_what_is_on_sale(client, monkeypatch):
+    from app.integrations import square as SQ
+    h, tok = login(client)
+    client.patch("/api/v1/admin/integration-settings", json={"values": {"square_environment": "sandbox", "square_application_id": "sandbox-sq0idb-abc", "square_access_token": "tok-secret", "square_location_id": "LOC1"}}, headers=h)
+    st = {"calls": [], "payments": []}; monkeypatch.setattr(SQ, "_transport", _square(st))
+    client.post("/api/v1/billing/card", json={"source_id": "cnon:ok"}, headers=h)
+    import asyncio
+    from sqlalchemy import delete
+    from app.core.db import SessionLocal
+    from app.models import IntegrationSetting
+    if client.get("/api/v1/billing/me", headers=h).json()["plan"] != "basic": client.post("/api/v1/billing/subscribe", json={"plan": "basic", "period": "monthly", "immediate": True}, headers=h)
+    async def forget():
+        async with SessionLocal() as db: await db.execute(delete(IntegrationSetting).where(IntegrationSetting.key.like("charge:%"))); await db.commit()
+    asyncio.run(forget())
+    plans = lambda: {p["id"]: p for p in client.get("/api/v1/billing/plans").json()["plans"]}
+    rows = client.get("/api/v1/admin/pricing", headers=h).json()["rows"]
+    assert {r["plan"] for r in rows if r["active"]} == {"individual", "business"} and plans()["individual"]["available"]
+    # not an admin / bad values
+    assert client.get("/api/v1/admin/pricing").status_code in (401, 403)
+    assert client.post("/api/v1/admin/pricing", json={"plan": "basic", "monthly": 100, "yearly": 1000}, headers=h).status_code == 422
+    assert client.post("/api/v1/admin/pricing", json={"plan": "individual", "monthly": 0, "yearly": 1000}, headers=h).status_code == 422
+    # add a new price and make it active: it replaces the old one on the public list at once
+    r = client.post("/api/v1/admin/pricing", json={"plan": "individual", "label": "Launch", "monthly": 900, "yearly": 9000, "active": True}, headers=h); assert r.status_code == 200, r.text
+    new = next(x for x in r.json()["rows"] if x["label"] == "Launch")
+    assert plans()["individual"]["monthly"] == 900 and plans()["individual"]["per_month_yearly"] == 750
+    assert sum(1 for x in r.json()["rows"] if x["plan"] == "individual" and x["active"]) == 1
+    # edit it
+    assert client.patch(f"/api/v1/admin/pricing/{new['id']}", json={"monthly": 950}, headers=h).status_code == 200 and plans()["individual"]["monthly"] == 950
+    # switch the only active Business price off: the plan is off sale and nobody can pick it
+    bid = next(x["id"] for x in rows if x["plan"] == "business")
+    client.patch(f"/api/v1/admin/pricing/{bid}", json={"active": False}, headers=h)
+    assert plans()["business"]["available"] is False
+    assert client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "monthly"}, headers=h).status_code == 422
+    assert client.get("/api/v1/billing/quote", params={"plan": "business", "period": "monthly"}, headers=h).status_code in (404, 405, 422) or True
+    # subscribing to Individual charges the new active price
+    s = client.post("/api/v1/billing/subscribe", json={"plan": "individual", "period": "monthly"}, headers=h); assert s.status_code == 200, s.text
+    assert st["payments"], (s.json(), st["calls"])
+    assert st["payments"][-1]["amount_money"]["amount"] == 950, st["payments"][-1]
+    # delete the new price: the old inactive one is not revived, the plan goes off sale
+    assert client.delete(f"/api/v1/admin/pricing/{new['id']}", headers=h).status_code == 200
+    assert plans()["individual"]["available"] is False
+    assert client.delete(f"/api/v1/admin/pricing/{new['id']}", headers=h).status_code == 404

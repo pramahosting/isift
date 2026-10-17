@@ -25,6 +25,33 @@ PLANS = {
  "business": {"name": "Business", "monthly": 1759, "yearly": 16712, "per_month_yearly": 1393},
 }
 PERIODS = ("monthly", "yearly")
+PAID = ("individual", "business")
+PRICE_KEY = "pricing:rows"
+for _p in PLANS.values(): _p["available"] = True
+DEFAULT_ROWS = [{"id": f"default-{k}", "plan": k, "label": "Standard", "monthly": PLANS[k]["monthly"], "yearly": PLANS[k]["yearly"], "active": True} for k in PAID]
+
+async def price_rows(db) -> list[dict]:
+    """The price list the administrator edits (Admin settings > Pricing). Seeded once with the standard prices."""
+    d = await store.get(db, PRICE_KEY, None)
+    if not d or "rows" not in d:
+        d = {"rows": [dict(r) for r in DEFAULT_ROWS]}; await store.put(db, PRICE_KEY, d)
+    return d["rows"]
+
+def apply_prices(rows: list[dict]):
+    """Only an ACTIVE price is on sale. A paid plan with no active price is off sale: hidden from the home page and Pricing page and refused for new sign-ups and changes.
+    Existing subscribers keep renewing at the plan's last known price."""
+    for k in PAID:
+        mine = [r for r in rows if r["plan"] == k]
+        act = [r for r in mine if r.get("active")]
+        pick = (act or mine[-1:] or [None])[0]
+        PLANS[k]["available"] = bool(act)
+        if pick: PLANS[k].update(monthly=int(pick["monthly"]), yearly=int(pick["yearly"]), per_month_yearly=round(int(pick["yearly"]) / 12), price_id=pick["id"])
+
+async def load_prices(db) -> list[dict]:
+    rows = await price_rows(db); apply_prices(rows); return rows
+
+def require_on_sale(plan: str):
+    if plan != "basic" and not PLANS[plan].get("available"): raise BillingError(f"The {PLANS[plan]['name']} plan is not on sale right now.", 422)
 
 class BillingError(Exception):
     def __init__(self, message: str, status: int = 400): super().__init__(message); self.message, self.status = message, status
@@ -61,7 +88,8 @@ def terms_of(period: str, terms: dict | None, today: date) -> tuple[bool, str | 
         return True, d.isoformat()
     raise BillingError("For monthly payments that repeat, choose how many months or an end date.", 422)
 
-def plans_view() -> dict:
+async def plans_view(db) -> dict:
+    await load_prices(db)
     return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()]}
 
 # ------------------------------------------------------------------ who pays
@@ -91,13 +119,14 @@ async def plan_of(db, user) -> str:
 def _card(r): return {"brand": r.get("card_brand"), "last4": r.get("card_last4"), "exp_month": r.get("card_exp_month"), "exp_year": r.get("card_exp_year")} if r.get("card_id") else None
 
 async def view(db, user) -> dict:
+    pv = await plans_view(db)
     key, c, can = await holder(db, user)
     r = await record(db, key, c)
     return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "period": r.get("period", "monthly"), "status": r.get("status", "active"), "period_end": r.get("period_end"),
             "auto_renew": bool(r.get("auto_renew")), "ends_on": r.get("ends_on"), "card": _card(r), "failure_count": r.get("failure_count", 0), "last_error": r.get("last_error"), "next_attempt_on": r.get("next_attempt_on"),
             "charges": r["charges"][:12], "refunds": await user_refunds(db, r), "can_manage": can, "company": c["name"] if c else None, "currency": settings.square_currency,
             "square": {"available": SQ.configured(), "applicationId": settings.square_application_id, "locationId": settings.square_location_id, "environment": SQ.env(), "sdk": SQ.SDK[SQ.env()]} if SQ.configured() else None,
-            **plans_view()}
+            **pv}
 
 # ------------------------------------------------------------------ card
 async def _payer(db, key, user, company) -> tuple[str, str]:
@@ -148,7 +177,7 @@ async def _notify_failed(db, r, row, again):
 
 async def charge_now(db, key: str, today: date | None = None) -> dict:
     """Charge the next period. Returns {status: paid|failed|skipped|free}. Safe to call twice."""
-    today = today or date.today()
+    today = today or date.today(); await load_prices(db)
     r = await record(db, key)
     if not r.get("card_id") or not r.get("customer_id"): return {"status": "skipped", "reason": "no card"}
     if not SQ.configured(): return {"status": "skipped", "reason": "square not configured"}
@@ -198,6 +227,7 @@ async def subscribe(db, user, plan: str, period: str, immediate: bool = False, t
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
     if plan not in PLANS: raise BillingError("Choose Basic, Individual or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
+    await load_prices(db); require_on_sale(plan)
     r = await record(db, key, c); today = date.today()
     if plan == "basic" and immediate and term_active(r, today): return await cancel_now(db, user)
     if plan != "basic" and term_active(r, today) and (plan, period) != (r["plan"], r.get("period", "monthly")): return await change_plan(db, user, plan, period, terms)
@@ -249,6 +279,7 @@ async def quote(db, user, plan: str, period: str) -> dict:
     key, c, can = await holder(db, user)
     if plan not in PLANS: raise BillingError("Choose Basic, Individual or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
+    await load_prices(db); require_on_sale(plan)
     r = await record(db, key, c); today = date.today(); credit = unused_credit(r, today)
     if plan == "basic":
         return {"kind": "cancel" if credit else "none", "credit_cents": credit, "new_price_cents": 0, "charge_cents": 0, "refund_cents": credit, "effective": "today" if credit else None, "keeps_until": r.get("period_end")}

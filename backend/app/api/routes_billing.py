@@ -13,7 +13,55 @@ async def _do(coro):
     except B.BillingError as e: raise HTTPException(e.status, e.message)
 
 @router.get("/billing/plans")
-async def plans(): return B.plans_view()
+async def plans(db: AsyncSession = Depends(get_db)): return await B.plans_view(db)
+
+# ---------------- price list (Admin settings > Pricing) ----------------
+def _clean_price(d: dict, base: dict | None = None) -> dict:
+    out = dict(base or {})
+    for k in ("plan", "label", "monthly", "yearly", "active"):
+        if k in d: out[k] = d[k]
+    if out.get("plan") not in B.PAID: raise HTTPException(422, "Choose Individual or Business. Basic is always free.")
+    out["label"] = str(out.get("label") or "Standard").strip()[:60] or "Standard"
+    for k in ("monthly", "yearly"):
+        try: out[k] = int(round(float(out.get(k))))
+        except (TypeError, ValueError): raise HTTPException(422, "Enter the monthly and yearly prices as numbers.")
+        if not 1 <= out[k] <= 10_000_000: raise HTTPException(422, "A price must be more than 0 and less than 100,000.")
+    out["active"] = bool(out.get("active"))
+    return out
+
+async def _save_prices(db, rows: list[dict], changed_id: str | None, actor: str, action: str):
+    if changed_id:                                         # one price per plan is on sale: switching one on switches the other prices of that plan off
+        ch = next((r for r in rows if r["id"] == changed_id), None)
+        if ch and ch["active"]:
+            for r in rows:
+                if r["plan"] == ch["plan"] and r["id"] != changed_id: r["active"] = False
+    from app.services import store
+    await store.put(db, B.PRICE_KEY, {"rows": rows}, commit=False); B.apply_prices(rows)
+    db.add(AuditLog(actor=actor, action=action, resource_type="pricing", safe_metadata={})); await db.commit()
+    return {"rows": rows, "plans": (await B.plans_view(db))["plans"]}
+
+@router.get("/admin/pricing")
+async def pricing_list(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    return {"rows": await B.load_prices(db), "currency": B.settings.square_currency}
+
+@router.post("/admin/pricing")
+async def pricing_add(payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    import uuid
+    rows = await B.price_rows(db); row = _clean_price(payload); row["id"] = uuid.uuid4().hex[:10]; rows.append(row)
+    return await _save_prices(db, rows, row["id"], user.email, "pricing.added")
+
+@router.patch("/admin/pricing/{rid}")
+async def pricing_edit(rid: str, payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    rows = await B.price_rows(db); i = next((n for n, r in enumerate(rows) if r["id"] == rid), None)
+    if i is None: raise HTTPException(404, "That price no longer exists.")
+    rows[i] = _clean_price(payload, rows[i])
+    return await _save_prices(db, rows, rid, user.email, "pricing.changed")
+
+@router.delete("/admin/pricing/{rid}")
+async def pricing_delete(rid: str, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    rows = await B.price_rows(db)
+    if not any(r["id"] == rid for r in rows): raise HTTPException(404, "That price no longer exists.")
+    return await _save_prices(db, [r for r in rows if r["id"] != rid], None, user.email, "pricing.deleted")
 
 @router.get("/billing/me")
 async def me(user: User = Depends(principal), db: AsyncSession = Depends(get_db)): return await B.view(db, user)
