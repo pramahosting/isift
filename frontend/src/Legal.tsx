@@ -1,5 +1,5 @@
-import React,{useEffect} from 'react';
-import {Sun,ArrowLeft} from 'lucide-react';
+import React,{useEffect,useState} from 'react';
+import {Sun,ArrowLeft,ChevronDown,X,Mail} from 'lucide-react';
 
 // Who is behind the service. Change these two lines and every page updates.
 export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026'};
@@ -72,8 +72,57 @@ export function LegalLinks({className=''}:{className?:string}){
   return <nav className={`legal-links ${className}`} aria-label="Legal">{LEGAL_LINKS.map(l=><a key={l.slug} href={`#/${l.slug}`}>{l.label}</a>)}</nav>;
 }
 
+const API:string=(import.meta as any).env.VITE_API_BASE||((import.meta as any).env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
+type FormKind='support'|'contact'|'feedback';
+const FORMS:Record<FormKind,{label:string;title:string;hint:string;topic:string}>={
+  support:{label:'Support request',title:'Send a support request',hint:'Tell us what you were doing and what went wrong. Include the meeting ID if it is about a meeting.',topic:'What do you need help with?'},
+  contact:{label:'Contact us',title:'Contact us',hint:'Questions about plans, partnerships or anything else.',topic:'Subject'},
+  feedback:{label:'Feedback',title:'Share your feedback',hint:'What works, what does not, and what you would like to see. We read every message.',topic:'About (optional)'}};
+
+function FooterForm({kind,onClose}:{kind:FormKind;onClose:()=>void}){
+  const f=FORMS[kind];const [k,setK]=useState<FormKind>(kind);const [name,setName]=useState('');const [email,setEmail]=useState('');const [topic,setTopic]=useState('');const [message,setMessage]=useState('');const [trap,setTrap]=useState('');
+  const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [done,setDone]=useState(false);const cur=FORMS[k];
+  useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose()};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[]);
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setErr('');
+    try{const r=await fetch(`${API}/support/contact`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:k,name,email,topic,message,website:trap})});const j=await r.json().catch(()=>({}));
+      if(!r.ok)setErr(typeof j.detail==='string'?j.detail:Array.isArray(j.detail)?'Please check the form and try again.':'Your message could not be sent. Please email '+LEGAL.email+'.');else setDone(true)}
+    catch{setErr('Could not reach the server. Please email '+LEGAL.email+'.')}finally{setBusy(false)}};
+  return <div className="ff-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <div className="ff-card" role="dialog" aria-modal="true" aria-label={cur.title}>
+      <button type="button" className="ff-x" onClick={onClose} aria-label="Close"><X size={18}/></button>
+      {done?<div className="ff-done"><h2>Thank you</h2><p>Your message has been sent to the iSift team. We will reply to <b>{email}</b>.</p><button type="button" className="nav-login" onClick={onClose}>Close</button></div>:
+      <form onSubmit={submit}>
+        <h2>{cur.title}</h2><p className="ff-hint">{cur.hint} Or email <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>.</p>
+        <div className="ff-tabs" role="tablist">{(Object.keys(FORMS) as FormKind[]).map(x=><button type="button" role="tab" aria-selected={x===k} key={x} className={x===k?'on':''} onClick={()=>setK(x)}>{FORMS[x].label}</button>)}</div>
+        <label>Your name<input value={name} onChange={e=>setName(e.target.value)} maxLength={100} autoComplete="name" required/></label>
+        <label>Your email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} maxLength={200} autoComplete="email" required/></label>
+        <label>{cur.topic}<input value={topic} onChange={e=>setTopic(e.target.value)} maxLength={150}/></label>
+        <label>Message<textarea value={message} onChange={e=>setMessage(e.target.value)} maxLength={5000} rows={5} required/></label>
+        <input className="ff-trap" tabIndex={-1} autoComplete="off" aria-hidden="true" value={trap} onChange={e=>setTrap(e.target.value)} name="website"/>
+        {err&&<p className="ff-err" role="alert">{err}</p>}
+        <div className="ff-actions"><button type="button" className="ff-cancel" onClick={onClose}>Cancel</button><button type="submit" className="primary" disabled={busy}>{busy?'Sending…':'Send message'}</button></div>
+      </form>}
+    </div></div>;
+}
+
 export function LegalFooter(){
-  return <footer className="legal-footer"><LegalLinks/><span>© {new Date().getFullYear()} {LEGAL.service} · {LEGAL.site}</span></footer>;
+  const [map,setMap]=useState(false);const [form,setForm]=useState<FormKind|null>(null);
+  const open=(k:FormKind)=>(e:React.MouseEvent)=>{e.preventDefault();setForm(k)};
+  return <footer className="site-footer">
+    <div className="sf-help"><span>Need a hand?</span>
+      {(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}
+      <a href={`mailto:${LEGAL.email}`}><Mail size={13}/> {LEGAL.email}</a></div>
+    {map&&<nav id="sf-sitemap" className="sf-sitemap" aria-label="Sitemap">
+      <div><h4>iSift</h4><a href="#/">Home</a><a href="#/pricing">Plans and pricing</a></div>
+      <div><h4>Legal</h4>{LEGAL_LINKS.map(l=><a key={l.slug} href={`#/${l.slug}`}>{l.label}</a>)}</div>
+      <div><h4>Support</h4>{(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}<a href={`mailto:${LEGAL.email}`}>Email {LEGAL.email}</a></div>
+    </nav>}
+    <div className="sf-bar">
+      <div className="sf-left"><span>Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span><LegalLinks/></div>
+      <button type="button" className="sf-map" aria-expanded={map} aria-controls="sf-sitemap" onClick={()=>setMap(m=>!m)}>Sitemap <ChevronDown size={14} className={map?'up':''}/></button>
+    </div>
+    {form&&<FooterForm kind={form} onClose={()=>setForm(null)}/>}
+  </footer>;
 }
 
 export function LegalPage({slug,onHome,loggedIn}:{slug:LegalSlug;onHome:()=>void;loggedIn:boolean}){
