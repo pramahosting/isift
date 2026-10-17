@@ -1,3 +1,0 @@
--r requirements-local.txt
-tzdata
-pyinstaller>=6.10
