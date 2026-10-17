@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iSift for Outlook</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+body{font:14px "Segoe UI",system-ui,sans-serif;margin:0;color:#193348;background:#fff}header{background:#087e8b;color:#fff;padding:12px 14px;font-weight:700}main{padding:12px 14px;display:grid;gap:12px}
+h2{font-size:13px;margin:0 0 6px;color:#1c4056}button{font:inherit;border:1px solid #cfdde0;background:#fff;border-radius:6px;padding:8px 10px;cursor:pointer;text-align:left}button.primary{background:#087e8b;color:#fff;border-color:#087e8b;font-weight:600}button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid #e3eaed;border-radius:8px;padding:8px 10px}.row small{color:#6b7f89;display:block}.msg{font-size:12px;padding:8px;border-radius:6px;background:#eef7f8}.err{background:#fbe9e7;color:#a3443c}
+input{font:inherit;width:100%;box-sizing:border-box;padding:8px;border:1px solid #cfdde0;border-radius:6px}.muted{color:#6b7f89;font-size:12px}a{color:#087e8b}
+</style></head>
+<body><header>iSift</header>
+<main>
+ <section id="setup" hidden><h2>Connect to iSift (once)</h2>
+  <p class="muted">In iSift open <b>My account &gt; Add-ins and access keys</b>, create a key called "Outlook" and paste it here.</p>
+  <input id="key" type="password" placeholder="isift_pat_…" autocomplete="off"><div style="margin-top:8px"><button class="primary" id="save">Connect</button></div></section>
+ <section id="app" hidden>
+  <div><h2>Video meeting</h2><button class="primary" id="meet">Add an iSift video meeting to this item</button><p class="muted">Creates a meeting room and puts the join link in the location and the body.</p></div>
+  <div><h2>My booking pages</h2><div id="pages" class="muted">Loading…</div></div>
+  <p class="muted"><a href="#" id="disc">Disconnect this add-in</a></p>
+ </section>
+ <div id="msg" class="msg" hidden></div>
+</main>
+<script src="taskpane.js"></script></body></html>

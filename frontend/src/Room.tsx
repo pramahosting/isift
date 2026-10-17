@@ -1,0 +1,279 @@
+import React,{useCallback,useEffect,useRef,useState} from 'react';
+import {rememberRoom} from './Connections';
+import {Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole} from 'lucide-react';
+
+type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStream;mic:boolean;cam:boolean;screen:boolean};
+const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
+
+function VideoTile({stream,name,muted,off,host,cohost,screen,self}:{stream:MediaStream|null;name:string;muted?:boolean;off?:boolean;host?:boolean;cohost?:boolean;screen?:boolean;self?:boolean}){
+  const ref=useRef<HTMLVideoElement>(null);
+  useEffect(()=>{const v=ref.current;if(v&&v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>{})}},[stream]);
+  return <div className={`rm-tile${self?' self':''}`} data-name={name}>
+    <video ref={ref} autoPlay playsInline muted={muted} className={off?'hidden':''}/>
+    {off&&<div className="rm-avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>}
+    <span className="rm-name">{name}{self?' (you)':''}{host?(cohost?' · co-host':' · host'):''}{screen?' · sharing':''}</span>
+  </div>;
+}
+
+export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:string;api:string;token:string;defaultName:string;onLeave:()=>void;onSignIn?:()=>void}){
+  const [info,setInfo]=useState<any>(null);const [err,setErr]=useState('');
+  const [phase,setPhase]=useState<'lobby'|'waiting'|'room'|'ended'>('lobby');
+  const [passcode,setPasscode]=useState('');const [waitList,setWaitList]=useState<{id:string;name:string}[]>([]);const [hostInfo,setHostInfo]=useState<any>(null);const [secOpen,setSecOpen]=useState(false);
+  const [name,setName]=useState(defaultName||'');
+  useEffect(()=>{if(defaultName)setName(n=>n||defaultName)},[defaultName]);   // a person who has just signed in gets their own name filled in
+  const [mic,setMic]=useState(true);const [cam,setCam]=useState(true);const [screen,setScreen]=useState(false);
+  const [peers,setPeers]=useState<Record<string,Peer>>({});
+  const [isHost,setIsHost]=useState(false);const [cohost,setCohost]=useState(false);const [policy,setPolicy]=useState({audio:true,video:true});const [peopleOpen,setPeopleOpen]=useState(false);const [menuFor,setMenuFor]=useState('');const [ask,setAsk]=useState<null|{by:string;what:string}>(null);const [inviteOpen,setInviteOpen]=useState(false);const [invTo,setInvTo]=useState('');const [invMsg,setInvMsg]=useState('');const [invBusy,setInvBusy]=useState(false);const [invRes,setInvRes]=useState<any>(null);const [suggest,setSuggest]=useState<{name:string;email:string}[]>([]);const [recording,setRecording]=useState(false);const [recBusy,setRecBusy]=useState(false);
+  type ChatMsg={name:string;text:string;at:string;me?:boolean;key:string;names:Record<string,string>};const [chat,setChat]=useState<ChatMsg[]>([]);const [chatOpen,setChatOpen]=useState(false);const [chatText,setChatText]=useState('');const [chatKey,setChatKey]=useState('all');const [unread,setUnread]=useState<Record<string,number>>({});const [picking,setPicking]=useState(false);const [pickSel,setPickSel]=useState<string[]>([]);const [extraKeys,setExtraKeys]=useState<string[]>([]);const chatKeyRef=React.useRef('all'),chatOpenRef=React.useRef(false);chatKeyRef.current=chatKey;chatOpenRef.current=chatOpen;
+  const [notice,setNotice]=useState('');const [localStream,setLocalStream]=useState<MediaStream|null>(null);const [mediaNote,setMediaNote]=useState('');
+  const ws=useRef<WebSocket|null>(null);const pcs=useRef<Record<string,RTCPeerConnection>>({});const myId=useRef('');
+  const local=useRef<{audio?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack}>({});
+  const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});
+  const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
+  const rec=useRef<any>(null);const wasRecording=useRef(false);
+
+  useEffect(()=>{fetch(`${api}/rooms/${code}`,{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||'This meeting link is not valid.');setInfo(j);iceRef.current=j.ice||[];if(j.ended)setPhase('ended')}).catch(e=>setErr(e.message))},[api,code]);
+
+  // ---- local media ----
+  const getMedia=useCallback(async()=>{
+    let stream:MediaStream|null=null;
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:{width:{ideal:1280},height:{ideal:720}}})}
+    catch{try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote('Camera not available - joining with microphone only.')}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}}
+    if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
+    setLocalStream(stream);return stream;
+  },[]);
+  useEffect(()=>{if(phase==='lobby'&&info&&!localStream&&!err)getMedia()},[phase,info]);// preview in the lobby
+  useEffect(()=>()=>{local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop()},[]);
+
+  // ---- peer connections ----
+  const send=(m:any)=>{if(ws.current?.readyState===1)ws.current.send(JSON.stringify(m))};
+  const upsert=(id:string,patch:Partial<Peer>)=>setPeers(p=>({...p,[id]:{id,name:'Guest',stream:peerStreams.current[id],mic:true,cam:true,screen:false,...p[id],...patch}}));
+  const makePc=(id:string)=>{
+    if(pcs.current[id])return pcs.current[id];
+    const pc=new RTCPeerConnection({iceServers:iceRef.current});pcs.current[id]=pc;
+    peerStreams.current[id]=peerStreams.current[id]||new MediaStream();
+    pc.onicecandidate=e=>{if(e.candidate)send({type:'signal',to:id,data:{candidate:e.candidate}})};
+    pc.ontrack=e=>{const s=peerStreams.current[id];if(!s.getTracks().includes(e.track))s.addTrack(e.track);upsert(id,{stream:s});e.track.onunmute=()=>upsert(id,{});recorderRefresh()};
+    pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')setNotice('A connection to another person failed. A TURN server may be needed on this network.')};
+    return pc;
+  };
+  const attachLocal=async(pc:RTCPeerConnection)=>{
+    for(const tx of pc.getTransceivers()){
+      const kind=tx.receiver.track.kind;tx.direction='sendrecv';
+      const t=kind==='audio'?local.current.audio:local.current.video;if(t)await tx.sender.replaceTrack(t);
+    }
+  };
+  const callPeer=async(id:string)=>{ // we are the newcomer: we send the offer
+    const pc=makePc(id);pc.addTransceiver('audio',{direction:'sendrecv'});pc.addTransceiver('video',{direction:'sendrecv'});
+    await attachLocal(pc);const offer=await pc.createOffer();await pc.setLocalDescription(offer);send({type:'signal',to:id,data:{sdp:pc.localDescription}});
+  };
+  const onSignal=async(from:string,data:any)=>{
+    const pc=makePc(from);
+    if(data.sdp){
+      await pc.setRemoteDescription(data.sdp);
+      if(data.sdp.type==='offer'){await attachLocal(pc);const ans=await pc.createAnswer();await pc.setLocalDescription(ans);send({type:'signal',to:from,data:{sdp:pc.localDescription}})}
+    }else if(data.candidate){try{await pc.addIceCandidate(data.candidate)}catch{}}
+  };
+  const dropPeer=(id:string)=>{pcs.current[id]?.close();delete pcs.current[id];delete peerStreams.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
+
+  const authH:any={'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})};
+  const loadHostInfo=()=>fetch(`${api}/rooms/${code}/host`,{headers:authH}).then(r=>r.ok?r.json():null).then(j=>j&&setHostInfo(j)).catch(()=>{});
+  const changeSecurity=async(patch:any)=>{const r=await fetch(`${api}/rooms/${code}`,{method:'PATCH',headers:authH,body:JSON.stringify(patch)});if(r.ok)setHostInfo({...hostInfo,...(await r.json())});else setNotice('Could not change the meeting settings.')};
+  useEffect(()=>{if(info?.you_are_host)loadHostInfo()},[info]);
+  const [copied,setCopied]=useState('');
+  const copyText=async(id:string,t:string)=>{try{await navigator.clipboard.writeText(t);setCopied(id);setTimeout(()=>setCopied(''),2000)}catch{window.prompt('Copy this:',t)}};
+  const endMeeting=async()=>{if(!window.confirm('End this meeting? The link stops working and the meeting is cancelled.'))return;const r=await fetch(`${api}/rooms/${code}/end`,{method:'POST',headers:authH,body:JSON.stringify({cancel:true})});if(r.ok){local.current.audio?.stop();local.current.cam?.stop();onLeave()}else setErr('Could not end the meeting. Try again.')};
+  const join=async()=>{
+    setErr('');
+    const sock=new WebSocket(wsUrl(api,code));ws.current=sock;
+    sock.onopen=()=>send({type:'join',name:name.trim()||'Guest',token:token||undefined,passcode:passcode.trim()||undefined});
+    sock.onmessage=async ev=>{
+      const m=JSON.parse(ev.data);
+      if(m.type==='waiting'){setPhase('waiting')}
+      else if(m.type==='denied'){setErr('The host did not let you in.');setPhase('ended')}
+      else if(m.type==='waiting-list'){setWaitList(m.list||[]);if((m.list||[]).length)setNotice(`${m.list[m.list.length-1].name} is waiting to join`)}
+      else if(m.type==='welcome'){setWaitList(m.waiting||[]);if(m.host)loadHostInfo();myId.current=m.id;setIsHost(!!m.host);setCohost(!!m.cohost);setPolicy(m.policy||{audio:true,video:true});setRecording(!!m.recording);setPhase('room');{let jo:any={};try{jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');sessionStorage.removeItem('isift.join')}catch{}rememberRoom(code,info?.title||'Meeting');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}const o=m.options||{};if(!m.host){if((o.mute_on_entry||m.policy?.audio===false)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((o.video_off_on_entry||m.policy?.video===false)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}}else{let so:any={};try{so=JSON.parse(sessionStorage.getItem('isift.start')||'{}');sessionStorage.removeItem('isift.start')}catch{}if((so.video===false||o.host_video_off)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(so.screen)setTimeout(()=>screenRef.current?.(),500);if(o.auto_record&&!m.recording)setTimeout(()=>autoRec.current?.(),800)}}for(const p of m.peers){upsert(p.id,{name:p.name,host:p.host,cohost:p.cohost});await callPeer(p.id)}send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
+      else if(m.type==='peer-joined'){upsert(m.id,{name:m.name,host:m.host,cohost:m.cohost});setNotice(`${m.name} joined`);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
+      else if(m.type==='peer-left'){setPeers(p=>{if(p[m.id])setNotice(`${p[m.id].name} left`);return p});dropPeer(m.id)}
+      else if(m.type==='signal')onSignal(m.from,m.data);
+      else if(m.type==='state')upsert(m.id,{mic:m.mic,cam:m.cam,screen:m.screen});
+      else if(m.type==='chat'){const ids:string[]=m.to?Array.from(new Set<string>([m.from,...m.to])).sort():[];const key=m.to?ids.join(','):'all';const names:Record<string,string>={[m.from]:m.name};(m.to||[]).forEach((x:string,k:number)=>{names[x]=m.to_names?.[k]||'Someone'});const me=m.from===myId.current;setChat(c=>[...c,{name:m.name,text:m.text,at:m.at,me,key,names}]);if(!me&&(!chatOpenRef.current||chatKeyRef.current!==key)){setUnread(u=>({...u,[key]:(u[key]||0)+1}));if(!chatOpenRef.current)setNotice(`${m.to?'(private) ':''}${m.name}: ${m.text.slice(0,60)}`)}}else if(m.type==='chat-error'){setNotice(m.message)}
+      else if(m.type==='recording'){setRecording(m.on);setNotice(m.on?'This meeting is now being recorded.':'Recording stopped.')}
+      else if(m.type==='role'){if(m.id===myId.current){setIsHost(!!m.host);setCohost(!!m.cohost);if(m.self){setNotice(m.transferred?(m.host?'You are now the host.':'You are no longer the host.'):m.host?'You are now a co-host.':'You are no longer a co-host.');if(m.host&&!m.cohost)loadHostInfo()}}else upsert(m.id,{host:!!m.host,cohost:!!m.cohost})}
+      else if(m.type==='role-error'){setNotice(m.message)}
+      else if(m.type==='policy'){setPolicy({audio:!!m.audio,video:!!m.video});setNotice(`${m.by||'The host'} changed what participants may switch on.`)}
+      else if(m.type==='force'){
+        if(m.mic===false){if(local.current.audio)local.current.audio.enabled=false;setMic(false)}
+        if(m.cam===false){if(local.current.cam)local.current.cam.enabled=false;setCam(false)}
+        send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false});
+        setNotice(m.reason==='policy'?'The host has not allowed participants to turn that on.':m.all?`${m.by||'The host'} muted everyone.`:`${m.by||'The host'} turned off your ${m.mic===false&&m.cam===false?'microphone and camera':m.mic===false?'microphone':'camera'}.`)}
+      else if(m.type==='ask'){setAsk({by:m.by,what:m.what})}
+      else if(m.type==='kicked'){leaveLocal();setErr('You were removed from the meeting by the host.');setPhase('ended')}
+      else if(m.type==='ended'){leaveLocal();setPhase('ended')}
+      else if(m.type==='error'){setErr(m.message);sock.close()}
+    };
+    sock.onclose=()=>{setPhase(p=>p==='room'||p==='waiting'?'ended':p)};
+  };
+  const leaveLocal=()=>{Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();ws.current?.close()};
+  const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
+  const endAll=async()=>{if(!window.confirm('End the meeting for everyone?'))return;if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
+
+  // ---- controls ----
+  const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};
+  const toggleCam=()=>{const t=local.current.cam;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.video){setNotice('The host has not allowed participants to start their video. Ask the host.');return}t.enabled=!t.enabled;setCam(t.enabled);send({type:'state',mic:!!local.current.audio?.enabled,cam:t.enabled,screen})};
+  const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}};
+  const toggleScreen=async()=>{
+    if(screen){await replaceVideo(local.current.cam);local.current.video=local.current.cam;setLocalStream(s=>s);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false});return}
+    try{const d=await (navigator.mediaDevices as any).getDisplayMedia({video:true});const t=d.getVideoTracks()[0];local.current.video=t;t.onended=()=>{replaceVideo(local.current.cam);local.current.video=local.current.cam;setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false})};await replaceVideo(t);setScreen(true);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true})}catch{setNotice('Screen sharing was cancelled or is not available in this browser.')}
+  };
+  const others=(key:string)=>key==='all'?[]:key.split(',').filter(x=>x!==myId.current);
+  const sendChat=(e:React.FormEvent)=>{e.preventDefault();if(!chatText.trim())return;const to=others(chatKey);send({type:'chat',text:chatText,...(to.length?{to}:{})});setChatText('')};
+  const nameOf=(id:string)=>peers[id]?.name||chat.map(c=>c.names[id]).filter(Boolean).pop()||'Someone';
+  const threadLabel=(key:string)=>key==='all'?'Everyone':others(key).map(nameOf).join(', ');
+  const threadKeys=['all',...Array.from(new Set([...extraKeys,...chat.map(c=>c.key).filter(k=>k!=='all')]))];
+  const openThread=(k:string)=>{setChatKey(k);setUnread(u=>({...u,[k]:0}))};
+  const startPrivate=()=>{if(!pickSel.length)return;const k=Array.from(new Set([myId.current,...pickSel])).sort().join(',');setExtraKeys(x=>x.includes(k)?x:[...x,k]);openThread(k);setPicking(false);setPickSel([])};
+  const copyLink=async()=>{const link=`${location.origin}${location.pathname}#/room/${code}`;const txt=link+(hostInfo?.passcode?`\nPasscode: ${hostInfo.passcode}`:'')+`\nMeeting ID: ${code}`;try{await navigator.clipboard.writeText(txt);setNotice(hostInfo?.passcode?'Link and passcode copied.':'Invitation link copied.')}catch{setNotice(txt)}};
+
+  const openInvite=async()=>{setInviteOpen(true);setInvRes(null);if(token&&!suggest.length){try{const h={Authorization:`Bearer ${token}`};const [cs,acct]=await Promise.all([fetch(`${api}/contacts`,{headers:h}).then(r=>r.ok?r.json():[]),fetch(`${api}/account`,{headers:h}).then(r=>r.ok?r.json():null)]);const list:{name:string;email:string}[]=[];(acct?.company?.members||[]).forEach((m:any)=>list.push({name:m.name||m.email,email:m.email}));(Array.isArray(cs)?cs:cs?.contacts||[]).forEach((c:any)=>{if(c.email)list.push({name:c.name||c.email,email:c.email})});const seen=new Set<string>();setSuggest(list.filter(x=>x.email&&!seen.has(x.email.toLowerCase())&&seen.add(x.email.toLowerCase())&&x.email.toLowerCase()!==(acct?.user?.email||'').toLowerCase()))}catch{}}};
+  const sendInvites=async(e:React.FormEvent)=>{e.preventDefault();setInvBusy(true);setInvRes(null);try{const r=await fetch(`${api}/rooms/${code}/invite`,{method:'POST',headers:authH,body:JSON.stringify({emails:invTo,message:invMsg,base_url:location.origin+location.pathname})});const j=await r.json().catch(()=>({}));if(!r.ok)setInvRes({error:typeof j.detail==='string'?j.detail:'The invitation could not be sent.'});else{setInvRes(j);setInvTo('');}}catch{setInvRes({error:'Could not reach the server.'})}finally{setInvBusy(false)}};
+  const addInvite=(email:string)=>setInvTo(t=>t.toLowerCase().includes(email.toLowerCase())?t:(t.trim()?t.replace(/[,\s]+$/,'')+', ':'')+email);
+
+  // ---- recording (host only): audio mix for the transcript + composite video for the archive ----
+  const gridRef=useRef<HTMLDivElement>(null);
+  const recorderRefresh=()=>{const r=rec.current;if(!r)return;const have=new Set<string>(r.sources.keys());
+    const streams:Record<string,MediaStream>={...peerStreams.current,__me:localStream||new MediaStream()};
+    for(const [k,s] of Object.entries(streams)){const t=s.getAudioTracks()[0];if(t&&!have.has(k+t.id)){try{const src=r.ctx.createMediaStreamSource(new MediaStream([t]));src.connect(r.dest);r.sources.set(k+t.id,src)}catch{}}}};
+  useEffect(()=>{if(!recording)return;const h=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[recording]);
+  const autoRec=useRef<null|(()=>void)>(null);const screenRef=useRef<null|(()=>void)>(null);
+  const startRecording=async(auto?:boolean)=>{
+    if(!isHost||rec.current)return;
+    if(auto!==true&&!window.confirm('Start recording? Everyone in the meeting is told it is being recorded. Keep this tab open while recording (it may stay in the background).'))return;
+    const ctx=new AudioContext();const dest=ctx.createMediaStreamDestination();const r:any={ctx,dest,sources:new Map(),audioChunks:[],videoChunks:[]};rec.current=r;
+    await ctx.resume().catch(()=>{});
+    const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;const g=canvas.getContext('2d')!;
+    const draw=()=>{const vids=Array.from(gridRef.current?.querySelectorAll('video')||[]).filter(v=>!v.classList.contains('hidden')&&v.videoWidth>0) as HTMLVideoElement[];
+      g.fillStyle='#10202c';g.fillRect(0,0,1280,720);const n=Math.max(1,vids.length);const cols=Math.ceil(Math.sqrt(n));const rows=Math.ceil(n/cols);const w=1280/cols,h=720/rows;
+      vids.forEach((v,i)=>{const x=(i%cols)*w,y=Math.floor(i/cols)*h;const s=Math.min(w/v.videoWidth,h/v.videoHeight);const dw=v.videoWidth*s,dh=v.videoHeight*s;g.drawImage(v,x+(w-dw)/2,y+(h-dh)/2,dw,dh)})};
+    try{const wk=new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),66)'],{type:'text/javascript'})));wk.onmessage=draw;r.timer=wk}catch{r.timer=setInterval(draw,66)}
+    recorderRefresh();
+    const mk=(stream:MediaStream,mime:string,opts:any,sink:Blob[])=>{const mr=new MediaRecorder(stream,{mimeType:mime,...opts});mr.ondataavailable=e=>{if(e.data.size)sink.push(e.data)};mr.start(2000);return mr};
+    r.audioRec=mk(dest.stream,'audio/webm;codecs=opus',{audioBitsPerSecond:32000},r.audioChunks);
+    const vs=canvas.captureStream(15);dest.stream.getAudioTracks().forEach(t=>vs.addTrack(t));
+    r.videoRec=mk(vs,MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')?'video/webm;codecs=vp8,opus':'video/webm',{videoBitsPerSecond:1500000},r.videoChunks);
+    send({type:'record',on:true});setRecording(true);wasRecording.current=true;
+  };
+  autoRec.current=()=>{startRecording(true)};screenRef.current=()=>{toggleScreen()};
+  const stopRecording=async(_ending?:boolean)=>{
+    const r=rec.current;if(!r)return;rec.current=null;setRecBusy(true);
+    const stopOne=(mr:MediaRecorder)=>new Promise<void>(res=>{mr.onstop=()=>res();try{mr.stop()}catch{res()}});
+    await Promise.all([stopOne(r.audioRec),stopOne(r.videoRec)]);(typeof r.timer?.terminate==='function'?r.timer.terminate():clearInterval(r.timer));r.ctx.close().catch(()=>{});
+    send({type:'record',on:false});setRecording(false);
+    try{
+      // The recording is always saved to the host's own computer first.
+      try{const whole=r.videoChunks.length?new Blob(r.videoChunks,{type:'video/webm'}):new Blob(r.audioChunks,{type:'audio/webm'});const a=document.createElement('a');a.href=URL.createObjectURL(whole);a.download=`${(info?.title||'meeting').replace(/[^\w .-]+/g,'_').slice(0,50)} ${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.webm`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}catch{}
+      const form=new FormData();form.append('consent_acknowledged','true');form.append('cloud',cloud?'true':'false');
+      form.append('audio',new Blob(r.audioChunks,{type:'audio/webm'}),'speech.webm');
+      if(cloud&&r.videoChunks.length)form.append('video',new Blob(r.videoChunks,{type:'video/webm'}),'meeting.webm');
+      const res=await fetch(`${api}/rooms/${code}/recording`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:form});const j=await res.json().catch(()=>({}));
+      setNotice(res.ok?j.message:(j.detail||'The recording could not be saved.'));
+    }catch{setNotice('The recording could not be uploaded. Check the connection.')}finally{setRecBusy(false)}
+  };
+  useEffect(()=>{if(!isHost||!token)return;fetch(`${api}/billing/me`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).then(j=>j&&setRecPlan(j.plan||'')).catch(()=>{})},[isHost,token]);
+  useEffect(()=>{if(notice){const t=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(t)}},[notice]);
+
+  // ---------- views ----------
+  if(err&&phase!=='ended'&&!info)return <div className="rm-center"><div className="rm-card"><h1>Meeting not available</h1><p>{err}</p><button className="primary" onClick={onLeave}>Back to the app</button></div></div>;
+  if(phase==='ended')return <div className="rm-center"><div className="rm-card"><h1>{err?'You left the meeting':'This meeting has ended'}</h1><p>{err||'Thanks for joining.'}</p><button className="primary" onClick={onLeave}>{token?'Back to the app':'Close'}</button></div></div>;
+  if(!info)return <div className="rm-center"><div className="rm-card">Loading…</div></div>;
+  if(phase==='lobby')return <div className="rm-center"><div className="rm-card lobby"><button type="button" className="rm-x" aria-label="Close and leave this meeting" title="Close" onClick={()=>{leaveLocal();onLeave()}}><X size={20}/></button>
+    <h1>{info.title}</h1><p className="muted">Hosted by {info.host||'the organizer'} · {info.people_now} {info.people_now===1?'person':'people'} in the meeting</p>
+    <div className="rm-preview"><VideoTile stream={localStream} name={name||'You'} muted off={!cam||!localStream?.getVideoTracks().length} self/></div>
+    {mediaNote&&<p className="muted">{mediaNote}</p>}
+    <label>Your name<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} placeholder="Your name" autoFocus/></label>
+    {!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'&&<p className="rm-guest" role="note"><b>Joining as a guest.</b> No account is needed: enter your name and join.{onSignIn&&<> Have an account? <button type="button" className="linkbtn" onClick={()=>{leaveLocal();onSignIn()}}>Sign in</button></>}</p>}
+    {info.you_are_host&&<div className="rm-hostbox"><b>Share this meeting</b>
+      {[['Link',`${location.origin}${location.pathname}#/room/${code}`,'l'],['Meeting ID',code,'i'],...(hostInfo?.passcode?[['Passcode',hostInfo.passcode,'p']]:[])].map(([lab,val,id])=><div key={id} className="mc-row"><span>{lab}</span><input readOnly value={val} aria-label={lab} onFocus={e=>e.currentTarget.select()}/><button type="button" className="secondary" onClick={()=>copyText(id,val)}>{copied===id?'Copied':'Copy'}</button></div>)}
+      <div className="rm-hostactions"><button type="button" className="secondary" onClick={()=>copyText('all',`${info.title}\nJoin: ${location.origin}${location.pathname}#/room/${code}\nMeeting ID: ${code}${hostInfo?.passcode?`\nPasscode: ${hostInfo.passcode}`:''}`)}>{copied==='all'?'Invitation copied':'Copy invitation'}</button><button type="button" className="end-btn" onClick={endMeeting}>End meeting</button></div></div>}
+    {info.access==='passcode'&&!info.you_are_host&&<label>Meeting passcode<input value={passcode} onChange={e=>setPasscode(e.target.value)} maxLength={12} placeholder="Passcode from your invitation" autoComplete="off"/></label>}
+    {info.access==='signed_in'&&!info.signed_in&&<p className="syncerr" role="alert">This meeting is only open to people with an account. Sign in to join.{onSignIn&&<> <button type="button" className="primary" onClick={()=>{leaveLocal();onSignIn()}}>Sign in</button></>}</p>}
+    {info.waiting_room&&!info.you_are_host&&<p className="muted small">The host will let you in when they are ready.</p>}
+    <div className="rm-lobbyctl"><button type="button" className={`secondary${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio}>{mic?<Mic size={16}/>:<MicOff size={16}/>} {mic?'Mic on':'Mic off'}</button><button type="button" className={`secondary${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam}>{cam?<Video size={16}/>:<VideoOff size={16}/>} {cam?'Camera on':'Camera off'}</button></div>
+    <p className="muted small">The host may record this meeting. You will see a clear “Recording” banner if they do, and you can leave at any time.</p>
+    {err&&<p className="syncerr" role="alert">{err}</p>}
+    <button className="primary join" onClick={join} disabled={!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
+  </div></div>;
+  if(phase==='waiting')return <div className="rm-center"><div className="rm-card"><h1>Waiting for the host</h1><p>The host will let you in shortly. You can leave this page at any time.</p><button className="secondary" onClick={()=>{ws.current?.close();onLeave()}}>Cancel</button></div></div>;
+  const list=Object.values(peers);const tiles=list.length+1;
+  const rankOf=(h?:boolean,c?:boolean)=>!h?0:c?1:2;const myRank=rankOf(isHost,cohost);const primary=myRank===2;
+  type Row={id:string;self?:boolean;name:string;host?:boolean;cohost?:boolean;mic:boolean;cam:boolean;screen:boolean;stream:MediaStream|null};
+  const ordered:Row[]=[{id:'__me',self:true,name:name||'You',host:isHost,cohost,mic,cam,screen,stream:localStream},...list.map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:p.stream||null}))]
+    .map((r,i)=>({r,i})).sort((a,b)=>rankOf(b.r.host,b.r.cohost)-rankOf(a.r.host,a.r.cohost)||a.i-b.i).map(x=>x.r);     // the host first, then co-hosts, then everyone else
+  const hostRow=ordered.find(r=>rankOf(r.host,r.cohost)===2);const hostName=hostRow?(hostRow.self?'you':hostRow.name):(info.host||'');
+  const canAct=(r:Row)=>!r.self&&myRank>rankOf(r.host,r.cohost);
+  const togglePeople=()=>{setPeopleOpen(o=>!o);setChatOpen(false);setMenuFor('')};
+  return <div className="rm-shell">
+    <header className="rm-top"><b className="rm-title">{info.title}</b>{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> Recording</span>}<span className="muted"><Users size={14}/> {tiles}</span>{notice&&<span className="rm-notice" role="status">{notice}</span>}</header>
+    {ask&&<div className="rm-ask" role="alert"><span>{ask.by} asks you to turn on your {ask.what==='cam'?'camera':'microphone'}.</span><button className="primary" onClick={()=>{if(ask.what==='cam')toggleCam();else toggleMic();const t=ask.what==='cam'?local.current.cam:local.current.audio;if(t&&!t.enabled){}setAsk(null)}}>Turn on</button><button className="secondary" onClick={()=>setAsk(null)}>Not now</button></div>}
+    {inviteOpen&&<div className="rm-invite" role="dialog" aria-label="Invite people"><div className="rm-invhead"><b>Invite people</b><button type="button" className="iconbtn" aria-label="Close" onClick={()=>setInviteOpen(false)}><X size={16}/></button></div>
+      {token?<form onSubmit={sendInvites}>
+        <label>Email addresses<textarea value={invTo} onChange={e=>setInvTo(e.target.value)} rows={2} placeholder="name@company.com, other@company.com" required autoFocus/></label>
+        {suggest.length>0&&<div className="rm-sugg"><small>Pick from your people:</small><div>{suggest.slice(0,12).map(c=><button key={c.email} type="button" className={invTo.toLowerCase().includes(c.email.toLowerCase())?'on':''} onClick={()=>addInvite(c.email)} title={c.email}>{c.name}</button>)}</div></div>}
+        <label>Message (optional)<input value={invMsg} onChange={e=>setInvMsg(e.target.value)} maxLength={500} placeholder="Join us now"/></label>
+        <button className="primary" disabled={invBusy||!invTo.trim()}><Send size={15}/> {invBusy?'Sending…':'Send invitation'}</button>
+        {invRes?.error&&<p className="syncerr" role="alert">{invRes.error}</p>}
+        {invRes&&!invRes.error&&<p className="okmsg" role="status">{invRes.message}{invRes.failed?.length>0&&<> Not emailed: {invRes.failed.map((f:any)=>f.to).join(', ')} ({invRes.failed[0].reason}).</>}</p>}
+        <small className="muted">People with an iSift account see an alert as soon as they open the app. Everyone gets the link by email when an email account is set up.</small>
+      </form>:<p className="muted small">Sign in to send invitations by email. You can still copy the link below.</p>}
+      <div className="rm-invcopy"><button type="button" className="secondary" onClick={copyLink}><Link2 size={14}/> Copy invitation link</button></div></div>}
+    {isHost&&waitList.length>0&&<div className="rm-wait" role="region" aria-label="People waiting"><b>Waiting to join</b>{waitList.map(w=><div key={w.id} className="rm-waitrow"><span>{w.name}</span><button className="primary" onClick={()=>send({type:'admit',id:w.id})}>Admit</button><button className="secondary" onClick={()=>send({type:'deny',id:w.id})}>Deny</button></div>)}{waitList.length>1&&<button className="secondary" onClick={()=>send({type:'admit_all'})}>Admit all</button>}</div>}
+    {primary&&secOpen&&hostInfo&&<div className="rm-sec" role="dialog" aria-label="Meeting security"><b>Who can join</b>
+      <label><input type="radio" name="acc" checked={hostInfo.access==='open'} onChange={()=>changeSecurity({access:'open'})}/> Anyone with the link</label>
+      <label><input type="radio" name="acc" checked={hostInfo.access==='passcode'} onChange={()=>changeSecurity({access:'passcode'})}/> Link and passcode{hostInfo.passcode&&hostInfo.access==='passcode'?<> · <b>{hostInfo.passcode}</b></>:null}</label>
+      <label><input type="radio" name="acc" checked={hostInfo.access==='signed_in'} onChange={()=>changeSecurity({access:'signed_in'})}/> Signed-in people only</label>
+      <label><input type="checkbox" checked={!!hostInfo.waiting_room} onChange={e=>changeSecurity({waiting_room:e.target.checked})}/> Waiting room</label>
+      <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
+    <div className="rm-main"><div ref={gridRef} className={`rm-grid n${Math.min(tiles,9)}`}>
+      {ordered.map(r=>r.self?<VideoTile key="__me" stream={localStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen}/>:<div key={r.id} className="rm-wrap">
+        <VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen}/>
+        {!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}
+        {isHost&&canAct(r)&&<button className="rm-kick" title={`Remove ${r.name}`} onClick={()=>window.confirm(`Remove ${r.name} from the meeting?`)&&send({type:'kick',id:r.id})}><UserX size={14}/></button>}
+      </div>)}
+    </div>
+    {peopleOpen&&<aside className="rm-chat rm-people" aria-label="Participants"><div className="rm-chathead"><b>Participants ({tiles})</b><button className="iconbtn" onClick={()=>setPeopleOpen(false)} aria-label="Hide participants" title="Hide participants"><X size={16}/></button></div>
+      <ul className="rm-plist">{ordered.map(r=><li key={r.id}>
+        <div className="rm-prow"><span className="rm-pname"><b>{r.name}</b>{r.self?' (me)':''}{r.host?<em className="rm-badge">{r.cohost?'Co-host':'Host'}</em>:null}</span>
+          <span className="rm-pstate" aria-label={`${r.mic?'Mic on':'Muted'}, ${r.cam?'camera on':'camera off'}`}>{r.mic?<Mic size={15}/>:<MicOff size={15} className="off"/>}{r.cam?<Video size={15}/>:<VideoOff size={15} className="off"/>}</span></div>
+        {!r.self&&<div className="rm-pact"><button type="button" className="secondary" onClick={()=>{const k=[myId.current,r.id].sort().join(',');setExtraKeys(x=>x.includes(k)?x:[...x,k]);openThread(k);setPeopleOpen(false);setChatOpen(true)}}>Chat</button>{isHost&&canAct(r)&&<><button type="button" className="secondary" onClick={()=>send(r.mic?{type:'force',id:r.id,mic:false}:{type:'ask',id:r.id,what:'mic'})}>{r.mic?'Mute':'Ask to unmute'}</button><button type="button" className="secondary" onClick={()=>send(r.cam?{type:'force',id:r.id,cam:false}:{type:'ask',id:r.id,what:'cam'})}>{r.cam?'Stop video':'Ask to start video'}</button><button type="button" className="secondary" aria-expanded={menuFor===r.id} onClick={()=>setMenuFor(menuFor===r.id?'':r.id)}>More</button></>}</div>}
+        {menuFor===r.id&&canAct(r)&&<div className="rm-pmenu" role="menu">
+          {primary&&!r.cohost&&<button role="menuitem" onClick={()=>{send({type:'role',id:r.id,role:'cohost'});setMenuFor('')}}>Make co-host</button>}
+          {primary&&r.cohost&&<button role="menuitem" onClick={()=>{send({type:'role',id:r.id,role:'participant'});setMenuFor('')}}>Remove co-host</button>}
+          {primary&&<button role="menuitem" onClick={()=>{if(window.confirm(`Make ${r.name} the host? You will no longer be the host.`)){send({type:'role',id:r.id,role:'host'});setMenuFor('')}}}>Make host</button>}
+          <button role="menuitem" className="danger" onClick={()=>{if(window.confirm(`Remove ${r.name} from the meeting?`)){send({type:'kick',id:r.id});setMenuFor('')}}}>Remove from meeting</button></div>}
+      </li>)}</ul>
+      {isHost&&<div className="rm-pfoot"><button type="button" className="secondary" onClick={()=>send({type:'mute_all'})}><MicOff size={14}/> Mute all</button>
+        <label className="check"><input type="checkbox" checked={policy.audio} onChange={e=>{setPolicy(p=>({...p,audio:e.target.checked}));send(e.target.checked?{type:'policy',audio:true}:{type:'policy',audio:false,mute_now:true})}}/> Participants can unmute themselves</label>
+        <label className="check"><input type="checkbox" checked={policy.video} onChange={e=>{setPolicy(p=>({...p,video:e.target.checked}));send({type:'policy',video:e.target.checked})}}/> Participants can start their video</label></div>}
+    </aside>}
+    {chatOpen&&<aside className="rm-chat" aria-label="Meeting chat"><div className="rm-chathead"><b>Chat</b><button className="iconbtn" onClick={()=>setChatOpen(false)} aria-label="Hide chat" title="Hide chat"><X size={16}/></button></div>
+      <div className="rm-threads" role="tablist" aria-label="Conversations">{threadKeys.map(k=><button key={k} role="tab" aria-selected={chatKey===k} className={chatKey===k?'on':''} onClick={()=>openThread(k)} title={threadLabel(k)}>{k==='all'?'Everyone':threadLabel(k)}{!!unread[k]&&<i className="rm-dot">{unread[k]}</i>}</button>)}<button className="rm-newpriv" onClick={()=>{setPicking(p=>!p);setPickSel([])}} aria-label="Chat privately with someone" title="Chat privately with one person or a group"><Plus size={14}/></button></div>
+      {picking&&<div className="rm-pick"><small>Choose one person, or several for a group:</small>{list.length?list.map(pe=><label key={pe.id}><input type="checkbox" checked={pickSel.includes(pe.id)} onChange={e=>setPickSel(x=>e.target.checked?[...x,pe.id]:x.filter(y=>y!==pe.id))}/> {pe.name}{pe.host?' (host)':''}</label>):<small className="muted">No one else has joined yet.</small>}<div><button className="primary" disabled={!pickSel.length} onClick={startPrivate}>Start chat</button> <button className="secondary" onClick={()=>setPicking(false)}>Cancel</button></div></div>}
+      {chatKey!=='all'&&<p className="rm-private"><LockKeyhole size={12}/> Private: only {threadLabel(chatKey)} and you can see this.</p>}
+      <div className="rm-msgs">{chat.filter(c=>c.key===chatKey).map((c,i)=><div key={i} className={`rm-msg${c.me?' me':''}`}><b>{c.me?'You':c.name}</b><p>{c.text}</p></div>)}{!chat.some(c=>c.key===chatKey)&&<p className="muted">No messages yet.</p>}</div>
+      <form onSubmit={sendChat}><label className="rm-to"><span>To:</span><select value={chatKey} onChange={e=>{const v=e.target.value;if(v==='all'||v.includes(','))openThread(v);else{const k=[myId.current,v].sort().join(',');setExtraKeys(x=>x.includes(k)?x:[...x,k]);openThread(k)}}} aria-label="Send to"><option value="all">Everyone</option>{chatKey!=='all'&&!list.some(pe=>[myId.current,pe.id].sort().join(',')===chatKey)&&<option value={chatKey}>{threadLabel(chatKey)}</option>}{list.map(pe=><option key={pe.id} value={[myId.current,pe.id].sort().join(',')}>{pe.name}{pe.host?(pe.cohost?' (co-host)':' (host)'):''}</option>)}</select></label><input value={chatText} onChange={e=>setChatText(e.target.value)} placeholder={chatKey==='all'?'Message everyone':`Message ${threadLabel(chatKey)}`} maxLength={2000}/><button className="primary" aria-label="Send"><Send size={15}/></button></form></aside>}
+    </div>
+    <footer className="rm-bar">
+      <button className={`rm-btn${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio} aria-label={mic?'Mute microphone':'Unmute microphone'}>{mic?<Mic size={18}/>:<MicOff size={18}/>}<span>{mic?'Mute':'Unmute'}</span></button>
+      <button className={`rm-btn${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam} aria-label={cam?'Turn camera off':'Turn camera on'}>{cam?<Video size={18}/>:<VideoOff size={18}/>}<span>{cam?'Camera':'Camera off'}</span></button>
+      <button className={`rm-btn${screen?' on':''}`} onClick={toggleScreen} aria-label="Share screen"><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button>
+      <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({tiles})</span></button>
+      <button className={`rm-btn${chatOpen?' on':''}`} onClick={()=>{setChatOpen(o=>!o);setPeopleOpen(false);if(!chatOpen)setUnread(u=>({...u,[chatKey]:0}))}} aria-label="Chat"><MessageSquare size={18}/><span>Chat</span>{Object.values(unread).reduce((a,b)=>a+b,0)>0&&<i className="rm-dot">{Object.values(unread).reduce((a,b)=>a+b,0)}</i>}</button>
+      <button className={`rm-btn${inviteOpen?' on':''}`} onClick={()=>inviteOpen?setInviteOpen(false):openInvite()} aria-label="Invite people"><Link2 size={18}/><span>Invite</span></button>
+      {primary&&<button className={`rm-btn${secOpen?' on':''}`} onClick={()=>{loadHostInfo();setSecOpen(o=>!o)}} aria-label="Meeting security"><ShieldCheck size={18}/><span>Security</span></button>}
+      {primary&&(recording?<button className="rm-btn rec" disabled={recBusy} onClick={()=>stopRecording()} aria-label="Stop recording"><Square size={18}/><span>{recBusy?'Saving…':'Stop rec'}</span></button>:<button className="rm-btn" onClick={startRecording} aria-label="Start recording"><Circle size={18}/><span>Record</span></button>)}
+      {primary&&<label className="rm-cloud" title={recPlan==='basic'?'On the Basic plan a cloud copy is kept for 2 days. Your own computer always gets a copy.':'Your own computer always gets a copy. Tick to also keep one in the cloud.'}><input type="checkbox" checked={cloud} disabled={recBusy} onChange={e=>setCloud(e.target.checked)}/> Also store in cloud{recPlan==='basic'?' (2 days)':''}</label>}
+      <button className="rm-btn leave" onClick={leave} aria-label="Leave meeting"><PhoneOff size={18}/><span>Leave</span></button>
+      {primary&&<button className="rm-btn leave" onClick={endAll} aria-label="End meeting for everyone"><X size={18}/><span>End all</span></button>}
+    </footer>
+  </div>;
+}
