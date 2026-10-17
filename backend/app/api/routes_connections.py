@@ -491,6 +491,9 @@ async def change_meeting(meeting_id: str, payload: dict, user: User = Depends(pr
         m.start_at = st.astimezone(timezone.utc)
     m.end_at = _aware(m.start_at) + timedelta(minutes=dur)
     room = await _room_for(db, m)
+    if "start_at" in payload and _aware(m.end_at) > datetime.now(timezone.utc):          # moved to a time that has not finished: an ended meeting is open again
+        if m.status == "completed": m.status = "scheduled"
+        if room and room.ended_at is not None and not (room.options or {}).get("pmi"): room.ended_at = None
     if room:
         from app.api.routes_rooms import clean_access, clean_options
         room.title = m.title[:200]

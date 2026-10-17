@@ -1541,3 +1541,18 @@ def test_ended_meeting_is_completed_with_real_end_time(client):
     r2 = client.post("/api/v1/rooms", json={"title": "Dropped", "base_url": "http://x/"}, headers=h).json()
     client.post(f"/api/v1/rooms/{r2['code']}/end", json={"cancel": True}, headers=h)
     assert next(m for m in client.get("/api/v1/meetings", headers=h).json() if m["join_url"] and r2["code"] in m["join_url"])["status"] == "cancelled"
+
+
+def test_new_time_reopens_an_ended_meeting(client):
+    h, _ = login(client)
+    r = client.post("/api/v1/rooms", json={"title": "Again", "base_url": "http://x/"}, headers=h).json()
+    find = lambda: next(m for m in client.get("/api/v1/meetings", headers=h).json() if m["join_url"] and r["code"] in m["join_url"])
+    mid = find()["id"]
+    client.post(f"/api/v1/rooms/{r['code']}/end", json={"cancel": False}, headers=h)
+    assert client.get(f"/api/v1/meetings/{mid}/details", headers=h).json()["ended"] is True
+    client.patch(f"/api/v1/meetings/{mid}", json={"title": "Again (renamed)"}, headers=h); get = lambda: client.get(f"/api/v1/meetings/{mid}/details", headers=h).json(); assert get()["ended"] is True      # a rename alone does not reopen it
+    assert client.patch(f"/api/v1/meetings/{mid}", json={"start_at": "2030-01-02T11:00:00Z", "duration_minutes": 30}, headers=h).status_code == 200
+    assert get()["ended"] is False and get()["status"] == "scheduled"
+    assert client.get(f"/api/v1/rooms/{r['code']}").status_code == 200 and client.get(f"/api/v1/rooms/{r['code']}").json()["ended"] is False
+    client.post(f"/api/v1/rooms/{r['code']}/end", json={"cancel": False}, headers=h)
+    client.patch(f"/api/v1/meetings/{mid}", json={"start_at": "2020-01-02T11:00:00Z"}, headers=h); assert get()["ended"] is True   # a time in the past stays ended
