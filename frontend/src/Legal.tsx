@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Sun,ArrowLeft,ChevronDown,X,Mail} from 'lucide-react';
+import {Sun,ArrowLeft,ArrowUp,ChevronDown,X,Mail} from 'lucide-react';
 
 // Who is behind the service. Change these two lines and every page updates.
 export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026'};
@@ -123,7 +123,7 @@ export function LegalFooter(_p:{tagline?:boolean}={}){
     </div>
     <div className="sf-base">
       <span className="sf-copy">Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span>
-      <button type="button" className="sf-top-link" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})}>iSift · Back to top</button>
+      <button type="button" className="sf-top-link" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})} aria-label="iSift · Back to top"><span className="sf-up"><ArrowUp size={20}/></span><span className="sf-uptxt">iSift · Back to top</span></button>
       <span className="sf-tag">Private by design · Human-reviewed outcomes</span>
     </div>
     {form&&<FooterForm kind={form} onClose={()=>setForm(null)}/>}

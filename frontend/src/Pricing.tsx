@@ -4,8 +4,8 @@ import {LegalFooter} from './Legal';
 
 export type PlanId='basic'|'individual'|'business';
 export type Period='monthly'|'yearly';
-// Monthly prices; yearly = 12 x monthly less 5%. Must match PLANS in backend/app/services/billing.py.
-export const PLAN_PRICES:Record<PlanId,{monthly:number;perMonthYearly:number;yearly:number}>={basic:{monthly:0,perMonthYearly:0,yearly:0},individual:{monthly:13.59,perMonthYearly:12.91,yearly:154.93},business:{monthly:17.59,perMonthYearly:16.71,yearly:200.53}};
+// Monthly prices; yearly = the earlier yearly price (135.96 / 175.92) less a further 5%. Must match PLANS in backend/app/services/billing.py.
+export const PLAN_PRICES:Record<PlanId,{monthly:number;perMonthYearly:number;yearly:number}>={basic:{monthly:0,perMonthYearly:0,yearly:0},individual:{monthly:13.59,perMonthYearly:10.76,yearly:129.16},business:{monthly:17.59,perMonthYearly:13.93,yearly:167.12}};
 export const PLAN_LABEL:Record<string,string>={basic:'Basic',individual:'Individual',business:'Business'};
 const SYMBOL:Record<string,string>={USD:'US$',AUD:'A$',GBP:'£',EUR:'€',CAD:'C$',NZD:'NZ$'};
 export const money=(n:number,cur='USD')=>`${SYMBOL[cur]||cur+' '}${n.toFixed(2)}`;
@@ -23,7 +23,7 @@ export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean
     <main className="pr-main">
       <p className="eyebrow">PRICING</p><h1>Plans that grow with your meetings</h1>
       <p className="pr-sub">Start with Basic, free for ever. Move to Individual for AI minutes, booking pages and full host controls, or Business for a whole company.</p>
-      <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly <em>save 5%</em></button></div>
+      <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly <em>save about 21%</em></button></div>
       <div className="pr-grid">{PLANS.map(p=>{const pr=PLAN_PRICES[p.id];const price=annual?pr.perMonthYearly:pr.monthly;
         return <section key={p.id} className={`pr-card${p.popular?' popular':''}${current===p.id?' current':''}`} aria-label={`${p.name} plan`}>
           {p.popular&&<span className="pr-badge"><Sparkles size={13}/> Most popular</span>}

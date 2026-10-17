@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {MessageCircle,Sparkles,X,Send} from 'lucide-react';
 
 type Msg={role:'user'|'assistant';content:string};
@@ -29,7 +30,7 @@ export default function SupportChat(){
     }catch(e:any){setMsgs(m=>[...m,{role:'assistant',content:e?.message||'I could not reach the assistant just now. Please try again, or email info@isift.au.'}])}
     finally{setBusy(false)}
   };
-  return <div className="sc-wrap">
+  return createPortal(<div className="sc-wrap">
     {open&&<section className="sc-panel" role="dialog" aria-label="iSift assistant">
       <header className="sc-head"><span className="sc-title"><span className="sc-spark"><Sparkles size={14}/></span> iSift assistant</span><button type="button" onClick={()=>setOpen(false)} aria-label="Close chat" className="sc-x"><X size={16}/></button></header>
       <div ref={box} className="sc-msgs" aria-live="polite">
@@ -46,5 +47,5 @@ export default function SupportChat(){
     <button type="button" className="sc-orb" onClick={()=>setOpen(o=>!o)} aria-expanded={open} aria-label={open?'Close chat':'Chat with iSift'}>
       {open?<X size={30} strokeWidth={1.75}/>:<><span className="sc-icon"><MessageCircle size={34} strokeWidth={1.5}/></span><span className="sc-ask">Ask</span><span className="sc-ring" aria-hidden="true"><i/></span></>}
     </button>
-  </div>;
+  </div>,document.body);
 }
