@@ -207,10 +207,29 @@ async def send_message(cid: str, payload: dict, user: User = Depends(principal),
     return {"id": m.id}
 
 # ---------------- docs and whiteboards ----------------
-def _note_out(n: Note, full=True) -> dict:
-    d = {"id": n.id, "kind": n.kind, "title": n.title, "updated_at": _utc(n.updated_at)}
+KINDS = ("doc", "board", "wp", "sheet", "deck")        # Notes, Whiteboards, WordPerfect, SpreadTable, PowerPresentation
+LIMIT = 2_000_000
+
+def _note_out(n: Note, full=True, access: str = "owner", owner: dict | None = None) -> dict:
+    d = {"id": n.id, "kind": n.kind, "title": n.title, "updated_at": _utc(n.updated_at), "access": access}
+    if owner: d["owner"] = owner
     if full: d["content"] = n.content
     return d
+
+def _check_content(kind: str, content: str) -> str:
+    """What may be stored for each kind. Documents are cleaned to safe formatting; workbooks and decks must be well-formed JSON of the right shape."""
+    import json
+    from app.services import htmlsafe
+    content = str(content or "")[:LIMIT]
+    if kind == "wp": return htmlsafe.clean(content)
+    if kind in ("sheet", "deck"):
+        if not content.strip(): return ""
+        try: v = json.loads(content)
+        except ValueError: raise HTTPException(400, "That file is damaged and was not saved.")
+        key = "sheets" if kind == "sheet" else "slides"
+        if not isinstance(v, dict) or not isinstance(v.get(key), list) or len(v[key]) > (50 if kind == "sheet" else 300): raise HTTPException(400, "That file is not a valid workbook." if kind == "sheet" else "That file is not a valid presentation.")
+        return content
+    return content
 
 @router.get("/notes")
 async def list_notes(kind: str = "doc", user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -219,8 +238,8 @@ async def list_notes(kind: str = "doc", user: User = Depends(principal), db: Asy
 
 @router.post("/notes")
 async def new_note(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    kind = "board" if payload.get("kind") == "board" else "doc"
-    n = Note(owner_id=user.id, kind=kind, title=(str(payload.get("title") or "").strip() or "Untitled")[:200], content=str(payload.get("content") or "")[:2_000_000]); db.add(n); await db.commit()
+    kind = payload.get("kind") if payload.get("kind") in KINDS else "doc"
+    n = Note(owner_id=user.id, kind=kind, title=(str(payload.get("title") or "").strip() or "Untitled")[:200], content=_check_content(kind, payload.get("content"))); db.add(n); await db.commit()
     return _note_out(n)
 
 async def _own_note(db, user, nid) -> Note:
@@ -228,20 +247,40 @@ async def _own_note(db, user, nid) -> Note:
     if not n or n.owner_id != user.id: raise HTTPException(404, "Not found")
     return n
 
+async def _note_for(db, user, nid, need: int = 1) -> tuple[Note, int]:
+    """The note and the caller's level (1 viewer, 2 commenter, 3 editor, 4 owner). Someone with no access is told 'Not found', so nothing is revealed about what exists."""
+    from app.services import sharing as sh
+    n = await db.get(Note, nid); lvl = await sh.access_level(db, user, n) if n else 0
+    if not lvl: raise HTTPException(404, "Not found")
+    if lvl < need: raise HTTPException(403, "Your access does not allow that.")
+    return n, lvl
+
 @router.get("/notes/{nid}")
 async def get_note(nid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    return _note_out(await _own_note(db, user, nid))
+    from app.services import sharing as sh
+    from app.services.identity import shown_email
+    n, lvl = await _note_for(db, user, nid); o = await db.get(User, n.owner_id)
+    return _note_out(n, True, sh.NAMES[lvl], {"name": sh.name_of(o), "email": shown_email(o.email) if o else ""})
 
 @router.put("/notes/{nid}")
 async def save_note(nid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    n = await _own_note(db, user, nid)
+    """Editors and the owner save. If the file changed since the copy the caller opened (someone else saved first), the save is refused so no one's work is silently overwritten."""
+    from app.services import sharing as sh
+    n, lvl = await _note_for(db, user, nid, 3)
+    base = payload.get("base")
+    if base and base != _utc(n.updated_at): raise HTTPException(409, "Someone else saved changes to this file after you opened it. Reload to see their changes.")
     if "title" in payload: n.title = (str(payload["title"] or "").strip() or "Untitled")[:200]
-    if "content" in payload: n.content = str(payload["content"] or "")[:2_000_000]
-    n.updated_at = datetime.now(timezone.utc); await db.commit(); return _note_out(n, False)
+    if "content" in payload: n.content = _check_content(n.kind, payload["content"])
+    n.updated_at = datetime.now(timezone.utc); await db.commit(); return _note_out(n, False, sh.NAMES[lvl])
 
 @router.delete("/notes/{nid}")
 async def delete_note(nid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    await db.delete(await _own_note(db, user, nid)); await db.commit(); return {"ok": True}
+    from sqlalchemy import delete as sqldelete
+    from app.models import NoteShare, NoteComment
+    n, _l = await _note_for(db, user, nid, 4)
+    await db.execute(sqldelete(NoteShare).where(NoteShare.note_id == n.id)); await db.execute(sqldelete(NoteComment).where(NoteComment.note_id == n.id))
+    await db.delete(n); await db.commit(); return {"ok": True}
+
 
 # ---------------- personal meeting ID ----------------
 async def get_pmi(db: AsyncSession, user: User, base_url: str = "") -> Room:
@@ -282,6 +321,34 @@ async def my_pmi_set(payload: dict, user: User = Depends(principal), db: AsyncSe
 
 
 # ---------------- share a note or whiteboard by email, as a PDF ----------------
+def _plain(n: Note) -> str:
+    """The words of a file, for the PDF attachment."""
+    import json
+    from app.services import htmlsafe
+    if n.kind == "wp": return htmlsafe.to_text(n.content)
+    try: v = json.loads(n.content) if n.kind in ("sheet", "deck") and n.content else {}
+    except ValueError: v = {}
+    if n.kind == "sheet":
+        out = []
+        for sh_ in v.get("sheets", []):
+            out.append(f"[{sh_.get('name', 'Sheet')}]"); cells = sh_.get("cells", {}) or {}
+            import re
+            pos = {}
+            for k, val in cells.items():
+                m = re.match(r"^([A-Z]{1,3})(\d+)$", k)
+                if m: pos[(int(m.group(2)), m.group(1))] = str(val)
+            rows = sorted({r for r, _ in pos}); cols = sorted({c for _, c in pos}, key=lambda c: (len(c), c))
+            for r in rows: out.append("\t".join(pos.get((r, c), "") for c in cols))
+        return "\n".join(out)
+    if n.kind == "deck":
+        out = []
+        for i, sl in enumerate(v.get("slides", []), 1):
+            out.append(f"Slide {i}: {sl.get('title', '')}"); out += ["  - " + str(x) for x in (sl.get("body") or [])]
+            if sl.get("notes"): out.append("  Notes: " + str(sl["notes"]))
+            out.append("")
+        return "\n".join(out)
+    return n.content
+
 @router.post("/notes/{nid}/share")
 async def share_note(nid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     """Email a note or whiteboard as a PDF attachment to typed addresses, contact groups and contacts. Every person gets their own message (no one sees the others).
@@ -291,7 +358,7 @@ async def share_note(nid: str, payload: dict, user: User = Depends(principal), d
     from app.services import pdfmini
     from app.services.invites import EMAIL
     from app.api.routes_booking import _senders
-    n = await _own_note(db, user, nid)
+    n, _lvl = await _note_for(db, user, nid, 3)
     want: dict[str, str] = {}
     for e in payload.get("emails") or []:
         e = str(e).strip().lower()
@@ -319,8 +386,11 @@ async def share_note(nid: str, payload: dict, user: User = Depends(principal), d
             if not pages: raise HTTPException(400, "The whiteboard picture is missing.")
             pdf = pdfmini.image_pdf(pages, foot)
         else:
-            if not pdfmini.encodable(title + n.content): return {"ok": False, "needs_pictures": True}
-            pdf = pdfmini.text_pdf(title, n.content, foot)
+            body = _plain(n)
+            if not pdfmini.encodable(title + body):
+                if n.kind != "doc": raise HTTPException(400, "This file has letters the PDF cannot show. Share it with an iSift link instead.")
+                return {"ok": False, "needs_pictures": True}
+            pdf = pdfmini.text_pdf(title, body, foot)
     except ValueError: raise HTTPException(400, "The picture was not a valid image.")
     senders = await _senders(db, user)
     if not senders: raise HTTPException(400, "No email account is set up to send from. Add one in Commbox, or ask your administrator to set the app's email account.")

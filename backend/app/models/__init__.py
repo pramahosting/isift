@@ -1,1 +1,1 @@
-from app.models.entities import Base, User, LocalAccount, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, WorkflowRun, Job, IntegrationSetting, AuditLog, Room, RoomRecording, Contact, ContactGroup, Channel, ChatMessage, Note, BookingType, Booking
+from app.models.entities import Base, User, LocalAccount, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, WorkflowRun, Job, IntegrationSetting, AuditLog, Room, RoomRecording, Contact, ContactGroup, Channel, ChatMessage, Note, BookingType, Booking, NoteShare, NoteComment

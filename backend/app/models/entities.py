@@ -266,3 +266,32 @@ class Booking(Base):
     meeting_id: Mapped[str | None] = mapped_column(ForeignKey("meetings.id", ondelete="SET NULL"), nullable=True)
     room_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class NoteShare(Base):
+    """Who may open a note or whiteboard besides its owner. kind: user (one person, by account or email), group (a contact group, live membership), link (a secret link, signed-in people only)."""
+    __tablename__ = "note_shares"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    email: Mapped[str] = mapped_column(String(320), default="")
+    group_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    permission: Mapped[str] = mapped_column(String(10), default="viewer")       # viewer | commenter | editor (never owner)
+    token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)  # sha-256 of the secret in the invitation or link; the secret itself is never stored
+    via_link: Mapped[str | None] = mapped_column(String(36), nullable=True)      # set on the row made when someone opens a link
+    restrict_emails: Mapped[list] = mapped_column(JSON, default=list)            # link only: if not empty, only these addresses (or people already shared with) may use it
+    message: Mapped[str] = mapped_column(String(2000), default="")
+    created_by: Mapped[str] = mapped_column(String(36), default="")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+class NoteComment(Base):
+    __tablename__ = "note_comments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(String(36))
+    author: Mapped[str] = mapped_column(String(200), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

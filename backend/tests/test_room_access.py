@@ -1729,3 +1729,117 @@ def test_admin_shown_as_isift_address(client):
     h, _ = login(client); m = make(client, h, title="Org check", start_at="2031-05-01T10:00:00Z", duration_minutes=30)
     rows = client.get("/api/v1/meetings", headers=h).json()
     assert rows and all(r["organizer"] != "admin@example.test" for r in rows)
+
+
+SHARE_FILES = {"doc": "Plain words", "board": '{"v":2,"items":[],"board":{"w":1200,"h":700}}', "wp": "<h1>Plan</h1><p>Hello <b>team</b></p>",
+               "sheet": '{"v":1,"sheets":[{"name":"Sheet1","cells":{"A1":"5","A2":"7","A3":"=SUM(A1:A2)"}}]}', "deck": '{"v":1,"slides":[{"layout":"title","title":"Hi","body":["one"],"notes":""}]}'}
+
+def test_sharing_all_file_types(client, monkeypatch):
+    """The sharing rules, tried on every kind of file: people, groups, links, permissions, revocation, expiry, tampering and email failures."""
+    import asyncio, re
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select, update
+    from app.integrations import mail as mailer
+    from app.api import routes_booking as rb
+    from app.core.db import SessionLocal
+    from app.models import NoteShare
+    h, _ = login(client); sent = []; mode = {"fail": False, "senders": True}
+    async def fake_send(acct, to, subject, body, ics=None, attachments=None):
+        if mode["fail"]: raise RuntimeError("smtp refused")
+        sent.append((to[0], subject, body))
+    monkeypatch.setattr(mailer, "send", fake_send)
+    async def senders(db, owner): return [{"address": "app@x.test", "platform": True}] if mode["senders"] else []
+    monkeypatch.setattr(rb, "_senders", senders)
+    H = {}
+    for em, fn in (("sbob@example.com", "Bob"), ("scara@example.com", "Cara"), ("sdan@example.com", "Dan"), ("seve@example.com", "Eve")):
+        t = signed_up(client, monkeypatch, em, fn, "Lee"); H[fn] = {"Authorization": "Bearer " + t["access_token"]}
+    C = {}
+    for em, fn in (("sbob@example.com", "Bob"), ("scara@example.com", "Cara"), ("sdan@example.com", "Dan")): C[fn] = client.post("/api/v1/contacts", json={"name": fn, "email": em}, headers=h).json()["id"]
+    g = client.post("/api/v1/contact-groups", json={"name": "Sharing team", "contact_ids": [C["Bob"], C["Cara"]]}, headers=h).json()
+    def setexp(sid, when):
+        async def go():
+            async with SessionLocal() as db: await db.execute(update(NoteShare).where(NoteShare.id == sid).values(expires_at=when)); await db.commit()
+        asyncio.run(go())
+    for kind, content in SHARE_FILES.items():
+        n = client.post("/api/v1/notes", json={"kind": kind, "title": f"Quarterly {kind}", "content": content}, headers=h).json(); nid = n["id"]; N = f"/api/v1/notes/{nid}"; S = N + "/shares"
+        # nobody else can see it; ids and tokens cannot be guessed
+        for who in ("Bob", "Eve"): assert client.get(N, headers=H[who]).status_code == 404 and client.put(N, json={"title": "x"}, headers=H[who]).status_code == 404 and client.get(N + "/comments", headers=H[who]).status_code == 404
+        assert client.post(S, json={"emails": ["sbob@example.com"]}, headers=H["Bob"]).status_code == 404                       # only the owner can share
+        assert client.post("/api/v1/shared/open", json={"token": "guess"}, headers=H["Eve"]).status_code == 404
+        # owner access can never be handed out; bad addresses refused
+        assert client.post(S, json={"emails": ["sbob@example.com"], "permission": "owner"}, headers=h).status_code == 400
+        assert client.post(S, json={"emails": ["nope"], "permission": "viewer"}, headers=h).status_code == 400
+        assert client.post(S, json={"permission": "viewer"}, headers=h).status_code == 400
+        # 1 + 2 + 4: two people at once, an email with a link and no content
+        sent.clear(); r = client.post(S, json={"emails": ["sbob@example.com", "scara@example.com"], "permission": "viewer", "message": "Please look", "base_url": "http://localhost:5173/"}, headers=h); assert r.status_code == 200, r.text
+        assert [x["status"] for x in r.json()["results"]] == ["shared", "shared"] and r.json()["email_configured"] is True and all(x["emailed"] for x in r.json()["results"])
+        assert sorted(x[0] for x in sent) == ["sbob@example.com", "scara@example.com"]
+        mail = next(x for x in sent if x[0] == "sbob@example.com"); assert "Viewer access" in mail[2] and "Please look" in mail[2] and "Quarterly" in mail[1] and "#/shared/" in mail[2] and "Plain words" not in mail[2] and "Hello" not in mail[2].split("link below")[0].split("Please look")[1]
+        invite = re.search(r"#/shared/(\S+)", mail[2]).group(1)
+        sent.clear(); r2 = client.post(S, json={"emails": ["sbob@example.com"], "permission": "viewer"}, headers=h).json(); assert r2["results"][0]["status"] == "unchanged" and not sent      # no duplicate invitation
+        # an invitation belongs to the person it was sent to
+        assert client.post("/api/v1/shared/open", json={"token": invite}, headers=H["Eve"]).status_code == 403
+        o = client.post("/api/v1/shared/open", json={"token": invite}, headers=H["Bob"]); assert o.status_code == 200 and o.json()["id"] == nid and o.json()["access"] == "viewer"
+        # 7: viewer reads but cannot change anything
+        got = client.get(N, headers=H["Bob"]).json(); assert got["access"] == "viewer" and got["owner"]["name"] and got["content"] == (content if kind not in ("wp",) else got["content"])
+        assert client.put(N, json={"title": "hack"}, headers=H["Bob"]).status_code == 403 and client.delete(N, headers=H["Bob"]).status_code == 403
+        assert client.post(N + "/comments", json={"text": "hi"}, headers=H["Bob"]).status_code == 403 and client.get(N + "/comments", headers=H["Bob"]).json()["can_comment"] is False
+        assert client.post(N + "/shares", json={"emails": ["seve@example.com"]}, headers=H["Bob"]).status_code == 404 and client.post(N + "/links", json={}, headers=H["Bob"]).status_code == 404
+        assert nid in [x["id"] for x in client.get("/api/v1/shared/with-me", headers=H["Bob"]).json()] and nid in [x["id"] for x in client.get("/api/v1/shared/by-me", headers=h).json()]
+        assert any(i["kind"] == "share" for i in client.get("/api/v1/notifications", headers=H["Bob"]).json()["items"])
+        # 8: change permission, effective at once; comment then edit
+        rows = client.get(S, headers=h).json()["people"]; bob = next(x for x in rows if x["email"] == "sbob@example.com")
+        client.patch(f"{S}/{bob['id']}", json={"permission": "commenter"}, headers=h)
+        assert client.post(N + "/comments", json={"text": "Looks good"}, headers=H["Bob"]).status_code == 200 and client.put(N, json={"title": "hack"}, headers=H["Bob"]).status_code == 403
+        assert client.get(N + "/comments", headers=h).json()["items"][0]["text"] == "Looks good"
+        client.patch(f"{S}/{bob['id']}", json={"permission": "editor"}, headers=h)
+        cur = client.get(N, headers=H["Bob"]).json(); ok = client.put(N, json={"title": "Renamed", "content": content, "base": client.get(N, headers=h).json()["updated_at"]}, headers=H["Bob"]); assert ok.status_code == 200, ok.text
+        assert client.put(N, json={"title": "Stale", "base": cur["updated_at"]}, headers=h).status_code == 409                              # a save made on an old copy is refused, not merged silently
+        assert client.get(N, headers=h).json()["title"] == "Renamed"
+        assert client.put(N, json={"content": "not json {" if kind in ("sheet", "deck") else content}, headers=H["Bob"]).status_code == (400 if kind in ("sheet", "deck") else 200)
+        # 9: revoke
+        sent.clear(); assert client.delete(f"{S}/{bob['id']}", headers=h).status_code == 200
+        assert client.get(N, headers=H["Bob"]).status_code == 404 and client.put(N, json={"title": "x"}, headers=H["Bob"]).status_code == 404
+        assert any(i["kind"] == "share_revoked" for i in client.get("/api/v1/notifications", headers=H["Bob"]).json()["items"])
+        for x in client.get(S, headers=h).json()["people"]: client.delete(f"{S}/{x['id']}", headers=h)                       # clear the direct shares so only the group grants access
+        # 3 + 11: a group; access follows membership
+        r = client.post(S, json={"group_ids": [g["id"]], "permission": "commenter"}, headers=h).json()["results"][0]; assert r["status"] == "shared" and r["members"] == 2
+        assert client.get(N, headers=H["Bob"]).json()["access"] == "commenter" and client.get(N, headers=H["Cara"]).status_code == 200 and client.get(N, headers=H["Dan"]).status_code == 404
+        client.patch(f"/api/v1/contact-groups/{g['id']}", json={"contact_ids": [C["Bob"], C["Dan"]]}, headers=h)
+        assert client.get(N, headers=H["Cara"]).status_code == 404 and client.get(N, headers=H["Dan"]).status_code == 200                      # Cara left the group, Dan joined
+        assert client.post(N + "/comments", json={"text": "via group"}, headers=H["Dan"]).status_code == 200
+        client.patch(f"/api/v1/contact-groups/{g['id']}", json={"contact_ids": [C["Bob"], C["Cara"]]}, headers=h)
+        grow = next(x for x in client.get(S, headers=h).json()["people"] if x["kind"] == "group"); assert {m["email"] for m in grow["members"]} == {"sbob@example.com", "scara@example.com"}
+        client.delete(f"{S}/{grow['id']}", headers=h); assert client.get(N, headers=H["Bob"]).status_code == 404
+        # 5 + 6 + 10: a link, restricted links, revoke, expiry
+        lk = client.post(N + "/links", json={"permission": "viewer", "base_url": "http://localhost:5173/"}, headers=h).json(); tok = lk["url"].split("#/shared/")[1]
+        assert client.post("/api/v1/shared/open", json={"token": tok}).status_code in (401, 403)                                                # sign-in required
+        assert client.post("/api/v1/shared/open", json={"token": tok}, headers=H["Dan"]).json()["access"] == "viewer" and client.get(N, headers=H["Dan"]).status_code == 200
+        assert client.put(N, json={"title": "x"}, headers=H["Dan"]).status_code == 403
+        assert client.get(S, headers=h).json()["links"][0]["opened_by"] == 1 and "token" not in str(client.get(S, headers=h).json())
+        client.delete(f"{S}/{lk['id']}", headers=h)
+        assert client.get(N, headers=H["Dan"]).status_code == 404 and client.post("/api/v1/shared/open", json={"token": tok}, headers=H["Dan"]).status_code == 410
+        lk2 = client.post(N + "/links", json={"permission": "editor", "emails": ["scara@example.com"]}, headers=h).json(); tok2 = lk2["url"].split("#/shared/")[1]
+        assert client.post("/api/v1/shared/open", json={"token": tok2}, headers=H["Eve"]).status_code == 403 and client.get(N, headers=H["Eve"]).status_code == 404
+        assert client.post("/api/v1/shared/open", json={"token": tok2}, headers=H["Cara"]).json()["access"] == "editor"
+        setexp(lk2["id"], datetime.now(timezone.utc) - timedelta(days=1)); assert client.post("/api/v1/shared/open", json={"token": tok2}, headers=H["Dan"]).status_code == 410
+        assert client.post(N + "/links", json={"expires_at": "2001-01-01T00:00:00Z"}, headers=h).status_code == 400
+        lk3 = client.post(N + "/links", json={"permission": "viewer", "expires_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()}, headers=h).json()
+        assert client.post("/api/v1/shared/open", json={"token": lk3["url"].split("#/shared/")[1]}, headers=H["Dan"]).status_code == 200
+        client.delete(f"{S}/{lk3['id']}", headers=h)
+        # a person's own share can expire too
+        client.post(S, json={"emails": ["sbob@example.com"], "permission": "viewer", "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()}, headers=h)
+        sid = next(x["id"] for x in client.get(S, headers=h).json()["people"] if x["email"] == "sbob@example.com"); assert client.get(N, headers=H["Bob"]).status_code == 200
+        setexp(sid, datetime.now(timezone.utc) - timedelta(hours=1)); assert client.get(N, headers=H["Bob"]).status_code == 404
+        # 12: delivery failures are reported, never hidden; the share itself still exists
+        mode["fail"] = True; r = client.post(S, json={"emails": ["sdan@example.com"], "permission": "viewer"}, headers=h).json()["results"][0]; assert r["status"] == "shared" and r["emailed"] is False and r["error"]
+        mode["fail"] = False; assert client.get(N, headers=H["Dan"]).status_code == 200
+        mode["senders"] = False; r = client.post(S, json={"emails": ["seve@example.com"], "permission": "viewer"}, headers=h).json(); assert r["email_configured"] is False and r["results"][0]["emailed"] is False; mode["senders"] = True
+        assert client.post(S, json={"emails": ["sfred@example.com"], "permission": "viewer", "send_email": False}, headers=h).json()["results"][0]["emailed"] is None
+        # stop sharing, and the owner alone can delete
+        assert client.post(N + "/stop-sharing", headers=h).json()["ok"] and all(client.get(N, headers=H[w]).status_code == 404 for w in ("Bob", "Dan", "Eve")) and nid not in [x["id"] for x in client.get("/api/v1/shared/by-me", headers=h).json()]
+        assert client.delete(N, headers=H["Cara"]).status_code == 404 and client.delete(N, headers=h).status_code == 200
+    # WordPerfect documents are cleaned so a shared document cannot run script in someone's browser
+    n = client.post("/api/v1/notes", json={"kind": "wp", "title": "Safe", "content": '<p onclick="x()">Hi<script>alert(1)</script><img src=x onerror=alert(2)><a href="javascript:alert(3)">l</a><a href="https://ok.example/">ok</a></p>'}, headers=h).json()
+    c = client.get(f"/api/v1/notes/{n['id']}", headers=h).json()["content"]; assert "script" not in c and "onclick" not in c and "onerror" not in c and "javascript:" not in c and 'href="https://ok.example/"' in c and "<p>Hi" in c
+    assert client.post("/api/v1/notes", json={"kind": "sheet", "title": "Bad", "content": "{}"}, headers=h).status_code == 400
