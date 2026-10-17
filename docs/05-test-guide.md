@@ -37,11 +37,11 @@ The Windows demo runs Vite directly. Docker Compose remains available for deploy
 
 ## Integration checks
 
-Use a non-production tenant, test meeting, test Azure OpenAI resource, Neon branch and approved test recipient. Complete the Phase 0 checklist first.
+Use a non-production tenant, test meeting, test Groq key, Neon branch and approved test recipient. Complete the Phase 0 checklist first.
 
 - **Graph calendar:** verify accepted/tentative, paging and permission denial. A private event must not persist or enter AI. A failed/partial Graph call must return an error, never the clear-day message.
 - **Official transcript:** create a test meeting with transcription enabled; validate tenant transcript settings, permissions, application access policy when applicable, meeting type and artifact availability. Missing transcript is unavailable, not success.
-- **Azure OpenAI audio:** use a test audio file with authorization and consent. Verify job/transcript state and temporary-file deletion when retention is 0. Review provider terms and limits.
+- **Groq audio:** use a test audio file with authorization and consent. Verify job/transcript state and temporary-file deletion when retention is 0. Review provider terms and limits.
 - **Minutes:** use a controlled test transcript. Generated minutes stay draft; evidence is retained; uncertain owner/date is not fabricated; reviewer edits create a new version.
 - **Power Automate:** configure named Sydney timezone; test at an agreed time; deliver to a test chat; verify callback state and retries. Do not target production before identity/licensing/replay review.
 - **Failure email:** trigger a controlled failure and verify the alert has only workflow/safe error data, no meeting content.
@@ -52,7 +52,7 @@ Use a non-production tenant, test meeting, test Azure OpenAI resource, Neon bran
 - **Database unavailable:** confirm `docs/data/` is writable and inspect `docs/logs/backend-error.log`.
 - **Mock data button missing:** rebuild the frontend with the included demo configuration.
 - **Calendar says Graph not configured:** expected until credentials, permissions, user ID and tenant policy are set.
-- **Minutes job stays queued:** inspect worker logs and provider setup; sample minutes require no Azure OpenAI credentials.
+- **Minutes job stays queued:** inspect worker logs and provider setup; sample minutes require no Groq key.
 - **Port in use:** stop the process using localhost ports 5173 or 8000, then rerun `app.cmd`.
 - **Permission denied:** have the tenant administrator validate the specific API/scope/policy. Do not add broad permissions without review.
 

@@ -14,17 +14,17 @@ No Docker Desktop or database URL is needed for the local demo. First launch nee
 
 ## Settings
 
-Sign in as admin and open **Admin settings**. Every integration value (Microsoft Copilot AI / Azure OpenAI, Microsoft Entra/Graph, Power Automate, failure email) can be edited there. The current value is shown under each field with its source (saved here, server environment or default). Secrets are encrypted in the database and shown masked. Changes apply immediately to the API and worker, with no restart, and **Reset to default** returns a value to the `.env` setting. The database connection and auth mode stay read-only and are set in the server environment.
+Sign in as admin and open **Admin settings**. Every integration value (Groq AI, Microsoft Entra/Graph, Power Automate, failure email) can be edited there. The current value is shown under each field with its source (saved here, server environment or default). Secrets are encrypted in the database and shown masked. Changes apply immediately to the API and worker, with no restart, and **Reset to default** returns a value to the `.env` setting. The database connection and auth mode stay read-only and are set in the server environment.
 
-## AI service (Microsoft Copilot AI = Azure OpenAI)
+## AI service (Groq)
 
-Minutes, briefings and audio transcription use **Azure OpenAI in Microsoft Foundry**, the model service behind Microsoft Copilot. (The Microsoft 365 Copilot Chat API is not used: it is beta, works only with a signed-in user's token and cannot run in the unattended worker.)
+Minutes, action items, daily briefings, transcripts of recordings and the booking-link email all use **Groq**. No Microsoft or Azure account is needed.
 
-1. In the Azure portal create an **Azure OpenAI** resource and deploy a chat model that supports structured output (for example `gpt-4o` or `gpt-4.1`). Optionally deploy a **Whisper** model for audio.
-2. In **Admin settings → Microsoft Copilot AI** enter the endpoint (`https://<resource>.openai.azure.com`), the chat deployment name, and either the API key or choose *Microsoft Entra app* (give the app registration the **Cognitive Services OpenAI User** role on the resource; it reuses the Microsoft client ID and secret).
+1. Create a key at console.groq.com → API Keys (it starts with `gsk_`).
+2. In **Admin settings → Groq AI** paste the key and enter the model, for example `llama-3.3-70b-versatile`. The model you save there is the one used for minutes and briefings. Transcription uses `whisper-large-v3-turbo` unless you change it.
 3. Save, then use **Test configured connections**. No restart is needed.
 
-The endpoint must be an Azure address (`*.openai.azure.com` or `*.cognitiveservices.azure.com`), so the key can never be sent to another host. If your model is an o-series or GPT-5 reasoning model, turn off *Send temperature 0*.
+Recordings are transcribed only up to 25 MB per file (Groq's limit); larger ones are skipped with a clear message.
 
 ## Daily calendar refresh
 
@@ -54,13 +54,13 @@ Your data (SQLite database with all accounts, audio) is kept **outside the app f
 - Phase 1 API/frontend/database foundation, local and Entra auth modes, admin boundary, migrations.
 - Phase 2 deterministic calendar eligibility, Sydney day window, briefing generation/preview and word limit.
 - Phase 3 database-backed jobs/retries and Power Automate scheduled-run/delivery callbacks.
-- Phase 4 official Graph transcript retrieval and consent-confirmed authorized audio upload with Azure OpenAI (Whisper) transcription.
-- Phase 5 typed Azure OpenAI draft minutes (structured JSON output) with evidence fields, versioned human review and action items.
+- Phase 4 official Graph transcript retrieval and consent-confirmed authorized audio upload with Groq Whisper transcription.
+- Phase 5 typed Groq draft minutes (structured JSON output) with evidence fields, versioned human review and action items.
 - Phase 6 admin preferences, run/integration health views, retention sweep, deployment/run/test manuals.
 
 ## External setup required
 
-The full stack does not mean tenant integrations are pre-authorized or live. Entra app registration, Graph consent/access policy, Neon connection, Azure OpenAI resource and deployments, Power Automate flow, Teams sender identity, SMTP, deployment secret manager, TLS and privacy approval must be configured and tested by the organization. The application displays missing or failed capabilities; it does not claim live capture. No Teams meeting media bot is included.
+The full stack does not mean tenant integrations are pre-authorized or live. Entra app registration, Graph consent/access policy, Neon connection, Groq key, Power Automate flow, Teams sender identity, SMTP, deployment secret manager, TLS and privacy approval must be configured and tested by the organization. The application displays missing or failed capabilities; it does not claim live capture. No Teams meeting media bot is included.
 
 See:
 
@@ -127,7 +127,7 @@ The compiled Windows program runs with no command window; what it did is written
 **Calendars, mail and Outlook.** *Connections > Add a calendar account*: type the email address and the page chooses the method: private link (Google/Gmail, Outlook.com, Microsoft 365 published calendars, iCloud) or CalDAV with an app password (Yahoo, iCloud, Fastmail, other). *Your mail account* (Gmail, Yahoo, Outlook.com, iCloud or any SMTP/IMAP server, with an app password) sends invitations from *Schedule meeting > Invite people* as normal calendar invitations, and can add invitations found in your inbox to your calendar (read-only, mail is not stored or marked as read). Classic Outlook on Windows is read automatically for every account set up in it, but only if it already has an account. The *new* Outlook for Windows does not allow other programs to read its accounts, passwords or calendars, so add each account on this page (about a minute each).
 
 ## Settings needed to run it
-See [docs/SETUP.md](docs/SETUP.md). In short: change the administrator password (`LOCAL_ADMIN_PASSWORD`), add Azure OpenAI details in Admin settings, and for use from other computers set `MI_LISTEN=lan` (https, needed for camera and microphone) and open the port in the firewall. Admin settings starts with a live **Setup checklist** showing what is still missing.
+See [docs/SETUP.md](docs/SETUP.md). In short: change the administrator password (`LOCAL_ADMIN_PASSWORD`), add the Groq key and model in Admin settings, and for use from other computers set `MI_LISTEN=lan` (https, needed for camera and microphone) and open the port in the firewall. Admin settings starts with a live **Setup checklist** showing what is still missing.
 
 ## Deploying
 See docs/NORTHFLANK.md (one-container deployment) and docs/SETUP.md.

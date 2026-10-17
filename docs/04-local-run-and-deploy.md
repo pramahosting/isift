@@ -2,7 +2,7 @@
 
 ## What this pack runs
 
-The pack provides a React + TypeScript + Vite web client, a Python/FastAPI API, a durable worker, and Alembic migrations. The Windows local demo uses a persistent SQLite file so it starts without Docker Desktop or a database URL. Connected deployments use PostgreSQL/Neon. Microsoft Entra/Graph, Azure OpenAI (Microsoft Copilot AI), and Power Automate adapters still need organization setup.
+The pack provides a React + TypeScript + Vite web client, a Python/FastAPI API, a durable worker, and Alembic migrations. The Windows local demo uses a persistent SQLite file so it starts without Docker Desktop or a database URL. Connected deployments use PostgreSQL/Neon. Microsoft Entra/Graph, Groq (Microsoft Copilot AI), and Power Automate adapters still need organization setup.
 
 Microsoft Teams delivery and the 06:55 weekday recurrence are configured through Power Automate in `power-automate/SETUP.md`. They are not active merely because the app is running. No live meeting capture is implemented. Official transcripts are fetched after a meeting only when Graph access and transcript policy permit it. Audio upload processes an authorized file; it does not join or record a Teams call.
 
@@ -29,7 +29,7 @@ Local demo auth is enabled only when `APP_ENV=development`, `AUTH_MODE=local`, `
 
 1. Set `APP_ENV=production`, `AUTH_MODE=entra`, `ALLOW_LOCAL_AUTH=false`.
 2. Configure Entra API audience, tenant ID, app roles and redirect URL; set frontend `VITE_ENTRA_*` build arguments.
-3. Store client secrets, Azure OpenAI keys, SMTP credentials and automation token in the hosting platform secret manager. Keep `.env` out of source control.
+3. Store client secrets, Groq keys, SMTP credentials and automation token in the hosting platform secret manager. Keep `.env` out of source control.
 4. Replace local PostgreSQL with a TLS-required Neon connection; verify pool size, region, backups and migration procedure.
 5. Review every requested Graph permission and required admin/application access policy.
 6. Configure TLS, trusted proxy, rate limiting, network restrictions, backups, alerting and production CORS origin. The provided Compose profile is for local evaluation, not hardened internet-facing deployment.

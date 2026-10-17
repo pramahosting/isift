@@ -9,8 +9,8 @@ Windows: double-click `app.cmd` (or the compiled `iSift.exe`). It opens in your 
 | Setting | Where | Why |
 |---|---|---|
 | Administrator password | *.env* `LOCAL_ADMIN_PASSWORD=...` | The sample password is public. In network mode a random one is created in `docs/data/admin-password.txt`. |
-| Azure OpenAI endpoint, key, chat deployment | Admin settings > Microsoft Copilot AI | Needed for minutes, action items and briefings. |
-| Transcription (Whisper) deployment | same group | Needed to transcribe recorded meetings and uploaded audio. |
+| Groq API key and model | Admin settings > Groq AI | Needed for minutes, action items, briefings and booking-link emails. |
+| Groq transcription model | same group | Optional. Defaults to whisper-large-v3-turbo; transcribes recordings up to 25 MB. |
 | Mock data off | Admin settings > Mock data | Hides sample data and CSV loading in production. |
 
 ## 3. Calendars and mail (per person, under Connections)

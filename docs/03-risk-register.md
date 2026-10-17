@@ -11,5 +11,5 @@
 | Worker restart duplicates output | Repeated messages/jobs | Durable DB jobs, leases, uniqueness, retry and reconciliation. |
 | AI invents decisions/actions | Incorrect minutes | Typed schemas, evidence pointers, draft status and human review. |
 | Retention/deletion incomplete | Content retained unexpectedly | Per-class policy and deletion checks across DB/storage/jobs/logs; vendor review. |
-| Azure OpenAI quota or API version changes | Processing failure | Configurable deployment names and API version, bounded retry with back-off and operator status. |
+| Groq quota or model changes | Processing failure | Configurable model names, bounded retry with back-off and operator status. |
 
