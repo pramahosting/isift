@@ -452,7 +452,8 @@ async def room_socket(ws: WebSocket, code: str):
             elif _rank(state["peers"][pid]) == 2 and t == "end":
                 async with SessionLocal() as db:
                     r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
-                    if r: r.ended_at = datetime.now(timezone.utc); await db.commit()
+                    if r:
+                        r.ended_at = datetime.now(timezone.utc); await finish_meeting(db, r); await db.commit()
                 await _broadcast(code, {"type": "ended"})
                 for p in list(state["peers"].values()) + list(state["waiting"].values()):
                     try: await p["ws"].close()
@@ -473,9 +474,18 @@ async def room_socket(ws: WebSocket, code: str):
                 if task: task.cancel()
                 HUB.pop(code, None)
 
+async def finish_meeting(db: AsyncSession, room: Room) -> None:
+    """A meeting that really took place: record when it actually ended and mark it completed (the caller commits)."""
+    m = await db.get(Meeting, room.meeting_id) if room.meeting_id else None
+    if not m or m.status in ("cancelled", "completed"): return
+    now = datetime.now(timezone.utc); start = m.start_at if m.start_at.tzinfo else m.start_at.replace(tzinfo=timezone.utc)
+    m.end_at = max(now, start + timedelta(minutes=1)); m.status = "completed"
+
 async def end_room(db: AsyncSession, room: Room, cancel_meeting: bool) -> None:
     """Close a meeting room for everyone and, if asked, mark its calendar entry cancelled."""
-    if room.ended_at is None and not (room.options or {}).get("pmi"): room.ended_at = datetime.now(timezone.utc)   # a personal meeting room is permanent
+    if room.ended_at is None and not (room.options or {}).get("pmi"):
+        room.ended_at = datetime.now(timezone.utc)   # a personal meeting room is permanent
+        if not cancel_meeting: await finish_meeting(db, room)
     if cancel_meeting and room.meeting_id:
         m = await db.get(Meeting, room.meeting_id)
         if m and m.status != "cancelled": m.status = "cancelled"

@@ -30,7 +30,7 @@ async def card_remove(user: User = Depends(principal), db: AsyncSession = Depend
 
 @router.post("/billing/subscribe")
 async def subscribe(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    res = await _do(B.subscribe(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly"), bool(payload.get("immediate"))))
+    res = await _do(B.subscribe(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly"), bool(payload.get("immediate")), {k: payload.get(k) for k in ("recurring", "months", "end_date") if k in payload}))
     db.add(AuditLog(actor=user.email, action="billing.subscribe", resource_type="billing", safe_metadata={"plan": payload.get("plan"), "period": payload.get("period"), "result": res.get("status")})); await db.commit()
     return {**res, "billing": await B.view(db, user)}
 
@@ -45,7 +45,9 @@ async def auto_renew(payload: dict, user: User = Depends(principal), db: AsyncSe
     if not can: raise HTTPException(403, "Only the company owner or an administrator can change that.")
     r = await B.record(db, key, c)
     if payload.get("enabled") and not r.get("card_id"): raise HTTPException(409, "Add a card first.")
-    r["auto_renew"] = bool(payload.get("enabled")); await B.store.put(db, key, r)
+    r["auto_renew"] = bool(payload.get("enabled"))
+    if r["auto_renew"]: r["ends_on"] = None                                   # switching renewal back on means: keep going until cancelled
+    await B.store.put(db, key, r)
     return await B.view(db, user)
 
 @router.get("/admin/billing/overview")

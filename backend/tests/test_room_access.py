@@ -1484,3 +1484,60 @@ def test_virtual_room_switches(client, monkeypatch):
     assert vr(a) is False                                                         # the whole service switch
     mid = client.post("/api/v1/meetings", json={"title": "M", "kind": "room", "start_at": "2030-01-01T10:00:00Z", "duration_minutes": 30, "options": {"virtual_room": False}}, headers=h)
     assert mid.status_code in (200, 201), mid.text
+
+
+def test_monthly_recurring_terms(client, monkeypatch):
+    import asyncio
+    from datetime import date, timedelta
+    from app.integrations import square as SQ
+    from app.core.db import SessionLocal
+    from app.services import billing as B
+    h, tok = login(client)
+    client.patch("/api/v1/admin/integration-settings", json={"values": {"square_environment": "sandbox", "square_application_id": "sandbox-sq0idb-abc", "square_access_token": "tok-secret", "square_location_id": "LOC1"}}, headers=h)
+    st = {"calls": [], "payments": []}; monkeypatch.setattr(SQ, "_transport", _square(st))
+    client.post("/api/v1/billing/card", json={"source_id": "cnon:ok"}, headers=h)
+    if client.get("/api/v1/billing/me", headers=h).json()["plan"] != "basic": client.post("/api/v1/billing/subscribe", json={"plan": "basic", "period": "monthly", "immediate": True}, headers=h)
+    async def forget():                                                              # the same plan on the same day would count as an already-paid charge
+        from sqlalchemy import delete
+        from app.models import IntegrationSetting
+        async with SessionLocal() as db: await db.execute(delete(IntegrationSetting).where(IntegrationSetting.key.like("charge:%"))); await db.commit()
+    def sub(**k):
+        asyncio.run(forget()); return client.post("/api/v1/billing/subscribe", json={"plan": "individual", "period": "monthly", **k}, headers=h)
+    # a ticked recurring box needs months or a date, and sensible values
+    assert sub(recurring=True).status_code == 422
+    assert sub(recurring=True, months=0).status_code == 422 and sub(recurring=True, months=61).status_code == 422 and sub(recurring=True, months="x").status_code == 422
+    assert sub(recurring=True, end_date="2000-01-01").status_code == 422 and sub(recurring=True, end_date="nonsense").status_code == 422
+    assert not st["payments"]                                                        # nothing was charged for the refused requests
+    # unticked: one month, no automatic renewal
+    r = sub(recurring=False); assert r.status_code == 200, r.text
+    me = r.json()["billing"]; assert me["auto_renew"] is False and me["ends_on"] is None
+    end = date.fromisoformat(me["period_end"])
+    async def run(day):
+        async with SessionLocal() as db: return await B.run_due(db, day)
+    assert asyncio.run(run(end + timedelta(days=1)))["lapsed"] == 1 and client.get("/api/v1/billing/me", headers=h).json()["plan"] == "basic"
+    # ticked with 2 months: charged now and once more, then stops
+    n = len(st["payments"]); r = sub(recurring=True, months=2); assert r.status_code == 200, r.text
+    me = r.json()["billing"]; assert me["auto_renew"] is True and me["ends_on"] and len(st["payments"]) == n + 1
+    e1 = date.fromisoformat(me["period_end"]); assert date.fromisoformat(me["ends_on"]) > e1
+    assert asyncio.run(run(e1 + timedelta(days=1)))["paid"] == 1 and len(st["payments"]) == n + 2        # second month
+    e2 = date.fromisoformat(client.get("/api/v1/billing/me", headers=h).json()["period_end"]); assert e2 >= date.fromisoformat(me["ends_on"])
+    assert asyncio.run(run(e2 + timedelta(days=1)))["lapsed"] == 1 and len(st["payments"]) == n + 2     # no third payment
+    assert client.get("/api/v1/billing/me", headers=h).json()["plan"] == "basic"
+    # ticked with an end date
+    end_date = (date.today() + timedelta(days=45)).isoformat(); r = sub(recurring=True, end_date=end_date); assert r.status_code == 200
+    assert r.json()["billing"]["ends_on"] == end_date
+
+
+def test_ended_meeting_is_completed_with_real_end_time(client):
+    from datetime import datetime, timezone
+    h, _ = login(client)
+    r = client.post("/api/v1/rooms", json={"title": "Done soon", "base_url": "http://x/"}, headers=h).json()
+    find = lambda: next(m for m in client.get("/api/v1/meetings", headers=h).json() if m["join_url"] and r["code"] in m["join_url"])
+    before = find(); assert before["status"] == "scheduled"
+    assert client.post(f"/api/v1/rooms/{r['code']}/end", json={"cancel": False}, headers=h).status_code == 200
+    after = find(); assert after["status"] == "completed"
+    end = datetime.fromisoformat(after["end_at"].replace("Z", "+00:00")); end = end if end.tzinfo else end.replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - end).total_seconds()) < 120          # the real end time, not the planned one
+    r2 = client.post("/api/v1/rooms", json={"title": "Dropped", "base_url": "http://x/"}, headers=h).json()
+    client.post(f"/api/v1/rooms/{r2['code']}/end", json={"cancel": True}, headers=h)
+    assert next(m for m in client.get("/api/v1/meetings", headers=h).json() if m["join_url"] and r2["code"] in m["join_url"])["status"] == "cancelled"

@@ -39,6 +39,28 @@ def add_period(d: date, period: str) -> date:
     y, mo = d.year + (d.month - 1 + months) // 12, (d.month - 1 + months) % 12 + 1
     return date(y, mo, min(d.day, calendar.monthrange(y, mo)[1]))
 
+def terms_of(period: str, terms: dict | None, today: date) -> tuple[bool, str | None]:
+    """How long a plan keeps renewing. Yearly always renews. Monthly: a ticked 'recurring' box needs a number of months or an end date;
+    unticked means one month and no automatic renewal. Returns (auto_renew, ends_on): no new period is charged once the plan has run to ends_on."""
+    t = terms or {}
+    if period == "yearly" or t.get("recurring") is None: return True, None             # yearly, or an older caller: renew until cancelled
+    if not t.get("recurring"): return False, None
+    months, end = t.get("months"), str(t.get("end_date") or "").strip()
+    if months not in (None, ""):
+        try: n = int(months)
+        except (TypeError, ValueError): raise BillingError("Enter the number of months as a whole number.", 422)
+        if not 1 <= n <= 60: raise BillingError("Choose between 1 and 60 months.", 422)
+        d = today
+        for _ in range(n): d = add_period(d, "monthly")
+        return True, d.isoformat()
+    if end:
+        try: d = date.fromisoformat(end)
+        except ValueError: raise BillingError("Enter the end date as a real date.", 422)
+        if d <= today: raise BillingError("The end date must be in the future.", 422)
+        if d > today + timedelta(days=366 * 5): raise BillingError("The end date can be at most 5 years away.", 422)
+        return True, d.isoformat()
+    raise BillingError("For monthly payments that repeat, choose how many months or an end date.", 422)
+
 def plans_view() -> dict:
     return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()]}
 
@@ -72,7 +94,7 @@ async def view(db, user) -> dict:
     key, c, can = await holder(db, user)
     r = await record(db, key, c)
     return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "period": r.get("period", "monthly"), "status": r.get("status", "active"), "period_end": r.get("period_end"),
-            "auto_renew": bool(r.get("auto_renew")), "card": _card(r), "failure_count": r.get("failure_count", 0), "last_error": r.get("last_error"), "next_attempt_on": r.get("next_attempt_on"),
+            "auto_renew": bool(r.get("auto_renew")), "ends_on": r.get("ends_on"), "card": _card(r), "failure_count": r.get("failure_count", 0), "last_error": r.get("last_error"), "next_attempt_on": r.get("next_attempt_on"),
             "charges": r["charges"][:12], "refunds": await user_refunds(db, r), "can_manage": can, "company": c["name"] if c else None, "currency": settings.square_currency,
             "square": {"available": SQ.configured(), "applicationId": settings.square_application_id, "locationId": settings.square_location_id, "environment": SQ.env(), "sdk": SQ.SDK[SQ.env()]} if SQ.configured() else None,
             **plans_view()}
@@ -171,14 +193,14 @@ async def charge_now(db, key: str, today: date | None = None) -> dict:
     await store.put(db, ck, row); await store.put(db, key, r)
     return {"status": "paid", "amount_cents": amt, "period_end": end.isoformat(), "receipt_url": row["receipt_url"]}
 
-async def subscribe(db, user, plan: str, period: str, immediate: bool = False) -> dict:
+async def subscribe(db, user, plan: str, period: str, immediate: bool = False, terms: dict | None = None) -> dict:
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
     if plan not in PLANS: raise BillingError("Choose Basic, Individual or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
     r = await record(db, key, c); today = date.today()
     if plan == "basic" and immediate and term_active(r, today): return await cancel_now(db, user)
-    if plan != "basic" and term_active(r, today) and (plan, period) != (r["plan"], r.get("period", "monthly")): return await change_plan(db, user, plan, period)
+    if plan != "basic" and term_active(r, today) and (plan, period) != (r["plan"], r.get("period", "monthly")): return await change_plan(db, user, plan, period, terms)
     if plan == "basic":                                                      # leaving a paid plan: it runs to the end of the paid period
         r["auto_renew"] = False
         if not r.get("period_end") or date.fromisoformat(r["period_end"]) < today or r["plan"] == "basic": r.update(plan="basic", status="active", period_end=None)
@@ -186,8 +208,9 @@ async def subscribe(db, user, plan: str, period: str, immediate: bool = False) -
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
     if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin settings.", 503)
     paid_up = r["plan"] == plan and r.get("status") == "active" and r.get("period_end") and date.fromisoformat(r["period_end"]) > today
-    before = {k: r.get(k) for k in ("plan", "period", "status", "period_end", "auto_renew")}
-    r.update(plan=plan, period=period, auto_renew=True)
+    auto, ends_on = terms_of(period, terms, today)
+    before = {k: r.get(k) for k in ("plan", "period", "status", "period_end", "auto_renew", "ends_on")}
+    r.update(plan=plan, period=period, auto_renew=auto, ends_on=ends_on)
     if paid_up:
         await store.put(db, key, r); return {"status": "scheduled", "period_end": r["period_end"]}
     r["period_end"] = None                                                   # a new plan starts today
@@ -260,12 +283,12 @@ async def _charge_extra(db, key: str, r: dict, amount: int, note: str, nonce: st
     row.update(status="paid", square_payment_id=pay.get("id"), receipt_url=pay.get("receipt_url")); await store.put(db, ck, row)
     return {"payment": pay, "row": row}
 
-async def change_plan(db, user, plan: str, period: str) -> dict:
+async def change_plan(db, user, plan: str, period: str, terms: dict | None = None) -> dict:
     """Move between paid plans (or monthly/yearly) in the middle of a paid term. The unused days are credited against the new price:
     the difference is charged now; if the credit is bigger than the new price the plan switches at once and the leftover becomes a REFUND REQUEST an administrator must approve."""
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
-    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period)
+    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period); auto, ends_on = terms_of(period, terms, today)
     if q["kind"] != "change": raise BillingError("Nothing to change.")
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
     if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin settings.", 503)
@@ -275,7 +298,7 @@ async def change_plan(db, user, plan: str, period: str) -> dict:
         paid_now = res
     r = await record(db, key, c)
     end = add_period(today, period)
-    r.update(plan=plan, period=period, status="active", period_start=today.isoformat(), period_end=end.isoformat(), paid_cents=q["new_price_cents"], auto_renew=True, failure_count=0, next_attempt_on=None, last_error=None, chg_fail=0)
+    r.update(plan=plan, period=period, status="active", period_start=today.isoformat(), period_end=end.isoformat(), paid_cents=q["new_price_cents"], auto_renew=auto, ends_on=ends_on, failure_count=0, next_attempt_on=None, last_error=None, chg_fail=0)
     if paid_now:
         _add_payment(r, paid_now["payment"].get("id"), q["charge_cents"], datetime.utcnow().isoformat() + "Z")
         r["charges"] = ([{"id": paid_now["row"]["id"], "status": "paid", "amount_cents": q["charge_cents"], "plan": plan, "period": period, "receipt_url": paid_now["row"].get("receipt_url"), "settled": datetime.utcnow().isoformat() + "Z", "note": "Difference after credit"}] + r.get("charges", []))[:12]
@@ -369,8 +392,8 @@ async def run_due(db, today: date | None = None) -> dict:
             if r["plan"] == "basic" or not r.get("period_end"): out["skipped"] += 1; continue
             pe = date.fromisoformat(r["period_end"])
             if today <= pe: out["skipped"] += 1; continue
-            if not r.get("auto_renew") or not r.get("card_id") or today > pe + timedelta(days=GRACE_DAYS) or r.get("failure_count", 0) >= MAX_ATTEMPTS and today > pe + timedelta(days=GRACE_DAYS):
-                r.update(plan="basic", status="active", period_end=None, auto_renew=False); await store.put(db, key, r); out["lapsed"] += 1; continue
+            if not r.get("auto_renew") or not r.get("card_id") or (r.get("ends_on") and pe >= date.fromisoformat(r["ends_on"])) or today > pe + timedelta(days=GRACE_DAYS) or r.get("failure_count", 0) >= MAX_ATTEMPTS and today > pe + timedelta(days=GRACE_DAYS):
+                r.update(plan="basic", status="active", period_end=None, auto_renew=False, ends_on=None); await store.put(db, key, r); out["lapsed"] += 1; continue
             if r.get("failure_count", 0) >= MAX_ATTEMPTS or (r.get("next_attempt_on") and today < date.fromisoformat(r["next_attempt_on"])): out["skipped"] += 1; continue
             res = await charge_now(db, key, today); out[res["status"] if res["status"] in out else "skipped"] += 1
         except Exception:
