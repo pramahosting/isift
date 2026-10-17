@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     room_max_people: int = 25
     room_default_access: str = "open"
     room_default_waiting: bool = True
+    room_virtual_enabled: bool = True     # the virtual room (boardroom table view) is available at all
     graph_context_enabled: bool = False
     automation_user_email: str = "admin@example.test"
     groq_api_key: str = ""

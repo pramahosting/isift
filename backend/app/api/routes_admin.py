@@ -13,6 +13,7 @@ from app.core.security import principal, require_admin, hash_password
 from app.models import User, LocalAccount, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, AuditLog
 from app.services import datasets as ds
 
+from app.services import virtual_room as vrm
 router = APIRouter(prefix="/api/v1")
 log = logging.getLogger("isift")
 BUILTIN_ADMIN = "admin@example.test"
@@ -73,6 +74,7 @@ class UserPatch(BaseModel):
     role: str | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    virtual_room: bool | None = None
 
 async def _account(db, u: User):
     return (await db.execute(select(LocalAccount).where((LocalAccount.id == u.entra_subject) | (LocalAccount.email == u.email)))).scalars().first()
@@ -82,7 +84,7 @@ async def _row(db, u: User, counts: dict) -> dict:
     builtin = settings.is_local_demo and u.email == BUILTIN_ADMIN
     return {"id": u.id, "email": u.email, "display_name": u.display_name, "role": u.role, "is_active": u.is_active is not False,
             "last_login_at": u.last_login_at, "created_at": u.created_at, "source": "local" if (acct or builtin) else "microsoft",
-            "builtin": builtin, "has_password": bool(acct), "meetings": counts.get(u.id, 0)}
+            "builtin": builtin, "has_password": bool(acct), "meetings": counts.get(u.id, 0), "virtual_room": await vrm.account_on(db, u.email)}
 
 async def _admins_left(db, excluding: str | None = None) -> int:
     q = select(func.count()).select_from(User).where(User.role == "admin", User.is_active.isnot(False))
@@ -136,6 +138,8 @@ async def update_user(user_id: str, data: UserPatch, admin: User = Depends(requi
         acct = await _account(db, u)
         if not acct: raise HTTPException(400, "This user signs in with Microsoft; there is no password to change.")
         acct.password_hash = hash_password(data.password); changed.append("password")
+    if data.virtual_room is not None and data.virtual_room != await vrm.account_on(db, u.email):
+        await vrm.set_account(db, u.email, data.virtual_room); changed.append("virtual_room")
     if changed: db.add(AuditLog(actor=admin.email, action="user.update", resource_type="user", resource_id=u.id, safe_metadata={"fields": changed}))
     await db.commit(); await db.refresh(u)
     return await _row(db, u, {})

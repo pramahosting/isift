@@ -20,7 +20,7 @@ def _em(v) -> str: return str(v or "").strip().lower()
 
 async def _profile(db, email: str) -> dict:
     p = await store.get(db, store.hkey("profile", email), {})
-    return {**{k: "" for k in PROFILE_TEXT}, "timezone": "", "work_days": [0, 1, 2, 3, 4], "work_start": "09:00", "work_end": "17:00", **p}
+    return {**{k: "" for k in PROFILE_TEXT}, "timezone": "", "virtual_room": True, "work_days": [0, 1, 2, 3, 4], "work_start": "09:00", "work_end": "17:00", **p}
 
 async def _company_of(db, email: str) -> dict | None:
     link = await store.get(db, store.hkey("memberof", email), {})
@@ -59,6 +59,7 @@ async def update_account(payload: dict, user: User = Depends(principal), db: Asy
             try: ZoneInfo(tz)
             except Exception: raise HTTPException(422, "That time zone is not known.")
         p["timezone"] = tz
+    if "virtual_room" in payload: p["virtual_room"] = bool(payload["virtual_room"])
     if "work_days" in payload: p["work_days"] = sorted({int(d) for d in (payload["work_days"] or []) if str(d).isdigit() and 0 <= int(d) <= 6})
     for k in ("work_start", "work_end"):
         if k in payload:

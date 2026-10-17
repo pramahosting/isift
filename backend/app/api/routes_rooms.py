@@ -57,7 +57,7 @@ def clean_options(raw, keep: dict | None = None) -> dict:
     """Meeting options chosen by the host. Unknown keys are dropped; invitees must look like email addresses."""
     from app.services.invites import EMAIL
     out = dict(keep or {}); raw = raw if isinstance(raw, dict) else {}
-    for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off", "participants_can_unmute", "participants_can_video"):
+    for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off", "participants_can_unmute", "participants_can_video", "virtual_room"):
         if k in raw: out[k] = bool(raw[k])
     if "invitees" in raw:
         out["invitees"] = sorted({str(e).strip().lower() for e in (raw["invitees"] or []) if EMAIL.match(str(e).strip())})[:200]
@@ -107,7 +107,8 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     if not room: raise HTTPException(404, "This meeting link is not valid.")
     host = await db.get(User, room.host_id)
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
-    return {"options": {k: v for k, v in (room.options or {}).items() if k != "invitees"}, "access": room.access, "waiting_room": room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
+    from app.services import virtual_room as vr
+    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": room.access, "waiting_room": room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
             "max_people": settings.room_max_people, "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
 
 @router.post("/rooms/{code}/invite")
@@ -336,7 +337,10 @@ async def room_socket(ws: WebSocket, code: str):
         if first.get("type") != "join": await ws.close(); return
         async with SessionLocal() as db:
             room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
-            if room: host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
+            if room:
+                host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
+                from app.services import virtual_room as vr
+                room_options["virtual_room"] = await vr.effective(db, await db.get(User, host_id), room_options)
         if not room or ended:
             await _send(ws, {"type": "error", "message": "This meeting has ended or the link is not valid."}); await ws.close(); return
         user = await _user_from_token(first.get("token"))

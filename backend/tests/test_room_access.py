@@ -137,7 +137,7 @@ def test_open_and_edit_meeting_like_zoom(client):
                      "options": {"video_off_on_entry": True, "auto_record": True}, "add_invitees": "c@example.com"}, headers=h)
     assert p.status_code == 200, p.text; n = p.json()
     assert n["title"] == "Plan v2" and n["duration_minutes"] == 45 and n["start_at"].startswith("2030-01-02T11:00") and n["access"] == "open" and n["passcode"] is None
-    assert n["options"] == {"mute_on_entry": True, "video_off_on_entry": True, "auto_record": True, "host_video_off": False} and "c@example.com" in n["invitees"]
+    assert n["options"] == {"mute_on_entry": True, "video_off_on_entry": True, "auto_record": True, "host_video_off": False, "virtual_room": True} and "c@example.com" in n["invitees"]
     p2 = client.patch(f"/api/v1/meetings/{mid}", json={"access": "passcode", "passcode": "4321"}, headers=h).json(); assert p2["passcode"] == "4321"
     code = n["meeting_id"]; assert client.get(f"/api/v1/rooms/{code}").json()["options"]["mute_on_entry"] is True
     assert client.patch(f"/api/v1/meetings/{mid}", json={"title": ""}, headers=h).status_code == 422
@@ -1465,3 +1465,22 @@ def test_footer_contact_form(client, monkeypatch):
     assert to == ["info@isift.au"] and acct["reply_to"] == "pat@customer.org" and "\n" not in subject and "\r" not in subject and subject.startswith("[iSift Support request]") and "I cannot join" in body
     codes = [client.post("/api/v1/support/contact", json=ok).status_code for _ in range(6)]
     assert codes[-1] == 429
+
+
+def test_virtual_room_switches(client, monkeypatch):
+    from app.core.config import settings
+    h, _ = login(client)
+    mk = lambda **o: client.post("/api/v1/rooms", json={"title": "T", "base_url": "http://x/", "options": o}, headers=h).json()["code"]
+    vr = lambda code: client.get(f"/api/v1/rooms/{code}", headers=h).json()["options"]["virtual_room"]
+    a, b = mk(), mk(virtual_room=False)
+    assert vr(a) is True and vr(b) is False                                       # the meeting checkbox
+    assert client.patch("/api/v1/account", json={"virtual_room": False}, headers=h).json()["profile"]["virtual_room"] is False
+    assert vr(a) is False                                                         # the customer switched it off for the account
+    me = next(u for u in client.get("/api/v1/admin/users", headers=h).json() if u["email"] == "admin@example.test")
+    assert me["virtual_room"] is False
+    assert client.patch(f"/api/v1/admin/users/{me['id']}", json={"virtual_room": True}, headers=h).json()["virtual_room"] is True   # an administrator switched it back on
+    assert vr(a) is True and vr(b) is False
+    monkeypatch.setattr(settings, "room_virtual_enabled", False)
+    assert vr(a) is False                                                         # the whole service switch
+    mid = client.post("/api/v1/meetings", json={"title": "M", "kind": "room", "start_at": "2030-01-01T10:00:00Z", "duration_minutes": 30, "options": {"virtual_room": False}}, headers=h)
+    assert mid.status_code in (200, 201), mid.text
