@@ -18,7 +18,7 @@ MODULES = [
     ("calendar", "Commbox: Calendar", "The combined calendar."),
     ("contacts", "Commbox: Contacts", "People and groups."),
     ("chat", "Chat", "Messages with people and groups."),
-    ("docs", "Docs", "Notes, agendas and drafts."),
+    ("docs", "Notes", "Notes, agendas and drafts."),
     ("whiteboard", "Whiteboard", "Boards for sketching ideas."),
     ("connections", "Connections", "Link calendars, Zoom and recordings."),
     ("mockdata", "Load mock data", "The Load mock data button on the Dashboard and the Data import page (sample data and CSV import)."),

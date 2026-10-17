@@ -31,7 +31,7 @@ BOOKING: booking pages you share by email, like Calendly, an embeddable booking 
 AI: minutes, action items and morning briefings are drafted by AI and must be reviewed by a person. Transcripts of recordings can be produced. AI can be wrong, so check it.
 
 PLANS (prices per user per month, shown in the website's currency; Individual and Business are paid by card through Square and renew automatically):
-- Basic: free for ever. Browser video meetings with chat and screen sharing, shared docs and whiteboard, Commbox, transcripts and action items.
+- Basic: free for ever. Browser video meetings with chat and screen sharing, shared notes and whiteboard, Commbox, transcripts and action items.
 - Individual: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page for the current monthly and yearly price (yearly is cheaper). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
 - Business: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page. Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
 You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.
