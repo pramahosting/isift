@@ -979,3 +979,9 @@ body{background:var(--canvas)}
 @media(max-width:650px){.hero-top{margin-bottom:0}}
 .rec-table td.rec-act{white-space:nowrap;text-align:right}.rec-table td.rec-act button{margin-left:6px}.tablewrap{overflow-x:auto}
 @media(max-width:650px){.rec-table thead{display:none}.rec-table tr{display:grid;gap:4px;padding:10px 0;border-bottom:1px solid #edf1f2}.rec-table td{display:flex;justify-content:space-between;gap:12px;border:0;padding:2px 0}.rec-table td[data-label]::before{content:attr(data-label);color:#778891;font-size:12px}.rec-table td.rec-act{justify-content:flex-end}}
+
+/* pricing admin + home pricing */
+.pr-admin input,.pr-admin select{width:100%;min-width:70px;padding:5px 8px}.pr-admin td.actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}.pr-admin tr.off td{opacity:.6}.pr-admin tr.off td.actions,.pr-admin tr.off td:first-child{opacity:1}
+.secondary.danger{color:#b42318;border-color:#f1b5ae}
+.home-pr{max-width:980px;margin:22px auto 0}.pr-more{text-align:center;margin-top:20px}
+#pricing{text-align:center}#pricing .pr-card{text-align:left}

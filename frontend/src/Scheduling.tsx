@@ -159,7 +159,7 @@ export function ShareLauncher({request,notify,onClose}:{request:any;notify:(m:st
   const ran=React.useRef(false);
   useEffect(()=>{if(ran.current)return;ran.current=true;(async()=>{try{const all=await request('/booking-types');const s=await request('/booking-senders').catch(()=>null);setSender(s?.from||'');
     let act=all.filter((x:any)=>x.active);if(!all.length)act=[await defaultPage(request)];
-    if(!act.length)setErr('All your booking pages are paused. Open Meetings, Scheduling and turn one on.');else setTypes(act)}catch(e:any){setErr(e.message)}})()},[request]);
+    if(!act.length)setErr('All your booking pages are paused. Open Meetings, Booking and turn one on.');else setTypes(act)}catch(e:any){setErr(e.message)}})()},[request]);
   if(err)return <Modal title="Share booking link" onClose={onClose}><p className="syncerr" role="alert">{err}</p><div className="actions"><button className="secondary" onClick={onClose}>Close</button></div></Modal>;
   if(!types)return <Modal title="Share booking link" onClose={onClose}><p className="muted" role="status">Getting your booking page ready…</p></Modal>;
   return <ShareModal types={types} first={types[0]} sender={sender} request={request} notify={notify} onClose={onClose}/>}

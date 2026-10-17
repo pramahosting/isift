@@ -62,7 +62,7 @@ export function AddinsTab({request,run}:{request:any;run:any}){
   return <div className="acct-body">
     <section className="panel"><h2>Put scheduling on your own website or in another application</h2>
       <p className="hint">Pick one of your booking pages. Paste the code into any web page, or use the plain link in an email or a button.</p>
-      {pages.length===0?<p className="hint">You have no active booking pages yet. Create one under Meetings, Scheduling.</p>:<>
+      {pages.length===0?<p className="hint">You have no active booking pages yet. Create one under Meetings, Booking.</p>:<>
         <div className="grid2"><label>Booking page<select value={slug} onChange={e=>setSlug(e.target.value)}>{pages.map(p=><option key={p.id} value={p.slug}>{p.title} ({p.duration_minutes} min)</option>)}</select></label>
         <label>Style<select value={mode} onChange={e=>setMode(e.target.value as any)}><option value="inline">Inline on the page</option><option value="popup">Pop-up from a button</option></select></label></div>
         <pre className="code" aria-label="Embed code">{snippet}</pre>

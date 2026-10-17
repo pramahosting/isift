@@ -9,14 +9,23 @@ export const PLAN_PRICES:Record<PlanId,{monthly:number;perMonthYearly:number;yea
 export const PLAN_LABEL:Record<string,string>={basic:'Basic',individual:'Individual',business:'Business'};
 const SYMBOL:Record<string,string>={USD:'US$',AUD:'A$',GBP:'£',EUR:'€',CAD:'C$',NZD:'NZ$'};
 export const money=(n:number,cur='USD')=>`${SYMBOL[cur]||cur+' '}${n.toFixed(2)}`;
+export type LivePlan={id:PlanId;name:string;monthly:number;yearly:number;per_month_yearly:number;available:boolean};
+const API=()=>import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
+/** The price list the administrator keeps in Admin settings > Pricing. Re-read each time a page that shows prices opens, so a change shows at once. */
+export function useLivePlans(){
+  const [d,setD]=useState<{currency:string;plans:LivePlan[]}|null>(null);
+  useEffect(()=>{let on=true;const get=()=>fetch(API()+'/billing/plans',{cache:'no-store'}).then(r=>r.json()).then(x=>on&&x.plans&&setD(x)).catch(()=>{});get();const t=setInterval(get,30000);return()=>{on=false;clearInterval(t)}},[]);
+  const prices=(id:PlanId)=>{const p=d?.plans.find(x=>x.id===id);return p?{monthly:p.monthly/100,perMonthYearly:p.per_month_yearly/100,yearly:p.yearly/100}:PLAN_PRICES[id]};
+  const onSale=(id:PlanId)=>id==='basic'||(d?!!d.plans.find(x=>x.id===id)?.available:true);
+  return {currency:d?.currency||'AUD',prices,onSale,loaded:!!d};
+}
 const PLANS:{id:PlanId;name:string;tag:string;cta:string;popular?:boolean;features:string[]}[]=[
  {id:'basic',name:'Basic',tag:'For individuals getting started',cta:'Start for free',features:['Video meetings in the browser with chat and screen sharing','Shared docs and a whiteboard','Commbox: mail, calendar and contacts','Transcripts and action items','Community support']},
  {id:'individual',name:'Individual',tag:'For people who meet every day',cta:'Choose Individual',popular:true,features:['Everything in Basic','AI minutes, action items and morning briefings','Booking pages you share by email, like Calendly','Meeting recording and a host’s full controls: co-hosts, mute, remove, who can unmute','Schedule Zoom, Teams and Google Meet from one place','Email support']},
  {id:'business',name:'Business',tag:'For teams and companies',cta:'Choose Business',features:['Everything in Individual','A company account with all your people under one plan and one card','Microsoft Entra single sign-on','Switch whole modules on and off for everyone','Audit log, data retention and review rules','Priority support']}];
 
 export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean;current?:string;onBack:()=>void;onChoose:(p:PlanId,period:Period)=>void}){
-  const [annual,setAnnual]=useState(true);const [cur,setCur]=useState('AUD');
-  useEffect(()=>{fetch((import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1'))+'/billing/plans').then(r=>r.json()).then(d=>d.currency&&setCur(d.currency)).catch(()=>{})},[]);
+  const [annual,setAnnual]=useState(true);const live=useLivePlans();const cur=live.currency;
   return <div className="pricing">
     <header className="landing-nav"><a className="landing-brand" href="#top" onClick={e=>{e.preventDefault();onBack()}}><span className="brandicon"><Sun size={20}/></span><span><b>iSift</b><small>Make every meeting count</small></span></a>
       <nav className="public-links"><button type="button" className="nav-login" onClick={onBack}><ArrowLeft size={16}/> {loggedIn?'Back to my workspace':'Back to home'}</button></nav></header>
@@ -24,7 +33,7 @@ export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean
       <p className="eyebrow">PRICING</p><h1>Plans that grow with your meetings</h1>
       <p className="pr-sub">Start with Basic, free for ever. Move to Individual for AI minutes, booking pages and full host controls, or Business for a whole company.</p>
       <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly <em>save about 21%</em></button></div>
-      <div className="pr-grid">{PLANS.map(p=>{const pr=PLAN_PRICES[p.id];const price=annual?pr.perMonthYearly:pr.monthly;
+      <div className="pr-grid">{PLANS.filter(p=>live.onSale(p.id)||current===p.id).map(p=>{const pr=live.prices(p.id);const price=annual?pr.perMonthYearly:pr.monthly;
         return <section key={p.id} className={`pr-card${p.popular?' popular':''}${current===p.id?' current':''}`} aria-label={`${p.name} plan`}>
           {p.popular&&<span className="pr-badge"><Sparkles size={13}/> Most popular</span>}
           <h2>{p.id==='business'&&<Building2 size={18}/>} {p.name}</h2><p className="pr-tag">{p.tag}</p>
@@ -33,4 +42,17 @@ export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean
           <ul>{p.features.map(f=><li key={f}><Check size={15}/>{f}</li>)}</ul></section>})}</div>
       <p className="pr-fine">Prices are per user in {cur}, taken by card through Square. Individual and Business renew automatically; you can cancel any time and keep the plan until the end of the period you paid for.</p>
     </main><LegalFooter/></div>;
+}
+
+/** Compact live price cards for the home page. Plans with no active price are not shown. */
+export function HomePricing({onChoose}:{onChoose:()=>void}){
+  const [annual,setAnnual]=useState(true);const live=useLivePlans();const cur=live.currency;
+  const shown=PLANS.filter(p=>live.onSale(p.id));
+  return <section className="landing-section" id="pricing"><p className="eyebrow">PRICING</p><h2>Start free. Pay only when you need more.</h2>
+    <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly <em>best value</em></button></div>
+    <div className="pr-grid home-pr">{shown.map(p=>{const pr=live.prices(p.id);const price=annual?pr.perMonthYearly:pr.monthly;
+      return <section key={p.id} className={`pr-card${p.popular?' popular':''}`} aria-label={`${p.name} plan`}>{p.popular&&<span className="pr-badge"><Sparkles size={13}/> Most popular</span>}
+        <h3>{p.name}</h3><p className="pr-tag">{p.tag}</p>
+        <div className="pr-price">{price===0?<><b>{money(0,cur)}</b><small>Free for ever</small></>:<><b>{money(price,cur)}</b><small>per user, per month{annual?`, ${money(pr.yearly,cur)} billed yearly`:''}</small></>}</div></section>})}</div>
+    <p className="pr-more"><button type="button" className="primary" onClick={onChoose}>See plans and features</button></p></section>;
 }

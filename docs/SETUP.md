@@ -233,3 +233,6 @@ Paying for a plan opens a pop-up with Square's secure card form (the page behind
 
 ## Highlighting a participant, Recordings tab, host controls
 Double-click a person's tile to enlarge them (double-click again to return); this is local to each viewer. **Meetings > Recordings** lists your cloud recording copies with Download and Delete (copies kept on the host's computer are not listed). Only the host (and co-hosts, for people below them) can mute, stop video, ask people to unmute or start video, or remove people; the server ignores these from plain participants.
+
+## Pricing table (Admin settings > Pricing)
+The price list lives in the database (key `pricing:rows`), seeded once with the standard prices. Each row is a plan (Individual or Business), a name, a monthly price and a yearly total. **Active** puts a price on sale; one price per plan is active (ticking one switches the others of that plan off). Only active prices show on the home page and Pricing page, and a plan with no active price is hidden and refused for new subscriptions and plan changes. Existing subscribers are charged the active price at their next renewal (or the plan's last price if none is active). Pages re-read prices every 30 seconds and whenever they open. API: `GET/POST /api/v1/admin/pricing`, `PATCH/DELETE /api/v1/admin/pricing/{id}` (prices in cents).
