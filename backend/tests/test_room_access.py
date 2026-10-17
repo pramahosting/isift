@@ -1249,3 +1249,12 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
     dc = client.post(f"/api/v1/admin/billing/refunds/{e['refund_id']}/decline", json={"note": "Outside policy"}, headers=h).json(); assert dc["status"] == "declined" and dc["note"] == "Outside policy"
     # a non-administrator cannot see or approve refunds
     # (covered by require_admin on every refund route)
+
+def test_hosted_password_error_explains_itself(monkeypatch):
+    from app.core.config import Settings
+    monkeypatch.delenv("LOCAL_ADMIN_PASSWORD", raising=False)
+    msg = Settings(hosted=True, local_auth_secret="x" * 40, local_admin_password="Meeting$1", database_url="postgresql://u:p@h/d", frontend_origin="https://a.example.com").hosted_problems()[0]
+    assert "not received" in msg
+    monkeypatch.setenv("LOCAL_ADMIN_PASSWORD", "ab$c")
+    msg = Settings(hosted=True, local_auth_secret="x" * 40, local_admin_password="ab$c", database_url="postgresql://u:p@h/d", frontend_origin="https://a.example.com").hosted_problems()[0]
+    assert "4 characters" in msg and "ab$c" not in msg.replace("a $ in", "")

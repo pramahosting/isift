@@ -121,7 +121,11 @@ class Settings(BaseSettings):
         if not self.hosted: return out
         if self.auth_mode == "local":
             if len(self.local_auth_secret) < 32 or self.local_auth_secret.startswith(("development-only", "replace-with")): out.append("LOCAL_AUTH_SECRET must be a random value of at least 32 characters.")
-            if self.local_admin_password == "Meeting$1" or len(self.local_admin_password) < 10: out.append("LOCAL_ADMIN_PASSWORD must be changed (at least 10 characters, not the demo password).")
+            if self.local_admin_password == "Meeting$1" or len(self.local_admin_password) < 10:
+                import os
+                got = os.environ.get("LOCAL_ADMIN_PASSWORD")
+                seen = "the variable LOCAL_ADMIN_PASSWORD was not received by the container at all (check the name, that it is a runtime variable, and that its group is linked to this service)" if got is None else (f"the app received a value of {len(got)} characters" + (" - that is the demo password" if got == "Meeting$1" else "") + (" (a $ in the value can be shortened by some tools; use letters and digits only)" if "$" in got else ""))
+                out.append("LOCAL_ADMIN_PASSWORD must be changed (at least 10 characters, not the demo password): " + seen + ".")
         if "@db:" in self.database_url or self.database_url.startswith("sqlite"): out.append("DATABASE_URL must point at a real PostgreSQL database (a Northflank PostgreSQL add-on or Neon), not the demo database.")
         if self.frontend_origin.startswith("http://localhost") or self.frontend_origin.startswith("http://127."): out.append("FRONTEND_ORIGIN must be the public https:// address of the service.")
         return out

@@ -88,11 +88,15 @@ def _fernet()->Fernet:
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret).digest()))
 
 def _enc(v:str)->str: return "enc:"+_fernet().encrypt(v.encode()).decode()
-def _dec(v:str)->str:
+_WARNED:set=set()
+def _dec(v:str,name:str="")->str:
     if not isinstance(v,str) or not v.startswith("enc:"): return v
     try: return _fernet().decrypt(v[4:].encode()).decode()
     except InvalidToken:
-        log.warning("A saved secret could not be decrypted (encryption key changed?); using environment value."); return ""
+        if name not in _WARNED:          # once per setting, not on every request
+            _WARNED.add(name)
+            log.warning("The saved secret '%s' was encrypted with a different key and cannot be read; using the environment value. Enter it again in Admin settings to fix this.",name or "?")
+        return ""
 
 def _coerce(f,raw):
     k=f["kind"]
@@ -132,7 +136,7 @@ async def apply_overrides(db:AsyncSession)->None:
     for f in FIELDS:
         k=f["key"]
         if k in saved:
-            try: value=_dec(saved[k]) if f["kind"]=="secret" else saved[k]
+            try: value=_dec(saved[k],k) if f["kind"]=="secret" else saved[k]
             except Exception: continue
             if f["kind"]=="secret" and value=="": value=_ENV_DEFAULTS[k]
             setattr(settings,k,value)
