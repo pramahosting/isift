@@ -46,7 +46,7 @@ export function PmiCard({request}:{request:any}){
   const [p,setP]=useState<any>(null);const [done,setDone]=useState('');
   useEffect(()=>{request('/me/pmi').then(setP).catch(()=>{})},[]);
   if(!p)return null;const flash=(k:string)=>{setDone(k);setTimeout(()=>setDone(''),1800)};
-  return <div className="pmi"><div><span className="muted small">Personal Meeting ID</span><b className="pmi-id">{p.pretty}</b><small className="muted">Passcode {p.passcode||'none'} · always the same link</small></div>
+  return <div className="pmi"><div><span className="muted small">Personal Meeting ID</span><b className="pmi-id">{p.pretty}</b><small className="muted">{p.open_room?'Open room: anyone can start or join, no passcode':`Passcode ${p.passcode||'none'}`} · always the same link</small><label className="check"><input type="checkbox" checked={!!p.open_room} onChange={async e=>setP(await request('/me/pmi',{method:'PATCH',body:JSON.stringify({open_room:e.target.checked})}))}/> Open room: no admitting, anyone can start or join any time</label></div>
     <div className="pmi-actions"><button className="secondary" onClick={()=>{copyText(p.pretty.replace(/ /g,''));flash('id')}}><Copy size={14}/> {done==='id'?'Copied':'Copy ID'}</button><button className="secondary" onClick={()=>{copyText(`Join my iSift meeting: ${roomLink(p.code)}\nMeeting ID: ${p.pretty}${p.passcode?`\nPasscode: ${p.passcode}`:''}`);flash('inv')}}><Copy size={14}/> {done==='inv'?'Copied':'Copy invitation'}</button><button className="primary" onClick={()=>{location.hash='#/room/'+p.code}}><Video size={14}/> Start</button></div></div>;
 }
 

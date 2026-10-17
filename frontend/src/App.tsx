@@ -192,6 +192,7 @@ const ADMIN_TABS=[
  {id:'mail',label:'Email and calendar',icon:Mail,desc:'How calendars are read and how the app sends email.',groups:['Email sent by the app','Mail sign-in (Google, Microsoft, Yahoo)','Calendar']},
  {id:'modules',label:'Modules',icon:ListChecks,desc:'Choose which parts of iSift people can see.',groups:[]},
  {id:'pricing',label:'Pricing',icon:CreditCard,desc:'The price list for Individual and Business. Only active prices appear on the home page and can be bought.',groups:[]},
+ {id:'allmeetings',label:'All meetings',icon:CalendarDays,desc:'Every iSift room meeting of every user, so an administrator can remove one.',groups:[]},
  {id:'payments',label:'Payments',icon:CreditCard,desc:'Square takes plan payments by card. Set it up once here; keys are stored encrypted and never reach browsers.',groups:['Payments (Square)']},
  {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings']}];
 const GROUP_TITLES:Record<string,[string,string]>={
@@ -213,6 +214,20 @@ function EmailTest({request,email}:any){
  return <section className="panel"><div className="panelhead"><h2>Send a test email</h2><Send size={18}/></div><p className="hint">Sign-up verification codes, booking confirmations and alerts are sent from the account under <b>Email sent by the app</b> below. Save it first, then send yourself a test. If nothing arrives, the message below says what the mail server answered.</p>
   <label>Send the test to<input type="email" value={to} onChange={e=>setTo(e.target.value)} placeholder="you@example.com"/></label><button className="primary" disabled={busy||!to} onClick={send}><Send size={16}/> {busy?'Sending…':'Send test email'}</button>
   {res&&<p className={res.ok?'okmsg':'syncerr'} role="status">{res.text}</p>}</section>}
+function AllMeetingsAdmin({request,act}:any){
+ const [rows,setRows]=useState<any[]>([]),[msg,setMsg]=useState(''),[err,setErr]=useState('');
+ const load=()=>request('/admin/meetings').then((d:any)=>setRows(d.meetings)).catch((e:any)=>setErr(e.message));
+ useEffect(()=>{load()},[]);
+ const del=(r:any,series:boolean)=>{if(!confirm(series?`Delete every meeting of the series "${r.title}" by ${r.owner}? The shared link stops working.`:`Delete "${r.title}" by ${r.owner}?`))return;act(async()=>{try{setErr('');const d=await request(`/meetings/${r.id}?series=${series}`,{method:'DELETE'});setMsg(d.message||'Deleted.');await load()}catch(e:any){setErr(e.message)}})};
+ return <section className="panel"><div className="panelhead"><h2>All meetings</h2><CalendarDays size={18}/></div>
+  <p className="hint">iSift room meetings that are not cancelled, newest first. Deleting closes the room, so its link stops working. A Personal Meeting Room is permanent and cannot be deleted; only meetings scheduled on it can be removed.</p>
+  {msg&&<div className="okmsg" role="status">{msg}</div>}{err&&<div className="alert" role="alert">{err}</div>}
+  <table className="modtable"><thead><tr><th>Meeting</th><th>Owner</th><th>When</th><th>Type</th><th style={{width:210}}></th></tr></thead>
+   <tbody>{rows.map(r=><tr key={r.id}><td><b>{r.title}</b></td><td>{r.owner}</td><td>{fmt(r.start_at)}</td><td>{[r.series&&'Repeating',r.open_room&&'Open room',r.personal&&'Personal room'].filter(Boolean).join(' · ')||'Single'}</td>
+    <td className="actions"><button className="secondary danger" onClick={()=>del(r,false)}>Delete</button>{r.series&&<button className="secondary danger" onClick={()=>del(r,true)}>Delete series</button>}</td></tr>)}</tbody></table>
+  {rows.length===0&&!err&&<p className="hint">No room meetings.</p>}
+ </section>
+}
 function PricingAdmin({request,act}:any){
  const [rows,setRows]=useState<any[]>([]),[cur,setCur]=useState('AUD'),[edit,setEdit]=useState<any>(null),[msg,setMsg]=useState(''),[err,setErr]=useState('');
  const load=()=>request('/admin/pricing').then((d:any)=>{setRows(d.rows);setCur(d.currency)}).catch((e:any)=>setErr(e.message));
@@ -306,8 +321,9 @@ function AdminSettings({settings,request,act,load,onModules,user}:any){
   {tab==='payments'&&<RefundsPanel request={request}/>}
   {tab==='meetings'&&<section className="panel"><div className="panelhead"><h2>Google Meet</h2><Video size={18}/></div><p className="hint">Nothing to set up. Meet links found in Google Calendar events appear with a Join button. Creating new Meet meetings from here is not available; use the built-in meetings or Zoom.</p></section>}
   {tab==='pricing'&&<PricingAdmin request={request} act={act}/>}
+  {tab==='allmeetings'&&<AllMeetingsAdmin request={request} act={act}/>}
   {tab==='modules'&&<ModulesPanel request={request} act={act} onChanged={onModules}/>}
-  {tab!=='modules'&&tab!=='pricing'&&<section className="panel"><div className="panelhead"><h2>{tab==='basics'?'Integration settings':cur.label}</h2><ShieldCheck size={18}/></div>
+  {tab!=='modules'&&tab!=='pricing'&&tab!=='allmeetings'&&<section className="panel"><div className="panelhead"><h2>{tab==='basics'?'Integration settings':cur.label}</h2><ShieldCheck size={18}/></div>
    <p className="hint">Edit a value and choose <b>Save integration settings</b>; changes apply immediately. Secrets are stored encrypted and only a masked preview is shown. Leave a secret blank to keep it unchanged.</p>
    {msg&&<div className="okmsg" role="status">{msg}</div>}
    {(tabGroups(tab).map(g=>[g,groups[g]]) as [string,any[]][]).map(([group,items])=><div className="setgroup" key={group}><h3>{GROUP_TITLES[group]?.[0]||group}</h3>{GROUP_TITLES[group]?.[1]&&<p className="groupnote">{GROUP_TITLES[group][1]}</p>}

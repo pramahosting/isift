@@ -54,6 +54,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const [signedIn,setSignedIn]=useState(initial?.access==='signed_in');
   const [pcode,setPcode]=useState(initial?.access==='passcode'?(initial.passcode||''):'');
   const [waiting,setWaiting]=useState(initial?!!initial.waiting_room:true);
+  const [openRoom,setOpenRoom]=useState(!!initial?.options?.open_room);
   const [mute,setMute]=useState(!!initial?.options?.mute_on_entry);
   const [vidOff,setVidOff]=useState(!!initial?.options?.video_off_on_entry);
   const [autoRec,setAutoRec]=useState(!!initial?.options?.auto_record);
@@ -71,7 +72,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setErr('');
     try{
       const body:any={title,agenda,start_at:when,duration_minutes:dur,timezone:tz};
-      if(isRoom){body.waiting_room=waiting;body.options={mute_on_entry:mute,video_off_on_entry:vidOff,auto_record:autoRec,host_video_off:hostOff,participants_can_unmute:canUnmute,participants_can_video:canVideo,virtual_room:vroom};if(pmi)body.meeting_id_mode='personal';body.access=needPc?'passcode':signedIn?'signed_in':'open';if(needPc&&pcode.trim())body.passcode=pcode.trim()}
+      if(isRoom){body.waiting_room=waiting;body.options={mute_on_entry:mute,video_off_on_entry:vidOff,auto_record:autoRec,host_video_off:hostOff,participants_can_unmute:canUnmute,participants_can_video:canVideo,virtual_room:vroom,open_room:openRoom};if(openRoom){body.waiting_room=false;body.access='open';delete body.passcode}if(pmi)body.meeting_id_mode='personal';body.access=needPc?'passcode':signedIn?'signed_in':'open';if(needPc&&pcode.trim())body.passcode=pcode.trim()}
       if(!edit&&PLAT[kind]&&plats&&!plats[kind]?.ready){setSetup(kind);setBusy(false);return}
       const ext=!edit&&!!PLAT[kind];const win=ext?window.open('','isift-platform','width=1000,height=760'):null;
       if(win)try{win.document.title=PLAT[kind];win.document.body.innerHTML=`<p style="font:16px system-ui;padding:24px">Booking your ${PLAT[kind]} meeting…</p>`}catch{}
@@ -99,7 +100,8 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
     {!edit&&isRoom&&<fieldset className="span2 mf-set"><legend>Meeting ID</legend><label className="check"><input type="radio" name="idm" checked={idMode==='auto'} onChange={()=>setIdMode('auto')}/> Generate automatically</label><label className="check"><input type="radio" name="idm" checked={idMode==='personal'} onChange={()=>setIdMode('personal')}/> Personal Meeting ID (same link every time)</label></fieldset>}
     {!edit&&kind==='link'&&<label className="span2">Meeting link<input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://…" required/></label>}
     {pmi&&<p className="muted small span2">A Personal Meeting ID uses its own passcode and waiting room, shown on the meeting page after you save.</p>}
-    {isRoom&&!pmi&&<fieldset className="span2 mf-set"><legend>Security</legend>
+    {isRoom&&<fieldset className="span2 mf-set"><legend>Open room</legend><label className="check"><input type="checkbox" checked={openRoom} onChange={e=>{setOpenRoom(e.target.checked);if(e.target.checked){setNeedPc(false);setSignedIn(false);setWaiting(false)}}}/> Open room: anyone with the link can start or join at any time. No passcode, nobody is admitted, and the room never closes for good{pmi?' (applies to your Personal Meeting ID)':''}.</label></fieldset>}
+    {isRoom&&!pmi&&!openRoom&&<fieldset className="span2 mf-set"><legend>Security</legend>
       <label className="check"><input type="checkbox" checked={needPc} onChange={e=>{setNeedPc(e.target.checked);if(e.target.checked)setSignedIn(false)}}/> Require a passcode {needPc&&<input className="mf-pc" value={pcode} onChange={e=>setPcode(e.target.value)} maxLength={12} placeholder="Leave blank to make one" aria-label="Passcode"/>}</label>
       <label className="check"><input type="checkbox" checked={signedIn} onChange={e=>{setSignedIn(e.target.checked);if(e.target.checked)setNeedPc(false)}}/> Only signed-in people can join</label>
       <label className="check"><input type="checkbox" checked={waiting} onChange={e=>setWaiting(e.target.checked)}/> Waiting room (you let people in)</label>
@@ -154,7 +156,7 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {room&&row('Passcode',m.passcode?<><code>{m.passcode}</code> <button className="textbtn inline" onClick={()=>copy('pc',m.passcode)}>{copied==='pc'?'Copied':'Copy'}</button></>:<span className="muted">None</span>)}
       {secText&&row('Security',secText)}
       {link?row('Invite link',<><a href={link} onClick={e=>{if(room){e.preventDefault();location.hash=new URL(link).hash}}} className="md-link">{link}</a> <button className="textbtn inline" onClick={()=>copy('link',link)}>{copied==='link'?'Copied':'Copy link'}</button></>):row('Invite link',<span className="muted">This meeting has no online link.</span>)}
-      {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
+      {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.open_room&&'Open room: anyone can start or join any time',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
       {room&&row('Invited',m.invitees?.length?m.invitees.join(', '):<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
       {m.series&&row('Repeats','Part of a recurring series with one link for every meeting.')}
       {(m.kind==='teams'||m.kind==='meet')&&row(PLAT[m.kind],<span className="muted">Booked in {PLAT[m.kind]}. Changes to the time here do not change the {PLAT[m.kind]} event; change it there too.</span>)}
