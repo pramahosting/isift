@@ -248,3 +248,15 @@ The whiteboard mixes free-hand drawing with a shape library (Basic, ER, UML, BPM
 
 ## Sharing notes and whiteboards by email
 The Share button on a note or whiteboard emails it as a PDF to contact groups, contacts and typed addresses (up to 50 at a time, one email each). It sends from the app's email account (Admin settings, Email sent by the app) first, then the person's own Commbox mailboxes, so one of those must be set up. Notes become a text PDF on the server (no extra libraries); notes with letters outside Western alphabets, and whiteboards, are drawn as pictures by the browser and placed on PDF pages. Endpoint: `POST /api/v1/notes/{id}/share`.
+
+## WordPerfect, SpreadTable, PowerPresentation and sharing
+Notes, Whiteboards, WordPerfect documents, SpreadTable workbooks and PowerPresentation slides are all stored in the same table (`notes`, with `kind` doc / board / wp / sheet / deck) and share one permission system. Run the database upgrade (`alembic upgrade head`, migration 0012) to add `note_shares` and `note_comments`.
+
+- **Access:** the owner, anyone shared with directly (by account or email), anyone in a shared contact group, and anyone who opened a link. Levels are Viewer, Commenter and Editor; Owner cannot be granted. The server checks the level on every read, save, delete, comment and share, so tampering with ids or URLs gives "Not found" or "not allowed".
+- **Groups:** reuse the existing contact groups. Access follows the group's current members (add a member and they gain access, remove them and they lose it). Members without an account are emailed an invitation and see the file after signing up with that address.
+- **Links:** secret, signed-in only (optionally limited to named addresses), with an optional end date, revocable. Only a hash of the secret is stored, so a link is shown once. Opening a link makes a personal share for that person; revoking the link removes it. There is no public (no sign-in) link mode.
+- **Email invitations:** sent from the app's email account first, then the person's own mailboxes. They carry a link, never the file. Each recipient is reported as emailed or failed; sharing still happens if email is not set up. Links use the address in `FRONTEND_ORIGIN`.
+- **Alerts:** the bell shows when something is shared, access changes, access is removed, someone opens your link or comments. There are no expiry reminders and no alerts for ordinary edits.
+- **Editing together:** not live co-editing. Saves carry the version the editor opened; if another Editor saved first the save is refused and the person reloads.
+- **Documents** are cleaned on the server to a short list of safe tags before saving, so a shared document cannot run script. Workbooks and decks are checked to be well-formed JSON of the right shape. PDF copies by email are text PDFs (workbooks as tab-separated text); files with letters outside Western alphabets can be shared by link instead.
+- **Not included:** importing Word, Excel or PowerPoint files (documents open .txt and .html, workbooks open .csv), charts and images in workbooks and slides, restricting downloads, public links.

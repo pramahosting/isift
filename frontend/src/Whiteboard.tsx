@@ -1,3 +1,4 @@
+import {createPortal} from 'react-dom';
 import React,{useEffect,useReducer,useRef,useState} from 'react';
 import {MousePointer2,Pencil,Eraser,Type,Sigma,Undo2,Redo2,Download,Copy,ArrowUpToLine,Trash2,Hand,ZoomIn,ZoomOut,Maximize2} from 'lucide-react';
 import {LIB,CATS,LINE_PRESETS,TEMPLATES,libOf,ELLIPSEISH,DIAMONDISH,FRAME_KINDS,LABEL_BELOW,TEXT_HINT,drawLibShape,drawLibMarker,PROV} from './WbLib';
@@ -193,7 +194,7 @@ function Preview({item}:{item:any}){
     drawShape(g,{...item,x:0,y:0,text:item.k==='quad'||item.k==='uclass'?item.text:item.k==='svc'?item.text:'',lw:1.6/sc,size:item.k==='quad'?12:item.k==='svc'?15:13,c:item.prov?'#172033':'#172033',f:item.f||''});g.restore()},[item.id]);
   return <canvas ref={r} width={56} height={40} aria-hidden="true"/>;
 }
-export function Board({content,onChange,name,pictureRef}:{content:string;onChange:(c:string)=>void;name?:string;pictureRef?:React.MutableRefObject<(()=>string|null)|null>}){
+export function Board({content,onChange,name,pictureRef,toolsHost,readOnly}:{readOnly?:boolean;content:string;onChange:(c:string)=>void;name?:string;toolsHost?:HTMLElement|null;pictureRef?:React.MutableRefObject<(()=>string|null)|null>}){
   const cv=useRef<HTMLCanvasElement>(null);const items=useRef<any[]>([]);const hist=useRef<string[]>([]);const hidx=useRef(0);
   const [tool,setTool]=useState<Tool>('pen');const [color,setColor]=useState(COLORS[0]);const [w,setW]=useState(3);const [snap,setSnap]=useState(false);
   const [sel,setSel]=useState<string>('');const [,force]=useReducer((x:number)=>x+1,0);
@@ -235,9 +236,11 @@ export function Board({content,onChange,name,pictureRef}:{content:string;onChang
   const bindAt=(p:Pt,skip?:string)=>{for(let k=items.current.length-1;k>=0;k--){const s=items.current[k];if(s.t==='shape'&&s.id!==skip&&!isFrame(s)&&s.k!=='quad'&&inside({...s,x:s.x-8,y:s.y-8,w:s.w+16,h:s.h+16},p[0],p[1]))return s}return null};
   const addItem=(it:any)=>{items.current.push(it);setSel(it.id);selRef.current=it.id};
   const focusText=()=>setTimeout(()=>{taRef.current?.focus();taRef.current?.select()},30);
+  const ro=!!readOnly;
   const onDown=(e:React.PointerEvent)=>{
     (e.target as Element).setPointerCapture(e.pointerId);wrapRef.current?.focus({preventScroll:true});
     if(tool==='hand'||spaceDown.current||e.button===1){const [sx,sy]=cpx(e);drag.current={mode:'pan',sx,sy,ox:view.current.x,oy:view.current.y};return}
+    if(ro)return;
     const p=pt(e);const g=ctx();const z=1/view.current.s;
     if(tool==='pen'){draft.current={id:uid(),t:'stroke',c:color,w,p:[p]};draw();return}
     if(tool==='eraser'){drag.current={mode:'erase',changed:false};const h=hit(items.current,p[0],p[1],g,true,z);if(h){items.current=items.current.filter(i=>i!==h);drag.current.changed=true;draw()}return}
@@ -285,13 +288,13 @@ export function Board({content,onChange,name,pictureRef}:{content:string;onChang
     if(d?.mode==='move'&&!d.moved){return}
     if(d)commit();
   };
-  const onDouble=(e:React.MouseEvent)=>{if(tool!=='select')return;const [x,y]=pt(e);const h=hit(items.current,x,y,ctx(),false,1/view.current.s);if(h){setSel(h.id);selRef.current=h.id;force();focusText()}};
+  const onDouble=(e:React.MouseEvent)=>{if(ro||tool!=='select')return;const [x,y]=pt(e);const h=hit(items.current,x,y,ctx(),false,1/view.current.s);if(h){setSel(h.id);selRef.current=h.id;force();focusText()}};
   const patch=(p:any,keep=false)=>{const it=selItem();if(!it)return;Object.assign(it,p);draw();force();if(keep){save();clearTimeout(typing.current);typing.current=setTimeout(commit,600)}else commit()};
   const remove=()=>{const it=selItem();if(!it)return;items.current=items.current.filter(i=>i!==it&&!(i.t==='line'&&(i.a.id===it.id||i.b.id===it.id)));setSel('');selRef.current='';commit()};
   const dup=()=>{const it=selItem();if(!it)return;const c=clone(it);c.id=uid();if(c.t==='stroke')c.p=c.p.map(([x,y]:Pt)=>[x+20,y+20]);else if(c.t==='line'){for(const wh of ['a','b']){const q=c[wh].id?endPos(it,wh as any,items.current,ctx()):[c[wh].x,c[wh].y];c[wh]={x:q[0]+20,y:q[1]+20}}}else{c.x+=20;c.y+=20}items.current.push(c);setSel(c.id);selRef.current=c.id;commit()};
   const toFront=()=>{const it=selItem();if(!it)return;items.current=[...items.current.filter(i=>i!==it),it];commit()};
   const toBack=()=>{const it=selItem();if(!it)return;items.current=[it,...items.current.filter(i=>i!==it)];commit()};
-  const key=(e:React.KeyboardEvent)=>{const tag=(e.target as HTMLElement).tagName;if(tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT')return;
+  const key=(e:React.KeyboardEvent)=>{const tag=(e.target as HTMLElement).tagName;if(tag==='TEXTAREA'||tag==='INPUT'||tag==='SELECT')return;if(ro&&!(e.ctrlKey||e.metaKey)&&e.key!==' ')return;
     if(e.key===' '){e.preventDefault();spaceDown.current=true;return}
     if((e.ctrlKey||e.metaKey)&&(e.key==='+'||e.key==='=')){e.preventDefault();zoomBy(1.25);return}
     if((e.ctrlKey||e.metaKey)&&e.key==='-'){e.preventDefault();zoomBy(0.8);return}
@@ -323,8 +326,8 @@ export function Board({content,onChange,name,pictureRef}:{content:string;onChang
   const setBoard=(b:{w:number;h:number})=>{const nb={w:Math.min(4000,Math.max(300,Math.round(b.w)||1200)),h:Math.min(4000,Math.max(300,Math.round(b.h)||700))};setBsz(nb);bszRef.current=nb;setTimeout(()=>{draw();save()},0)};
   const preset=BOARDS.find(b=>b.w===bsz.w&&b.h===bsz.h)?.id||'custom';
   const libItems=LIB.filter(l=>l.cat===cat);
-  return <div className="ws-board wb2" ref={wrapRef} tabIndex={0} onKeyDown={key} onKeyUp={keyUp}>
-    <div className="ws-tools" role="toolbar" aria-label="Whiteboard tools">
+  const panel=<>
+    {!ro&&<div className="ws-tools" role="toolbar" aria-label="Whiteboard tools">
       {tb('select','Select, move and resize',<MousePointer2 size={16}/>)}{tb('pen','Pencil (free hand)',<Pencil size={16}/>)}{tb('eraser','Eraser (removes what you touch)',<Eraser size={16}/>)}{tb('hand','Hand: drag to move around the board (or hold the space bar)',<Hand size={16}/>)}
       <span className="wb-sep"/>
       {tb('line','Line',<ShapeIcon k="line"/>)}{tb('arrow','Arrow',<ShapeIcon k="arrow"/>)}{tb('elbow','Elbow connector',<ShapeIcon k="elbow"/>)}
@@ -337,25 +340,29 @@ export function Board({content,onChange,name,pictureRef}:{content:string;onChang
       <button type="button" className="iconbtn" title="Undo (Ctrl+Z)" aria-label="Undo" onClick={()=>restore(hidx.current-1)}><Undo2 size={16}/></button>
       <button type="button" className="iconbtn" title="Redo (Ctrl+Y)" aria-label="Redo" onClick={()=>restore(hidx.current+1)}><Redo2 size={16}/></button>
       <button type="button" className="iconbtn" title="Download the whole board as a picture" aria-label="Download as picture" onClick={exportPng}><Download size={16}/></button>
-      <button type="button" className="textbtn danger" onClick={()=>{if(window.confirm('Clear the whole board?')){items.current=[];setSel('');selRef.current='';commit()}}}>Clear</button></div>
+      <button type="button" className="textbtn danger" onClick={()=>{if(window.confirm('Clear the whole board?')){items.current=[];setSel('');selRef.current='';commit()}}}>Clear</button></div>}
     <div className="ws-tools wb-view" role="toolbar" aria-label="Zoom and board shape">
       <button type="button" className="iconbtn" title="Zoom out (Ctrl and minus)" aria-label="Zoom out" onClick={()=>zoomBy(0.8)}><ZoomOut size={16}/></button>
       <button type="button" className="textbtn wb-zoom" title="Back to 100%" aria-label="Zoom level, press for 100 percent" onClick={()=>zoomTo(1,cv.current!.width/2,cv.current!.height/2)}>{Math.round(view.current.s*100)}%</button>
       <button type="button" className="iconbtn" title="Zoom in (Ctrl and plus)" aria-label="Zoom in" onClick={()=>zoomBy(1.25)}><ZoomIn size={16}/></button>
       <button type="button" className="iconbtn" title="Fit everything on the screen" aria-label="Fit everything" onClick={fitAll}><Maximize2 size={16}/></button>
-      <span className="wb-sep"/>
+      {ro&&<button type="button" className="iconbtn" title="Download the whole board as a picture" aria-label="Download as picture" onClick={exportPng}><Download size={16}/></button>}
+      {!ro&&<><span className="wb-sep"/>
       <label className="wb-boardsz">Board shape <select value={preset} onChange={e=>{const b=BOARDS.find(x=>x.id===e.target.value);if(b)setBoard(b);else setBoard({w:bsz.w,h:bsz.h+1})}} aria-label="Board shape">{BOARDS.map(b=><option key={b.id} value={b.id}>{b.label}</option>)}<option value="custom">Custom…</option></select></label>
       {preset==='custom'&&<><label className="wb-boardsz">W <input type="number" min={300} max={4000} step={50} value={bsz.w} onChange={e=>setBoard({w:Number(e.target.value),h:bsz.h})} aria-label="Board width"/></label><label className="wb-boardsz">H <input type="number" min={300} max={4000} step={50} value={bsz.h} onChange={e=>setBoard({w:bsz.w,h:Number(e.target.value)})} aria-label="Board height"/></label></>}
       <span className="wb-sep"/>
       <label className="wb-boardsz">Insert a workflow <select value="" onChange={e=>{if(e.target.value)addTemplate(e.target.value)}} aria-label="Insert a ready-made workflow"><option value="">Choose…</option>{TEMPLATES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
-      <button type="button" className="textbtn" onClick={()=>setLibOpen(!libOpen)} aria-expanded={libOpen}>{libOpen?'Hide shapes':'Show shapes'}</button></div>
-    {libOpen&&<div className="wb-lib" aria-label="Shape library">
+      <button type="button" className="textbtn" onClick={()=>setLibOpen(!libOpen)} aria-expanded={libOpen}>{libOpen?'Hide shapes':'Show shapes'}</button></>}</div>
+    {libOpen&&!ro&&<div className="wb-lib" aria-label="Shape library">
       <div className="wb-cats" role="tablist" aria-label="Shape categories">{CATS.map(c=><button key={c.id} type="button" role="tab" aria-selected={cat===c.id} className={`wb-cat${cat===c.id?' on':''}`} onClick={()=>setCat(c.id)}>{c.label}</button>)}</div>
       <div className="wb-items">{cat==='conn'?LINE_PRESETS.map(l=><button key={l.id} type="button" className={`wb-item${tool==='lp:'+l.id?' on':''}`} title={l.label} aria-pressed={tool==='lp:'+l.id} onClick={()=>setTool('lp:'+l.id)}><LinePreview p={l}/><span>{l.label}</span></button>)
         :libItems.map(l=><button key={l.id} type="button" className={`wb-item${tool===l.id?' on':''}`} title={l.label} aria-pressed={tool===l.id} onClick={()=>{setTool(l.id);setSel('');selRef.current=''}}><Preview item={l}/><span>{l.label}</span></button>)}</div>
       {['aws','azure','gcp','ai'].includes(cat)&&<small className="muted">Generic service tiles in {PROV[cat]?.name||'each'} colours, not official logos. Pick one, then click or drag on the board. Link them with Arrow or Sequence flow.</small>}</div>}
+  </>;
+  return <div className="ws-board wb2" ref={wrapRef} tabIndex={0} onKeyDown={key} onKeyUp={keyUp}>
+    {toolsHost?createPortal(panel,toolsHost):panel}
     <div className="wb-stage"><canvas ref={cv} className={cls} width={bsz.w} height={bsz.h} aria-label="Whiteboard" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={onDouble}/></div>
-    {s&&s.t!=='stroke'&&<div className="wb-inspect" role="group" aria-label="Selected item">
+    {!ro&&s&&s.t!=='stroke'&&<div className="wb-inspect" role="group" aria-label="Selected item">
       {(isShape||isText||isEq||isLine)&&<label className="wb-text">{isEq?'Equation':isLine?'Label':isShape?(TEXT_HINT[s.k]||'Text'):'Text'}
         <textarea ref={taRef} rows={isShape&&(s.k==='entity'||s.k==='uclass'||s.k==='quad')?5:2} value={s.text||''} onChange={e=>patch({text:e.target.value},true)} spellCheck={false} aria-label="Item text"/></label>}
       {isEq&&<div className="wb-eqbar" aria-label="Equation symbols">{EQ_BUTTONS.map(([l,snip])=><button key={snip} type="button" className="eqbtn" title={snip.trim()} onClick={()=>insertEq(snip)}>{l}</button>)}<small className="muted">Type like LaTeX: \frac{'{a}{b}'}, \sqrt{'{x}'}, x^{'{2}'}, x_{'{n}'}</small></div>}

@@ -1,15 +1,15 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Board} from './Whiteboard';
-import {Mail,LogIn,Upload,Video,MessageSquare,Users,Plus,Trash2,Send,Copy,Mic,MonitorUp,X,UserPlus,FileText,PenLine,Undo2,Eraser,Check,Share2} from 'lucide-react';
+import {Mail,LogIn,Upload,Video,MessageSquare,Users,Plus,Trash2,Send,Copy,Mic,MonitorUp,X,UserPlus,FileText,PenLine,Undo2,Eraser,Check,Share2,Table2,Presentation} from 'lucide-react';
 
 const baseUrl=()=>location.origin+location.pathname;
 export const roomLink=(code:string)=>`${baseUrl()}#/room/${code}`;
 const copyText=async(t:string)=>{try{await navigator.clipboard.writeText(t)}catch{window.prompt('Copy this:',t)}};
 
-export function Modal({title,onClose,children,wide}:{title:string;onClose:()=>void;children:React.ReactNode;wide?:boolean}){
-  useEffect(()=>{const h=(e:KeyboardEvent)=>e.key==='Escape'&&onClose();window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[]);
-  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className={`modal ws-modal${wide?' wide':''}`} role="dialog" aria-label={title}><div className="panelhead"><h2>{title}</h2><button className="iconbtn" aria-label="Close" onClick={onClose}><X size={18}/></button></div>{children}</section></div>;
-}
+export {Modal} from './Modal';
+import {Modal} from './Modal';
+import {ShareDialog,SharedBanner,CommentsPanel} from './Sharing';
+import {WordEditor,SheetEditor,DeckEditor} from './DocsEditors';
 
 /** Zoom-style "Host": choose video on/off, share-screen-only, or the personal meeting ID, then start. */
 export function HostDialog({request,onClose}:{request:any;onClose:()=>void}){
@@ -143,62 +143,49 @@ export function ChatPage({request,initial}:{request:any;initial?:string}){
 }
 
 /* ---------------- Notes and Whiteboards ---------------- */
-/** Draw note text onto A4-shaped pages (JPEG) for notes with letters the server's PDF font cannot show. */
-function notePages(title:string,text:string):string[]{
-  const W=1240,H=1754,M=110,fs=26,lh=38,out:string[]=[];let c:HTMLCanvasElement,g:CanvasRenderingContext2D,y=0;
-  const fresh=()=>{c=document.createElement('canvas');c.width=W;c.height=H;g=c.getContext('2d')!;g.fillStyle='#fff';g.fillRect(0,0,W,H);g.fillStyle='#172033';y=M+10;out.push('')};
-  const done=()=>{out[out.length-1]=c.toDataURL('image/jpeg',0.9)};
-  fresh();g.font='bold 40px sans-serif';for(const l of wrapText(g,title||'Untitled',W-2*M)){g.fillText(l,M,y);y+=54}y+=18;g.font=`${fs}px sans-serif`;
-  for(const raw of text.replace(/\r\n/g,'\n').split('\n')){for(const l of wrapText(g,raw,W-2*M)){if(y>H-M){done();fresh();g.font=`${fs}px sans-serif`}g.fillText(l,M,y);y+=lh}if(!raw)y+=lh}
-  done();return out}
-function wrapText(g:CanvasRenderingContext2D,line:string,w:number):string[]{
-  if(!line)return[''];const words=line.split(/(\s+)/);const res:string[]=[];let cur='';
-  for(const wd of words){let t=cur+wd;if(g.measureText(t).width>w&&cur.trim()){res.push(cur.trimEnd());cur=wd.trimStart()}else cur=t;
-    while(g.measureText(cur).width>w&&cur.length>1){let k=cur.length-1;while(k>1&&g.measureText(cur.slice(0,k)).width>w)k--;res.push(cur.slice(0,k));cur=cur.slice(k)}}
-  res.push(cur.trimEnd());return res}
-
-export function ShareDialog({request,note,kind,title,content,picture,onClose}:{request:any;note:string;kind:'doc'|'board';title:string;content:string;picture:()=>string|null;onClose:()=>void}){
-  const [data,setData]=useState<any>({contacts:[],groups:[]});const [cids,setCids]=useState<string[]>([]);const [gids,setGids]=useState<string[]>([]);
-  const [typed,setTyped]=useState('');const [msg,setMsg]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [done,setDone]=useState<any>(null);
-  useEffect(()=>{request('/contacts').then(setData).catch(()=>{})},[]);
-  const tog=(a:string[],set:(x:string[])=>void,id:string)=>set(a.includes(id)?a.filter(x=>x!==id):[...a,id]);
-  const send=async()=>{setErr('');const emails=typed.split(/[\s,;]+/).map(x=>x.trim()).filter(Boolean);
-    if(!emails.length&&!cids.length&&!gids.length){setErr('Choose a group, a contact, or type an email address.');return}
-    setBusy(true);
-    try{
-      await request(`/notes/${note}`,{method:'PUT',body:JSON.stringify({title,content})});            // so the PDF matches what is on screen
-      const body:any={emails,contact_ids:cids,group_ids:gids,message:msg};
-      if(kind==='board'){const pic=picture();if(!pic){setErr('The whiteboard is empty. Draw something first.');setBusy(false);return}body.pages=[pic]}
-      let r=await request(`/notes/${note}/share`,{method:'POST',body:JSON.stringify(body)});
-      if(r.needs_pictures){body.pages=notePages(title,content);r=await request(`/notes/${note}/share`,{method:'POST',body:JSON.stringify(body)})}
-      setDone(r)}catch(e:any){setErr(e.message||'Could not send.')}
-    setBusy(false)};
-  return <Modal title={`Share ${kind==='doc'?'note':'whiteboard'} as PDF`} onClose={onClose}>
-    {done?<><p role="status"><Check size={15}/> Sent to {done.sent.length} {done.sent.length===1?'person':'people'} as <b>{done.file}</b>.</p>
-      {done.failed?.length>0&&<p className="error">Could not reach: {done.failed.join(', ')}</p>}
-      <div className="modal-actions"><button className="primary" onClick={onClose}>Done</button></div></>
-    :<>
-      <p className="muted small">“{title||'Untitled'}” will be emailed as a PDF. Each person gets their own message.</p>
-      {data.groups.length>0&&<><b className="small">Groups</b><div className="share-pick">{data.groups.map((g:any)=><label key={g.id} className="check"><input type="checkbox" checked={gids.includes(g.id)} onChange={()=>tog(gids,setGids,g.id)}/> {g.name} <small className="muted">({g.contact_ids.length})</small></label>)}</div></>}
-      {data.contacts.length>0&&<><b className="small">Contacts and participants</b><div className="share-pick">{data.contacts.filter((c:any)=>c.email).map((c:any)=><label key={c.id} className="check"><input type="checkbox" checked={cids.includes(c.id)} onChange={()=>tog(cids,setCids,c.id)}/> {c.name} <small className="muted">{c.email}</small></label>)}</div></>}
-      <label>Other email addresses<input value={typed} onChange={e=>setTyped(e.target.value)} placeholder="name@example.com, another@example.com" aria-label="Other email addresses"/></label>
-      <label>Message (optional)<textarea rows={2} value={msg} onChange={e=>setMsg(e.target.value)} aria-label="Message"/></label>
-      {err&&<p className="error" role="alert">{err}</p>}
-      <div className="modal-actions"><button className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={busy} onClick={send}><Send size={15}/> {busy?'Sending…':'Send PDF'}</button></div></>}
-  </Modal>}
-
-export function NotesPage({request,kind}:{request:any;kind:'doc'|'board'}){
-  const [list,setList]=useState<any[]>([]);const [open,setOpen]=useState<any>(null);const [title,setTitle]=useState('');const [content,setContent]=useState('');const [state,setState]=useState('');const timer=useRef<any>(null);const openId=useRef('');const [sharing,setSharing]=useState(false);const pic=useRef<(()=>string|null)|null>(null);
-  const loadList=useCallback(()=>request(`/notes?kind=${kind}`).then(setList).catch(()=>{}),[request,kind]);
-  useEffect(()=>{setOpen(null);openId.current='';loadList()},[kind]);
-  const pick=async(id:string)=>{clearTimeout(timer.current);const n=await request(`/notes/${id}`);openId.current=id;setOpen(n);setTitle(n.title);setContent(n.content);setState('')};
-  const create=async()=>{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:kind==='doc'?'Untitled note':'Untitled board',content:''})});await loadList();pick(n.id)};
-  const queue=(patch:any)=>{setState('Saving…');clearTimeout(timer.current);const id=openId.current;timer.current=setTimeout(async()=>{try{await request(`/notes/${id}`,{method:'PUT',body:JSON.stringify(patch)});setState('Saved');loadList()}catch(e:any){setState('Not saved: '+e.message)}},700)};
-  const remove=async()=>{if(!open||!window.confirm(`Delete "${title}"?`))return;await request(`/notes/${open.id}`,{method:'DELETE'});setOpen(null);openId.current='';loadList()};
-  const Icon=kind==='doc'?FileText:PenLine;
-  return <><div className="ws-two notes"><section className="panel"><div className="panelhead"><h2><Icon size={18}/> {kind==='doc'?'Notes':'Whiteboards'}</h2><button className="primary" onClick={create}><Plus size={15}/> New</button></div>
-      {list.length?list.map(n=><button key={n.id} className={`ws-ch${open?.id===n.id?' on':''}`} onClick={()=>pick(n.id)}><div className="ws-main"><b>{n.title}</b><small className="muted">Edited {new Date(n.updated_at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small></div></button>):<p className="muted pad">Nothing here yet. Press New.</p>}
-      <small className="muted pad">Private to you. Changes save automatically.</small></section>
-    <section className="panel ws-editor">{open?<><div className="panelhead"><input className="ws-title" value={title} aria-label="Title" onChange={e=>{setTitle(e.target.value);queue({title:e.target.value})}}/><span className="muted small" role="status">{state==='Saved'?<><Check size={13}/> Saved</>:state}</span><button className="iconbtn" aria-label="Share as PDF by email" title="Share as PDF by email" onClick={()=>setSharing(true)}><Share2 size={16}/></button><button className="iconbtn" aria-label="Delete" onClick={remove}><Trash2 size={16}/></button></div>
-      {kind==='doc'?<textarea className="ws-doc" value={content} aria-label="Note text" placeholder="Start typing…" onChange={e=>{setContent(e.target.value);queue({content:e.target.value})}}/>:<Board key={open.id} name={title} pictureRef={pic} content={content} onChange={c=>{setContent(c);queue({content:c})}}/>}</>:<p className="muted pad">Choose or create {kind==='doc'?'a note':'a whiteboard'}.</p>}</section></div>{sharing&&open&&<ShareDialog request={request} note={open.id} kind={kind} title={title} content={content} picture={()=>pic.current?pic.current():null} onClose={()=>setSharing(false)}/>}</>;
+type Meta={name:string;icon:any;fresh:string;noun:string};
+export const FILE_KINDS:Record<string,Meta>={doc:{name:'Notes',icon:FileText,fresh:'Untitled note',noun:'note'},board:{name:'Whiteboards',icon:PenLine,fresh:'Untitled board',noun:'whiteboard'},wp:{name:'WordPerfect',icon:FileText,fresh:'Untitled document',noun:'document'},sheet:{name:'SpreadTable',icon:Table2,fresh:'Untitled workbook',noun:'workbook'},deck:{name:'PowerPresentation',icon:Presentation,fresh:'Untitled presentation',noun:'presentation'}};
+const SCOPES=[['mine','My files'],['with','Shared with me'],['by','Shared by me']] as const;
+const accessWord=(a:string)=>({viewer:'Viewer',commenter:'Commenter',editor:'Editor',owner:'Owner'} as any)[a]||a;
+const shortDate=(s?:string|null)=>s?new Date(s).toLocaleDateString(undefined,{day:'numeric',month:'short'}):'';
+export function NotesPage({request,kind,focus,onFocused}:{request:any;kind:'doc'|'board'|'wp'|'sheet'|'deck';focus?:{id:string}|null;onFocused?:()=>void}){
+  const meta=FILE_KINDS[kind];const Icon=meta.icon;
+  const [scope,setScope]=useState<'mine'|'with'|'by'>('mine');const [list,setList]=useState<any[]>([]);const [open,setOpen]=useState<any>(null);const [title,setTitle]=useState('');const [content,setContent]=useState('');const [state,setState]=useState('');
+  const timer=useRef<any>(null);const openId=useRef('');const pend=useRef<any>({});const base=useRef('');const saving=useRef(false);const [sharing,setSharing]=useState(false);const [host,setHost]=useState<HTMLElement|null>(null);const pic=useRef<(()=>string|null)|null>(null);
+  const url=(s:string)=>s==='mine'?`/notes?kind=${kind}`:s==='with'?`/shared/with-me?kind=${kind}`:`/shared/by-me?kind=${kind}`;
+  const loadList=useCallback((s=scope)=>request(url(s)).then(setList).catch(()=>setList([])),[request,kind,scope]);
+  const access:string=open?.access||'owner';const level=({viewer:1,commenter:2,editor:3,owner:4} as any)[access]||1;const ro=level<3;
+  const flush=useCallback(async()=>{clearTimeout(timer.current);if(saving.current||!Object.keys(pend.current).length||!openId.current)return;const id=openId.current,patch=pend.current;pend.current={};saving.current=true;
+    try{const r=await request(`/notes/${id}`,{method:'PUT',body:JSON.stringify({...patch,base:base.current})});if(id===openId.current)base.current=r.updated_at;setState('Saved')}
+    catch(e:any){if(/saved changes to this file/i.test(e.message||''))setState('conflict');else{pend.current={...patch,...pend.current};setState('Not saved: '+e.message)}}
+    saving.current=false;if(Object.keys(pend.current).length&&state!=='conflict')timer.current=setTimeout(flush,300)},[request]);
+  const queue=(patch:any)=>{if(ro)return;setState('Saving…');pend.current={...pend.current,...patch};clearTimeout(timer.current);timer.current=setTimeout(flush,700)};
+  useEffect(()=>{setOpen(null);openId.current='';pend.current={};setScope('mine');setState('');request(url('mine')).then(setList).catch(()=>setList([]));return()=>{flush()}},[kind]);
+  useEffect(()=>{loadList(scope)},[scope]);
+  const pick=async(id:string)=>{await flush();pend.current={};const n=await request(`/notes/${id}`);openId.current=id;base.current=n.updated_at;setOpen(n);setTitle(n.title);setContent(n.content||'');setState('')};
+  useEffect(()=>{if(!focus)return;(async()=>{try{await pick(focus.id)}catch{}onFocused?.()})()},[focus?.id]);
+  const create=async()=>{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:meta.fresh,content:''})});setScope('mine');await request(url('mine')).then(setList);pick(n.id)};
+  const remove=async()=>{if(!open||!window.confirm(`Delete "${title}"? Everyone it is shared with loses access.`))return;await request(`/notes/${open.id}`,{method:'DELETE'});setOpen(null);openId.current='';pend.current={};loadList()};
+  const reload=async()=>{if(open){pend.current={};setState('');await pick(open.id)}};
+  const row=(n:any)=>scope==='mine'?<small className="muted">Edited {new Date(n.updated_at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small>
+    :scope==='with'?<small className="muted">From {n.owner} · {accessWord(n.access)} · shared {shortDate(n.shared_at)} · edited {shortDate(n.updated_at)}{n.expires_at?` · ends ${shortDate(n.expires_at)}`:''}{n.via==='group'?' · via a group':n.via==='link'?' · via a link':''}</small>
+    :<small className="muted">With {n.recipients.length?n.recipients.join(', '):'no one by name'}{n.links?.length?` · ${n.links.length} ${n.links.length===1?'link':'links'}${n.links.some((l:any)=>l.expires_at)?' (expiring)':''}`:''} · shared {shortDate(n.shared_at)} · edited {shortDate(n.updated_at)}</small>;
+  const empty=scope==='mine'?'Nothing here yet. Press New.':scope==='with'?'Nothing has been shared with you yet.':'You have not shared anything yet.';
+  const label=`Open ${meta.noun}`;
+  return <><div className={`ws-two notes${kind==='board'?' boards':''}`}><section className="panel"><div className="panelhead"><h2><Icon size={18}/> {meta.name}</h2><button className="primary" onClick={create}><Plus size={15}/> New</button></div>
+      <div className="notes-scope" role="tablist" aria-label="Which files">{SCOPES.map(([v,l])=><button key={v} type="button" role="tab" aria-selected={scope===v} className={`wb-cat${scope===v?' on':''}`} onClick={()=>setScope(v)}>{l}</button>)}</div>
+      {kind==='board'?<>{list.length?<label className="wb-pick">{label}<select value={list.some(n=>n.id===open?.id)?open.id:''} onChange={e=>{if(e.target.value)pick(e.target.value)}} aria-label={label}><option value="">Choose…</option>{list.map(n=><option key={n.id} value={n.id}>{n.title} · {scope==='with'?`${n.owner}, ${accessWord(n.access)}`:shortDate(n.updated_at)}</option>)}</select></label>:<p className="muted pad">{empty}</p>}<div className="wb-side wb2" ref={setHost}/></>
+      :list.length?list.map(n=><button key={n.id} className={`ws-ch shared-row${open?.id===n.id?' on':''}`} onClick={()=>pick(n.id)}><div className="ws-main"><b>{n.title}</b>{row(n)}</div></button>):<p className="muted pad">{empty}</p>}
+      <small className="muted pad">{scope==='mine'?'Private to you until you share it. Changes save automatically.':scope==='with'?'Open a file to use it with the access you were given.':'Open a file, then press Share to see or change who has access.'}</small></section>
+    <section className="panel ws-editor">{open?<><div className="panelhead"><input className="ws-title" value={title} aria-label="Title" readOnly={ro} onChange={e=>{setTitle(e.target.value);queue({title:e.target.value})}}/><span className="muted small" role="status">{state==='Saved'?<><Check size={13}/> Saved</>:state==='conflict'?'':state}</span>
+        {level===4&&<button className="iconbtn" aria-label="Share" title="Share" onClick={()=>{flush();setSharing(true)}}><Share2 size={16}/></button>}{level===4&&<button className="iconbtn" aria-label="Delete" onClick={remove}><Trash2 size={16}/></button>}</div>
+      <SharedBanner access={access} owner={open.owner} kind={kind}/>
+      {state==='conflict'&&<div className="error shared-banner" role="alert">Someone else saved changes to this file after you opened it, so your latest edits were not saved. <button className="textbtn" onClick={reload}>Reload their version</button></div>}
+      {kind==='doc'?<textarea className="ws-doc" value={content} aria-label="Note text" placeholder={ro?'':'Start typing…'} readOnly={ro} onChange={e=>{setContent(e.target.value);queue({content:e.target.value})}}/>
+      :kind==='board'?<Board key={open.id+state.slice(0,0)} name={title} pictureRef={pic} toolsHost={host} readOnly={ro} content={content} onChange={c=>{setContent(c);queue({content:c})}}/>
+      :kind==='wp'?<WordEditor key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
+      :kind==='sheet'?<SheetEditor key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
+      :<DeckEditor key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>}
+      <CommentsPanel key={open.id} request={request} note={open.id} canWrite={level>=2}/></>:<p className="muted pad">Choose or create {kind==='doc'||kind==='wp'?'a '+meta.noun:'a '+meta.noun}.</p>}</section></div>
+    {sharing&&open&&level===4&&<ShareDialog request={request} note={open.id} kind={kind} title={title} content={content} picture={()=>pic.current?pic.current():null} onClose={()=>setSharing(false)}/>}</>;
 }
