@@ -141,7 +141,7 @@ export function ChatPage({request,initial}:{request:any;initial?:string}){
       :<p className="muted pad">Choose a conversation on the left, or press New chat.</p>}</section>{newOpen&&<NewChat request={request} onClose={()=>setNewOpen(false)} onOpen={(id:string)=>{setNewOpen(false);setCur(id);loadCh()}}/>}</div>;
 }
 
-/* ---------------- Docs and Whiteboards ---------------- */
+/* ---------------- Notes and Whiteboards ---------------- */
 type Stroke={c:string;w:number;p:number[][]};
 const COLORS=['#172033','#2b62f0','#f0642f','#1c9a5b','#c026d3','#f5b301'];
 function Board({content,onChange}:{content:string;onChange:(c:string)=>void}){
@@ -164,13 +164,13 @@ export function NotesPage({request,kind}:{request:any;kind:'doc'|'board'}){
   const loadList=useCallback(()=>request(`/notes?kind=${kind}`).then(setList).catch(()=>{}),[request,kind]);
   useEffect(()=>{setOpen(null);openId.current='';loadList()},[kind]);
   const pick=async(id:string)=>{clearTimeout(timer.current);const n=await request(`/notes/${id}`);openId.current=id;setOpen(n);setTitle(n.title);setContent(n.content);setState('')};
-  const create=async()=>{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:kind==='doc'?'Untitled doc':'Untitled board',content:''})});await loadList();pick(n.id)};
+  const create=async()=>{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:kind==='doc'?'Untitled note':'Untitled board',content:''})});await loadList();pick(n.id)};
   const queue=(patch:any)=>{setState('Saving…');clearTimeout(timer.current);const id=openId.current;timer.current=setTimeout(async()=>{try{await request(`/notes/${id}`,{method:'PUT',body:JSON.stringify(patch)});setState('Saved');loadList()}catch(e:any){setState('Not saved: '+e.message)}},700)};
   const remove=async()=>{if(!open||!window.confirm(`Delete "${title}"?`))return;await request(`/notes/${open.id}`,{method:'DELETE'});setOpen(null);openId.current='';loadList()};
   const Icon=kind==='doc'?FileText:PenLine;
-  return <div className="ws-two notes"><section className="panel"><div className="panelhead"><h2><Icon size={18}/> {kind==='doc'?'Docs':'Whiteboards'}</h2><button className="primary" onClick={create}><Plus size={15}/> New</button></div>
+  return <div className="ws-two notes"><section className="panel"><div className="panelhead"><h2><Icon size={18}/> {kind==='doc'?'Notes':'Whiteboards'}</h2><button className="primary" onClick={create}><Plus size={15}/> New</button></div>
       {list.length?list.map(n=><button key={n.id} className={`ws-ch${open?.id===n.id?' on':''}`} onClick={()=>pick(n.id)}><div className="ws-main"><b>{n.title}</b><small className="muted">Edited {new Date(n.updated_at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small></div></button>):<p className="muted pad">Nothing here yet. Press New.</p>}
       <small className="muted pad">Private to you. Changes save automatically.</small></section>
     <section className="panel ws-editor">{open?<><div className="panelhead"><input className="ws-title" value={title} aria-label="Title" onChange={e=>{setTitle(e.target.value);queue({title:e.target.value})}}/><span className="muted small" role="status">{state==='Saved'?<><Check size={13}/> Saved</>:state}</span><button className="iconbtn" aria-label="Delete" onClick={remove}><Trash2 size={16}/></button></div>
-      {kind==='doc'?<textarea className="ws-doc" value={content} aria-label="Document text" placeholder="Start typing…" onChange={e=>{setContent(e.target.value);queue({content:e.target.value})}}/>:<Board key={open.id} content={content} onChange={c=>{setContent(c);queue({content:c})}}/>}</>:<p className="muted pad">Choose or create {kind==='doc'?'a doc':'a whiteboard'}.</p>}</section></div>;
+      {kind==='doc'?<textarea className="ws-doc" value={content} aria-label="Note text" placeholder="Start typing…" onChange={e=>{setContent(e.target.value);queue({content:e.target.value})}}/>:<Board key={open.id} content={content} onChange={c=>{setContent(c);queue({content:c})}}/>}</>:<p className="muted pad">Choose or create {kind==='doc'?'a note':'a whiteboard'}.</p>}</section></div>;
 }
