@@ -261,7 +261,7 @@ async def _senders(db: AsyncSession, owner: User) -> list[dict]:
 
 @router.get("/booking-senders")
 async def booking_senders(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    """Which address booking emails will come from (shown on the Scheduling tab). Never includes a password."""
+    """Which address booking emails will come from (shown on the Booking tab). Never includes a password."""
     s = await _senders(db, user)
     return {"from": (s[0].get("from") or s[0].get("address")) if s else "", "app_account": bool(s and s[0].get("platform")), "count": len(s)}
 
