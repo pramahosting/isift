@@ -156,7 +156,7 @@ function Board({content,onChange}:{content:string;onChange:(c:string)=>void}){
     <select value={w} onChange={e=>setW(Number(e.target.value))} aria-label="Line width"><option value={2}>Thin</option><option value={3}>Medium</option><option value={7}>Thick</option><option value={16}>Marker</option></select>
     <button className="iconbtn" title="Undo" aria-label="Undo" onClick={()=>{strokes.current.pop();draw();save()}}><Undo2 size={16}/></button>
     <button className="textbtn danger" onClick={()=>{if(window.confirm('Clear the whole board?')){strokes.current=[];draw();save()}}}>Clear</button></div>
-    <canvas ref={cv} width={1200} height={700} aria-label="Whiteboard" onPointerDown={e=>{(e.target as Element).setPointerCapture(e.pointerId);cur.current={c:eraser?'#fff':color,w:eraser?Math.max(w,12):w,p:[pt(e)]};draw()}} onPointerMove={e=>{if(!cur.current)return;cur.current.p.push(pt(e));draw()}} onPointerUp={()=>{if(!cur.current)return;strokes.current.push(cur.current);cur.current=null;draw();save()}}/></div>;
+    <canvas ref={cv} className={eraser?'erasing':''} width={1200} height={700} aria-label="Whiteboard" onPointerDown={e=>{(e.target as Element).setPointerCapture(e.pointerId);cur.current={c:eraser?'#fff':color,w:eraser?Math.max(w,12):w,p:[pt(e)]};draw()}} onPointerMove={e=>{if(!cur.current)return;cur.current.p.push(pt(e));draw()}} onPointerUp={()=>{if(!cur.current)return;strokes.current.push(cur.current);cur.current=null;draw();save()}}/></div>;
 }
 
 export function NotesPage({request,kind}:{request:any;kind:'doc'|'board'}){
