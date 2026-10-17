@@ -242,3 +242,9 @@ Tick **Open room** when scheduling (also with Repeat), or on the **Personal Meet
 
 ## Deleting meetings (owner and administrator)
 The person who scheduled a meeting can delete one occurrence or the whole series. An administrator can do the same for any iSift room meeting from **Admin settings > All meetings** (Zoom, Teams and Google Meet meetings can only be deleted by their owner). When the last meeting of a series is deleted, the shared link stops working. The Personal Meeting Room is permanent: it has no delete action, and deleting a meeting scheduled on it never closes it. Admin deletions are written to the audit log with the owner.
+
+## Whiteboard: shape library, workflows, zoom
+The whiteboard mixes free-hand drawing with a shape library (Basic, ER, UML, BPMN 2.0, containers and callouts, quadrant chart, connector presets, and generic AWS / Azure / Google Cloud / agentic-AI tiles in each provider's colour, not official logos), equations, ready-made workflow templates (Insert a workflow), zoom (buttons, Ctrl and the wheel, 20-400%), a Hand tool, and a Board shape setting (up to 4000 × 4000). Boards are stored as JSON in the note (`{v:2, items, board, view}`); older boards open unchanged. The library lives in `frontend/src/WbLib.ts` and the board in `frontend/src/Whiteboard.tsx`; add a service by adding a line to the lists in `WbLib.ts`.
+
+## Sharing notes and whiteboards by email
+The Share button on a note or whiteboard emails it as a PDF to contact groups, contacts and typed addresses (up to 50 at a time, one email each). It sends from the app's email account (Admin settings, Email sent by the app) first, then the person's own Commbox mailboxes, so one of those must be set up. Notes become a text PDF on the server (no extra libraries); notes with letters outside Western alphabets, and whiteboards, are drawn as pictures by the browser and placed on PDF pages. Endpoint: `POST /api/v1/notes/{id}/share`.

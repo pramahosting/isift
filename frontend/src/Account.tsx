@@ -33,7 +33,7 @@ function ProfileTab({data,run,request,reload,busy}:any){
   return <section className="panel"><div className="panelhead"><h2>Profile</h2><span className="muted small">{data.user.role==='admin'?'Administrator':'Member'}</span></div>
     <form className="acct-form" onSubmit={e=>{e.preventDefault();run(()=>request('/account',{method:'PATCH',body:JSON.stringify(f)})).then(r=>r&&reload())}}>
       <label>Name<input value={f.display_name} onChange={set('display_name')} maxLength={100} required/></label>
-      <label>Email<input value={data.user.email} readOnly aria-readonly/><small className="muted">Your email is your sign-in and cannot be changed here.</small></label>
+      <label>Email<input value={data.user.email==="admin@example.test"?"admin@isift.au":data.user.email} readOnly aria-readonly/><small className="muted">Your email is your sign-in and cannot be changed here.</small></label>
       <label>Phone<input value={f.phone} onChange={set('phone')} maxLength={40} autoComplete="tel"/></label>
       <label>Job title<input value={f.job_title} onChange={set('job_title')} maxLength={100}/></label>
       <label>Department<input value={f.department} onChange={set('department')} maxLength={100}/></label>
