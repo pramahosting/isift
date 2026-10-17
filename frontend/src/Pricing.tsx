@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {Check,Sun,ArrowLeft,Sparkles,Building2} from 'lucide-react';
+import {LegalFooter} from './Legal';
 
 export type PlanId='basic'|'individual'|'business';
 export type Period='monthly'|'yearly';
@@ -31,5 +32,5 @@ export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean
           <button type="button" className={p.popular?'primary':'secondary'} disabled={current===p.id} onClick={()=>onChoose(p.id,annual?'yearly':'monthly')}>{current===p.id?'Your current plan':loggedIn?(p.id==='basic'?'Use Basic':`Upgrade to ${p.name}`):p.cta}</button>
           <ul>{p.features.map(f=><li key={f}><Check size={15}/>{f}</li>)}</ul></section>})}</div>
       <p className="pr-fine">Prices are per user in {cur}, taken by card through Square. Individual and Business renew automatically; you can cancel any time and keep the plan until the end of the period you paid for.</p>
-    </main></div>;
+    </main><LegalFooter/></div>;
 }

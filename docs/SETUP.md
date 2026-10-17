@@ -197,3 +197,26 @@ On **Plan and billing**, choosing another paid plan (or switching monthly/yearly
 - **Move to Basic** still keeps the plan until the paid period ends. Ticking "End my plan today and ask for a refund" ends it now and files a refund request for the unused time.
 
 **No refund is ever sent automatically.** Requests wait under **Admin settings > Payments > Refund requests**. An administrator can **Approve and refund** (optionally a smaller amount, with a note) or **Decline**. Approving sends the money back through Square to the card that paid, capped at what was actually paid; the customer is notified either way and sees the status under Plan and billing. If Square rejects a refund, the request stays open and the reason is shown.
+
+
+## Discussion groups and the boardroom table
+
+A host (or co-host) can split a large meeting into **discussion groups**: press **Groups** in the meeting toolbar, choose how many groups, optionally a time limit, and press **Start**. People are shared out evenly in the order they joined; hosts stay in the main room unless "Put hosts into groups too" is ticked.
+
+- Each group is **separate**: its members see, hear and chat only with each other. The server refuses video/audio signalling and chat across groups, so this is not just a hidden button.
+- Every browser connects only to the people in its group (not the whole meeting), which is why discussion groups also make a large meeting lighter to run.
+- The host sees everyone by group, can **move anyone** to another group or the main room, send an **announcement** to all groups, and press **Bring everyone back**. With a time limit set, everyone returns automatically and a countdown shows in each group. A participant in a group can press **Ask the host**.
+- People who join during the discussion start in the main room; the host can move them into a group.
+- Chat is kept per group: a group's messages are not shown in the main chat or in another group.
+
+**Boardroom table.** A room of **10 or fewer** people (the whole meeting, or any group) is shown around a table, rectangular or round, with a nameplate for each person; the loudest speaker gets a green outline. Press **Gallery** or **Table** (and **Round** or **Rectangle**) in the toolbar to change; the choice is remembered. A room of **more than 10** uses the video gallery instead, scrolling when there are many people. A screen share, or a screen narrower than 720 pixels, also uses the gallery. When you choose the number of groups the panel says how many people each group will have and offers the smallest number of groups that keeps every group at 10 or fewer.
+
+Limits: video is sent directly between browsers, so a single meeting of many people on weak networks can struggle; groups of 10 or fewer are the comfortable size. Recording captures what the host's own screen shows (the host's group or the main room).
+
+## Legal pages and the customer chat icon
+
+The footer of the home page, the Pricing page and the signed-in workspace links to **Terms**, **Privacy**, **Trust Center**, **Acceptable Use Guidelines** and **Legal & Compliance**. Each page has a **Back to home** link at the top and bottom. The same pages are reachable at `/terms`, `/privacy`, `/trust`, `/acceptable-use` and `/legal-compliance` on your site (useful for the privacy and terms addresses that Google, Microsoft and Square ask for).
+
+The wording is in `frontend/src/Legal.tsx`. It describes what iSift really does today (recordings on the host's computer by default, Basic cloud copies kept 2 days, Square payments, Groq AI, Neon, Northflank, Cloudflare). **Have a lawyer review it** and update the contact line at the top of that file before relying on it.
+
+The round **Ask** icon at the bottom right of the public pages and the workspace opens the iSift assistant. With a Groq key (Admin settings > Groq AI) it uses the model saved there; without one, or if Groq fails, it answers from fixed answers in `backend/app/api/routes_support.py`. It is hidden inside a live meeting and inside an embedded booking page, answers only about iSift, never stores what visitors type, and allows 20 messages per address every 10 minutes.

@@ -16,6 +16,14 @@ No Docker Desktop or database URL is needed for the local demo. First launch nee
 
 Sign in as admin and open **Admin settings**. Every integration value (Groq AI, Microsoft Entra/Graph, Power Automate, failure email) can be edited there. The current value is shown under each field with its source (saved here, server environment or default). Secrets are encrypted in the database and shown masked. Changes apply immediately to the API and worker, with no restart, and **Reset to default** returns a value to the `.env` setting. The database connection and auth mode stay read-only and are set in the server environment.
 
+## Meetings: discussion groups and boardroom table
+
+A host can split a large meeting into discussion groups (Groups button); each group of 10 or fewer is shown around a boardroom table, larger ones as a gallery. Details in [docs/SETUP.md](docs/SETUP.md).
+
+## Legal pages and customer chat
+
+Terms, Privacy, Trust Center, Acceptable Use Guidelines and Legal & Compliance are linked in the footer (wording in `frontend/src/Legal.tsx`, have a lawyer review it). The round **Ask** icon opens a customer assistant powered by the Groq model from Admin settings.
+
 ## AI service (Groq)
 
 Minutes, action items, daily briefings, transcripts of recordings and the booking-link email all use **Groq**. No Microsoft or Azure account is needed.
