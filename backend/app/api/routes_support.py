@@ -32,8 +32,8 @@ AI: minutes, action items and morning briefings are drafted by AI and must be re
 
 PLANS (prices per user per month, shown in the website's currency; Individual and Business are paid by card through Square and renew automatically):
 - Basic: free for ever. Browser video meetings with chat and screen sharing, shared docs and whiteboard, Commbox, transcripts and action items.
-- Individual: about 13.59 monthly or 12.91 per month billed yearly (5% less than paying monthly) (US dollar list price; the pricing page shows the local currency). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
-- Business: about 17.59 monthly or 16.71 per month billed yearly (5% less than paying monthly). Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
+- Individual: about 13.59 monthly or 10.76 per month billed yearly (A$129.16 a year, about 21% less than paying monthly) (US dollar list price; the pricing page shows the local currency). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
+- Business: about 17.59 monthly or 13.93 per month billed yearly (A$167.12 a year, about 21% less than paying monthly). Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
 You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.
 
 SAFETY AND LEGAL PAGES: the Terms, Privacy, Trust Center, Acceptable Use Guidelines and Legal & Compliance pages are linked in the footer of the website.

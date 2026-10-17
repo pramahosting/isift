@@ -937,10 +937,10 @@ def test_plans_square_setup_and_billing(client, monkeypatch):
     from datetime import date, timedelta
     from app.integrations import square as SQ
     h, tok = login(client)
-    pl = client.get("/api/v1/billing/plans").json()                       # public, yearly = 12 x monthly less 5%
+    pl = client.get("/api/v1/billing/plans").json()                       # public, yearly = earlier yearly less 5%
     got = {p["id"]: p for p in pl["plans"]}
     assert [p["id"] for p in pl["plans"]] == ["basic", "individual", "business"] and got["basic"]["monthly"] == 0
-    assert got["individual"]["monthly"] == 1359 and got["individual"]["per_month_yearly"] == 1291 and got["business"]["monthly"] == 1759 and got["business"]["per_month_yearly"] == 1671
+    assert got["individual"]["monthly"] == 1359 and got["individual"]["per_month_yearly"] == 1076 and got["business"]["monthly"] == 1759 and got["business"]["per_month_yearly"] == 1393
     me = client.get("/api/v1/billing/me", headers=h).json(); assert me["plan"] == "basic" and me["square"] is None
     assert client.post("/api/v1/billing/card", json={"source_id": "cnon:x"}, headers=h).status_code == 503      # not set up yet
     # admin sets Square up; the token is stored encrypted and masked
@@ -963,9 +963,9 @@ def test_plans_square_setup_and_billing(client, monkeypatch):
     # switch to Business yearly: the unused time of the monthly plan (all of 13.59 today) is credited, so only the difference is charged
     st["decline"] = True; d = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h); assert d.status_code == 402     # a declined difference leaves the plan alone
     assert client.get("/api/v1/billing/me", headers=h).json()["plan"] == "individual"; st["decline"] = False
-    qq = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert qq["credit_cents"] == 1359 and qq["charge_cents"] == 18694 and qq["refund_cents"] == 0
-    ch = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert ch["status"] == "changed" and ch["charged_cents"] == 18694
-    assert st["payments"][-1]["amount_money"]["amount"] == 18694
+    qq = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert qq["credit_cents"] == 1359 and qq["charge_cents"] == 15353 and qq["refund_cents"] == 0
+    ch = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert ch["status"] == "changed" and ch["charged_cents"] == 15353
+    assert st["payments"][-1]["amount_money"]["amount"] == 15353
     assert client.get("/api/v1/billing/me", headers=h).json()["plan"] == "business"
     # a declined upgrade leaves the plan alone
     st["decline"] = True                                                           # from here the card is declined (for the renewal retries below)
@@ -1213,7 +1213,7 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
     me0 = client.get("/api/v1/billing/me", headers=h).json()
     if me0["plan"] != "basic": client.post("/api/v1/billing/subscribe", json={"plan": "basic", "period": "monthly", "immediate": True}, headers=h)
     client.post("/api/v1/billing/card", json={"source_id": "cnon:ok"}, headers=h)
-    # Business yearly 200.53, then move half way through the year to Individual monthly
+    # Business yearly 167.12, then move half way through the year to Individual monthly
     s = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h); assert s.status_code == 200, (s.text, client.get("/api/v1/billing/me", headers=h).json())
     async def backdate(days):
         async with SessionLocal() as db:
@@ -1225,7 +1225,7 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
         return (await db.execute(select(User).where(User.email == "admin@example.test"))).scalars().first()
     asyncio.run(backdate(182))
     q = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly"}, headers=h).json()
-    credit = round(20053 * 183 / 365); assert q["kind"] == "change" and q["credit_cents"] == credit and q["charge_cents"] == 0 and q["refund_cents"] == credit - 1359
+    credit = round(16712 * 183 / 365); assert q["kind"] == "change" and q["credit_cents"] == credit and q["charge_cents"] == 0 and q["refund_cents"] == credit - 1359
     n = len(st["payments"])
     d = client.post("/api/v1/billing/subscribe", json={"plan": "individual", "period": "monthly"}, headers=h).json()
     assert d["status"] == "changed" and d["charged_cents"] == 0 and d["refund_requested_cents"] == credit - 1359 and len(st["payments"]) == n      # switched at once, no new charge

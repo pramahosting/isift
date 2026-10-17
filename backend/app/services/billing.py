@@ -18,11 +18,11 @@ log = logging.getLogger("isift")
 MAX_ATTEMPTS, RETRY_DAYS, GRACE_DAYS = 3, 3, 7
 PENDING_STALE = timedelta(minutes=10)
 LEGACY = {"free": "basic", "pro": "individual", "enterprise": "business"}
-# Monthly prices as listed. Yearly = 12 x the monthly price, less 5%; per_month_yearly is that yearly total divided by 12 (for display).
+# Monthly prices as listed. Yearly was 12 x a per-month price of 11.33 / 14.66 (13.596 / 17.592 a year); it now has a further 5% off: 129.16 / 167.12 a year. per_month_yearly is that total divided by 12 (for display).
 PLANS = {
  "basic": {"name": "Basic", "monthly": 0, "yearly": 0, "per_month_yearly": 0},
- "individual": {"name": "Individual", "monthly": 1359, "yearly": 15493, "per_month_yearly": 1291},
- "business": {"name": "Business", "monthly": 1759, "yearly": 20053, "per_month_yearly": 1671},
+ "individual": {"name": "Individual", "monthly": 1359, "yearly": 12916, "per_month_yearly": 1076},
+ "business": {"name": "Business", "monthly": 1759, "yearly": 16712, "per_month_yearly": 1393},
 }
 PERIODS = ("monthly", "yearly")
 
