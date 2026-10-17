@@ -17,7 +17,7 @@ from app.models import User, Meeting, Transcript, TranscriptSegment, Minutes, Ac
 from app.schemas.contracts import UserOut, MeetingOut, MinutesUpdate, ActionUpdate, SettingsUpdate, DeliveryCallback
 from app.services.briefings import build_preview
 from app.services import calendar_sync as cal
-from app.services.llm import ai_configured, ping as ai_ping
+from app.services.llm import ai_configured
 from app.integrations.graph import mailbox_for
 from app.integrations.graph import GraphUnavailable, graph
 from app.demo import seed_demo
@@ -352,7 +352,7 @@ async def update_admin_settings(data:SettingsUpdate,user:User=Depends(require_ad
 
 @api.post("/admin/integrations/test")
 async def test_integrations(user:User=Depends(require_admin)):
-    result={"entra":{"configured":bool(settings.entra_tenant_id),"status":"configured" if settings.entra_tenant_id else "not_configured"},"graph":{"configured":False,"status":"not_configured"},"copilot_ai":{"configured":False,"status":"not_configured"},"teams_delivery":{"configured":bool(settings.automation_shared_token),"status":"requires Power Automate tenant validation"}}
+    result={"entra":{"configured":bool(settings.entra_tenant_id),"status":"configured" if settings.entra_tenant_id else "not_configured"},"graph":{"configured":False,"status":"not_configured"},"teams_delivery":{"configured":bool(settings.automation_shared_token),"status":"requires Power Automate tenant validation"}}
     if settings.graph_client_id and settings.graph_client_secret and settings.graph_user_id:
         try:
             from datetime import time, timedelta
@@ -360,9 +360,6 @@ async def test_integrations(user:User=Depends(require_admin)):
             local_now=datetime.now(zone(settings.default_timezone)); start=datetime.combine(local_now.date(),time.min,tzinfo=local_now.tzinfo)
             await graph.calendar(start,start+timedelta(days=1)); result["graph"]={"configured":True,"status":"calendar_connected","detail":"Calendar view request succeeded for the configured user. Transcript and message scopes are separate."}
         except Exception as exc: result["graph"]={"configured":True,"status":"failed","detail":str(exc)[:160]}
-    if ai_configured():
-        ok,detail=await ai_ping()
-        result["copilot_ai"]={"configured":True,"status":"connected" if ok else "failed","detail":detail}
     from app.services import groq as _groq
     if _groq.configured():
         ok,detail=await _groq.ping(); result["groq_ai"]={"configured":True,"status":"connected" if ok else "failed","detail":detail}

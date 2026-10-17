@@ -182,10 +182,10 @@ async def setup_status(user: User = Depends(require_admin)):
     items = [
         {"key": "password", "title": "Administrator password", "required": True, "ok": not default_pw,
          "detail": "Still the built-in sample password. Set LOCAL_ADMIN_PASSWORD in the .env file, then restart." if default_pw else "Changed from the sample password."},
-        {"key": "ai", "title": "AI for minutes and briefings (Azure OpenAI)", "required": True, "ok": ai_configured(),
-         "detail": "Add the endpoint, key and chat deployment name under Admin settings > Microsoft Copilot AI." if not ai_configured() else "Ready."},
+        {"key": "ai", "title": "AI for minutes and briefings (Groq)", "required": True, "ok": ai_configured(),
+         "detail": "Add the Groq API key and model under Admin settings > Groq AI." if not ai_configured() else "Ready."},
         {"key": "transcription", "title": "Speech-to-text for recordings", "required": False, "ok": transcription_configured(),
-         "detail": "Add a Whisper deployment name so recorded meetings get transcripts." if not transcription_configured() else "Ready."},
+         "detail": "Needs the Groq key. Recordings up to 25 MB are transcribed with Groq Whisper." if not transcription_configured() else "Ready."},
         {"key": "calendar", "title": "Calendar source", "required": False, "ok": bool(graph_configured() or settings.machine_calendar_allowed),
          "detail": "Each person adds their calendar under Connections (links, CalDAV, .ics), or enable Microsoft 365 / this computer's calendar."},
         {"key": "zoom", "title": "Zoom (create Zoom meetings, fetch recordings)", "required": False, "ok": zoom.configured(),

@@ -14,19 +14,12 @@ from app.models import IntegrationSetting
 
 log = logging.getLogger("isift")
 STORE_KEY = "integration_values"
-AZURE_HOSTS = (".openai.azure.com", ".cognitiveservices.azure.com", ".openai.azure.us", ".cognitiveservices.azure.us")  # keys are only ever sent to Azure hosts
 
 # kind: text | secret | bool | number | email | url | select
 FIELDS = [
- {"key":"azure_openai_endpoint","label":"Azure OpenAI endpoint","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"url","help":"Your resource URL, for example https://my-resource.openai.azure.com (Azure portal → your Azure OpenAI resource → Keys and Endpoint)."},
- {"key":"azure_openai_auth","label":"Sign-in method for the AI service","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"select","options":["key","entra"],"help":"key = API key below. entra = the Microsoft client ID/secret from the Microsoft section (needs the Cognitive Services OpenAI User role on the resource)."},
- {"key":"azure_openai_api_key","label":"Azure OpenAI API key","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"secret","help":"Only used when the sign-in method is key."},
- {"key":"azure_openai_chat_deployment","label":"Chat model deployment name","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"text","help":"Name of your deployed chat model, for example gpt-4o or gpt-4.1. It must support structured output."},
- {"key":"azure_openai_transcription_deployment","label":"Transcription deployment name (optional)","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"text","help":"Name of a deployed Whisper model. Only needed to transcribe uploaded audio."},
- {"key":"azure_openai_api_version","label":"API version","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"text","help":"Leave as the default unless your administrator says otherwise."},
- {"key":"groq_api_key","label":"Groq API key","group":"Groq AI (email drafting)","kind":"secret","help":"From console.groq.com, API Keys. Used only to write the draft email when you share a booking link. Leave empty to use a plain template."},
- {"key":"groq_model","label":"Groq model","group":"Groq AI (email drafting)","kind":"text","help":"For example llama-3.3-70b-versatile or llama-3.1-8b-instant."},
- {"key":"azure_openai_use_temperature","label":"Send temperature 0 for steadier output (turn off for o-series / GPT-5 reasoning models)","group":"Microsoft Copilot AI (Azure OpenAI)","kind":"bool"},
+ {"key":"groq_api_key","label":"Groq API key","group":"Groq AI (minutes, briefings, transcripts, email)","kind":"secret","help":"From console.groq.com, API Keys (starts with gsk_). Used to write minutes, action items, daily briefings, transcripts and booking-link emails."},
+ {"key":"groq_model","label":"Groq model","group":"Groq AI (minutes, briefings, transcripts, email)","kind":"text","help":"The chat model used for everything above, for example llama-3.3-70b-versatile or llama-3.1-8b-instant."},
+ {"key":"groq_transcription_model","label":"Groq transcription model (optional)","group":"Groq AI (minutes, briefings, transcripts, email)","kind":"text","help":"Speech-to-text model for recordings. Leave as whisper-large-v3-turbo unless you want whisper-large-v3."},
  {"key":"entra_tenant_id","label":"Microsoft tenant ID","group":"Microsoft Entra and Graph","kind":"text","help":"Directory (tenant) ID of your Microsoft Entra tenant."},
  {"key":"entra_api_audience","label":"API audience","group":"Microsoft Entra and Graph","kind":"text","help":"For example api://<client-id>."},
  {"key":"entra_admin_role","label":"Administrator app role","group":"Microsoft Entra and Graph","kind":"text"},
@@ -112,12 +105,6 @@ def _coerce(f,raw):
     if k=="select":
         if s not in f.get("options",[]): raise ValueError(f"{f['label']} must be one of: "+", ".join(f.get("options",[])))
         return s
-    if k=="url":
-        if s=="": return s
-        u=urlsplit(s); host=(u.hostname or "").lower()
-        if u.scheme!="https" or not any(host.endswith(x) for x in AZURE_HOSTS) or u.username or u.password:
-            raise ValueError(f"{f['label']} must be an https Azure OpenAI address such as https://my-resource.openai.azure.com")
-        return f"https://{host}"
     if k=="email" and s and ("@" not in s or " " in s): raise ValueError(f"{f['label']} must be an email address")
     if len(s)>500: raise ValueError(f"{f['label']} is too long")
     return s

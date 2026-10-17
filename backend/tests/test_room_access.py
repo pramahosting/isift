@@ -1258,3 +1258,49 @@ def test_hosted_password_error_explains_itself(monkeypatch):
     monkeypatch.setenv("LOCAL_ADMIN_PASSWORD", "ab$c")
     msg = Settings(hosted=True, local_auth_secret="x" * 40, local_admin_password="ab$c", database_url="postgresql://u:p@h/d", frontend_origin="https://a.example.com").hosted_problems()[0]
     assert "4 characters" in msg and "ab$c" not in msg.replace("a $ in", "")
+
+
+def test_minutes_and_transcripts_use_groq_and_the_saved_model(client, monkeypatch):
+    import asyncio, json as _json
+    from pydantic import BaseModel
+    from app.core.config import settings
+    from app.services import llm
+    seen = []
+    class R:
+        def __init__(self, code, body): self.status_code = code; self._b = body; self.text = _json.dumps(body)
+        def json(self): return self._b
+    class C:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None, data=None, files=None):
+            seen.append({"url": url, "auth": (headers or {}).get("Authorization"), "json": json, "data": data})
+            if url.endswith("/audio/transcriptions"): return R(200, {"text": "hello", "segments": [{"start": 0, "end": 1, "text": "hello"}]})
+            return R(200, {"choices": [{"message": {"content": '{"a": "x"}'}}]})
+    class Out(BaseModel):
+        a: str
+    monkeypatch.setattr(llm.httpx, "AsyncClient", C)
+    monkeypatch.setattr(settings, "groq_api_key", "")
+    assert not llm.ai_configured() and not llm.transcription_configured()
+    try: asyncio.run(llm.chat_json([{"role": "user", "content": "hi"}], Out)); assert False
+    except llm.AIUnavailable as e: assert "Groq" in str(e)
+    monkeypatch.setattr(settings, "groq_api_key", ' "gsk_abc" '); monkeypatch.setattr(settings, "groq_model", "llama-3.1-8b-instant"); monkeypatch.setattr(settings, "groq_transcription_model", "")
+    assert llm.ai_configured() and llm.transcription_configured()
+    assert asyncio.run(llm.chat_json([{"role": "user", "content": "hi"}], Out)).a == "x"
+    c = seen[-1]; assert c["url"] == "https://api.groq.com/openai/v1/chat/completions" and c["auth"] == "Bearer gsk_abc"
+    assert c["json"]["model"] == "llama-3.1-8b-instant" and c["json"]["response_format"] == {"type": "json_object"} and "JSON schema" in c["json"]["messages"][-1]["content"]
+    t = asyncio.run(llm.transcribe("a.webm", b"123")); assert t["text"] == "hello"
+    c = seen[-1]; assert c["url"].endswith("/audio/transcriptions") and c["data"]["model"] == "whisper-large-v3-turbo"
+    try: asyncio.run(llm.transcribe("big.webm", b"0" * (llm.MAX_AUDIO_BYTES + 1))); assert False
+    except llm.AIUnavailable as e: assert "25 MB" in str(e)
+
+
+def test_setup_status_reports_ai_ready_with_groq_only(client, monkeypatch):
+    from app.core.config import settings
+    h, _ = login(client)
+    monkeypatch.setattr(settings, "groq_api_key", "")
+    items = {i["key"]: i for i in client.get("/api/v1/admin/setup-status", headers=h).json()["items"]}
+    assert items["ai"]["ok"] is False and "Groq" in items["ai"]["title"]
+    monkeypatch.setattr(settings, "groq_api_key", "gsk_x")
+    items = {i["key"]: i for i in client.get("/api/v1/admin/setup-status", headers=h).json()["items"]}
+    assert items["ai"]["ok"] is True and items["transcription"]["ok"] is True

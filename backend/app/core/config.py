@@ -75,15 +75,9 @@ class Settings(BaseSettings):
     room_default_waiting: bool = True
     graph_context_enabled: bool = False
     automation_user_email: str = "admin@example.test"
-    azure_openai_endpoint: str = ""
-    azure_openai_auth: str = "key"
-    azure_openai_api_key: str = ""
-    azure_openai_chat_deployment: str = ""
-    azure_openai_transcription_deployment: str = ""
-    azure_openai_api_version: str = "2024-10-21"
-    azure_openai_use_temperature: bool = True
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
+    groq_transcription_model: str = "whisper-large-v3-turbo"
     automation_shared_token: str = ""
     default_timezone: str = "Australia/Sydney"
     briefing_time: str = "06:55"
