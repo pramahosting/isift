@@ -32,8 +32,8 @@ AI: minutes, action items and morning briefings are drafted by AI and must be re
 
 PLANS (prices per user per month, shown in the website's currency; Individual and Business are paid by card through Square and renew automatically):
 - Basic: free for ever. Browser video meetings with chat and screen sharing, shared docs and whiteboard, Commbox, transcripts and action items.
-- Individual: about 13.59 monthly or 11.33 per month billed yearly (US dollar list price; the pricing page shows the local currency). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
-- Business: about 17.59 monthly or 14.66 per month billed yearly. Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
+- Individual: about 13.59 monthly or 12.91 per month billed yearly (5% less than paying monthly) (US dollar list price; the pricing page shows the local currency). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
+- Business: about 17.59 monthly or 16.71 per month billed yearly (5% less than paying monthly). Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
 You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.
 
 SAFETY AND LEGAL PAGES: the Terms, Privacy, Trust Center, Acceptable Use Guidelines and Legal & Compliance pages are linked in the footer of the website.
@@ -94,3 +94,37 @@ async def support_chat(payload: dict, request: Request):
     last = msgs[-1]["content"]
     reply = await groq.converse(KNOWLEDGE, msgs)
     return {"reply": reply or fallback(last), "ai": bool(reply)}
+
+
+# ---- support request / contact / feedback forms in the page footer: emailed to the support address, nothing stored ----
+_FORM_SEEN: dict[str, list[float]] = {}
+FORM_KINDS = {"support": "Support request", "contact": "Contact us", "feedback": "Feedback"}
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+@router.post("/support/contact")
+async def support_contact(payload: dict, request: Request):
+    from app.services import signup
+    from app.integrations import mail as mailer
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "x")).split(",")[0].strip()
+    now = time.time(); hits = [t for t in _FORM_SEEN.get(ip, []) if now - t < 3600]
+    if len(hits) >= 5: raise HTTPException(429, "You have sent several messages already. Please wait a while, or email " + SUPPORT_EMAIL + ".")
+    kind = str(payload.get("kind") or "contact")
+    if kind not in FORM_KINDS: raise HTTPException(422, "Choose support request, contact us or feedback.")
+    name = re.sub(r"\s+", " ", str(payload.get("name") or "")).strip()[:100]
+    addr = str(payload.get("email") or "").strip()[:200]
+    msg = str(payload.get("message") or "").strip()[:5000]
+    topic = re.sub(r"\s+", " ", str(payload.get("topic") or "")).strip()[:150]
+    if payload.get("website"): return {"ok": True}                     # hidden field: only bots fill it in
+    if not name: raise HTTPException(422, "Please enter your name.")
+    if not _EMAIL_RE.match(addr): raise HTTPException(422, "Please enter a valid email address so we can reply.")
+    if len(msg) < 5: raise HTTPException(422, "Please write your message.")
+    sender = signup.app_sender()
+    if not sender: raise HTTPException(503, "The form cannot send email right now. Please email " + SUPPORT_EMAIL + " instead.")
+    hits.append(now); _FORM_SEEN[ip] = hits
+    if len(_FORM_SEEN) > 5000: _FORM_SEEN.clear()
+    label = FORM_KINDS[kind]
+    subject = f"[iSift {label}] " + (topic or re.sub(r"\s+", " ", msg)[:60])
+    body = f"{label}\nFrom: {name} <{addr}>\n" + (f"Subject: {topic}\n" if topic else "") + f"\n{msg}\n"
+    try: await mailer.send({**sender, "reply_to": addr}, [SUPPORT_EMAIL], subject, body)
+    except Exception: raise HTTPException(503, "Your message could not be sent. Please email " + SUPPORT_EMAIL + " instead.")
+    return {"ok": True}

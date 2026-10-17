@@ -937,10 +937,10 @@ def test_plans_square_setup_and_billing(client, monkeypatch):
     from datetime import date, timedelta
     from app.integrations import square as SQ
     h, tok = login(client)
-    pl = client.get("/api/v1/billing/plans").json()                       # public, Zoom prices less 20%
+    pl = client.get("/api/v1/billing/plans").json()                       # public, yearly = 12 x monthly less 5%
     got = {p["id"]: p for p in pl["plans"]}
     assert [p["id"] for p in pl["plans"]] == ["basic", "individual", "business"] and got["basic"]["monthly"] == 0
-    assert got["individual"]["monthly"] == 1359 and got["individual"]["per_month_yearly"] == 1133 and got["business"]["monthly"] == 1759 and got["business"]["per_month_yearly"] == 1466
+    assert got["individual"]["monthly"] == 1359 and got["individual"]["per_month_yearly"] == 1291 and got["business"]["monthly"] == 1759 and got["business"]["per_month_yearly"] == 1671
     me = client.get("/api/v1/billing/me", headers=h).json(); assert me["plan"] == "basic" and me["square"] is None
     assert client.post("/api/v1/billing/card", json={"source_id": "cnon:x"}, headers=h).status_code == 503      # not set up yet
     # admin sets Square up; the token is stored encrypted and masked
@@ -963,9 +963,9 @@ def test_plans_square_setup_and_billing(client, monkeypatch):
     # switch to Business yearly: the unused time of the monthly plan (all of 13.59 today) is credited, so only the difference is charged
     st["decline"] = True; d = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h); assert d.status_code == 402     # a declined difference leaves the plan alone
     assert client.get("/api/v1/billing/me", headers=h).json()["plan"] == "individual"; st["decline"] = False
-    qq = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert qq["credit_cents"] == 1359 and qq["charge_cents"] == 16233 and qq["refund_cents"] == 0
-    ch = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert ch["status"] == "changed" and ch["charged_cents"] == 16233
-    assert st["payments"][-1]["amount_money"]["amount"] == 16233
+    qq = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert qq["credit_cents"] == 1359 and qq["charge_cents"] == 18694 and qq["refund_cents"] == 0
+    ch = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h).json(); assert ch["status"] == "changed" and ch["charged_cents"] == 18694
+    assert st["payments"][-1]["amount_money"]["amount"] == 18694
     assert client.get("/api/v1/billing/me", headers=h).json()["plan"] == "business"
     # a declined upgrade leaves the plan alone
     st["decline"] = True                                                           # from here the card is declined (for the renewal retries below)
@@ -1213,7 +1213,7 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
     me0 = client.get("/api/v1/billing/me", headers=h).json()
     if me0["plan"] != "basic": client.post("/api/v1/billing/subscribe", json={"plan": "basic", "period": "monthly", "immediate": True}, headers=h)
     client.post("/api/v1/billing/card", json={"source_id": "cnon:ok"}, headers=h)
-    # Business yearly 175.92, then move half way through the year to Individual monthly
+    # Business yearly 200.53, then move half way through the year to Individual monthly
     s = client.post("/api/v1/billing/subscribe", json={"plan": "business", "period": "yearly"}, headers=h); assert s.status_code == 200, (s.text, client.get("/api/v1/billing/me", headers=h).json())
     async def backdate(days):
         async with SessionLocal() as db:
@@ -1225,7 +1225,7 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
         return (await db.execute(select(User).where(User.email == "admin@example.test"))).scalars().first()
     asyncio.run(backdate(182))
     q = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly"}, headers=h).json()
-    credit = round(17592 * 183 / 365); assert q["kind"] == "change" and q["credit_cents"] == credit and q["charge_cents"] == 0 and q["refund_cents"] == credit - 1359
+    credit = round(20053 * 183 / 365); assert q["kind"] == "change" and q["credit_cents"] == credit and q["charge_cents"] == 0 and q["refund_cents"] == credit - 1359
     n = len(st["payments"])
     d = client.post("/api/v1/billing/subscribe", json={"plan": "individual", "period": "monthly"}, headers=h).json()
     assert d["status"] == "changed" and d["charged_cents"] == 0 and d["refund_requested_cents"] == credit - 1359 and len(st["payments"]) == n      # switched at once, no new charge
@@ -1444,3 +1444,24 @@ def test_a_broken_groq_falls_back_to_fixed_answers(client, monkeypatch):
     monkeypatch.setattr(groq.httpx, "AsyncClient", C); monkeypatch.setattr(settings, "groq_api_key", "gsk_x")
     r = client.post("/api/v1/support/chat", json={"messages": [{"role": "user", "content": "can I record?"}]}).json()
     assert r["ai"] is False and "Recording banner" in r["reply"]
+
+
+def test_footer_contact_form(client, monkeypatch):
+    from app.core.config import settings
+    from app.api import routes_support as rs
+    from app.integrations import mail as mailer
+    rs._FORM_SEEN.clear()
+    ok = {"kind": "support", "name": "Pat", "email": "pat@customer.org", "topic": "Cannot join\r\nBcc: x@y.z", "message": "I cannot join my meeting."}
+    for k, v in (("name", ""), ("email", "nope"), ("message", "hi"), ("kind", "spam")):
+        assert client.post("/api/v1/support/contact", json={**ok, k: v}).status_code == 422
+    assert client.post("/api/v1/support/contact", json={**ok, "website": "http://bot"}).json() == {"ok": True}
+    monkeypatch.setattr(settings, "smtp_host", ""); monkeypatch.setattr(settings, "smtp_from", ""); monkeypatch.setattr(settings, "smtp_user", "")
+    r = client.post("/api/v1/support/contact", json=ok); assert r.status_code == 503 and "info@isift.au" in r.json()["detail"]
+    sent = []
+    async def fake(acct, to, subject, body, ics=None): sent.append((acct, to, subject, body))
+    monkeypatch.setattr(mailer, "send", fake); monkeypatch.setattr(settings, "smtp_host", "smtp.example.org"); monkeypatch.setattr(settings, "smtp_from", "app@isift.au")
+    assert client.post("/api/v1/support/contact", json=ok).json() == {"ok": True}
+    acct, to, subject, body = sent[0]
+    assert to == ["info@isift.au"] and acct["reply_to"] == "pat@customer.org" and "\n" not in subject and "\r" not in subject and subject.startswith("[iSift Support request]") and "I cannot join" in body
+    codes = [client.post("/api/v1/support/contact", json=ok).status_code for _ in range(6)]
+    assert codes[-1] == 429

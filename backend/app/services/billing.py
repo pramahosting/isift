@@ -18,11 +18,11 @@ log = logging.getLogger("isift")
 MAX_ATTEMPTS, RETRY_DAYS, GRACE_DAYS = 3, 3, 7
 PENDING_STALE = timedelta(minutes=10)
 LEGACY = {"free": "basic", "pro": "individual", "enterprise": "business"}
-# Zoom's list prices (Pro $16.99 / $14.16, Business $21.99 / $18.33 per month) less 20%. Yearly = 12 x the discounted per-month price.
+# Monthly prices as listed. Yearly = 12 x the monthly price, less 5%; per_month_yearly is that yearly total divided by 12 (for display).
 PLANS = {
  "basic": {"name": "Basic", "monthly": 0, "yearly": 0, "per_month_yearly": 0},
- "individual": {"name": "Individual", "monthly": 1359, "yearly": 13596, "per_month_yearly": 1133},
- "business": {"name": "Business", "monthly": 1759, "yearly": 17592, "per_month_yearly": 1466},
+ "individual": {"name": "Individual", "monthly": 1359, "yearly": 15493, "per_month_yearly": 1291},
+ "business": {"name": "Business", "monthly": 1759, "yearly": 20053, "per_month_yearly": 1671},
 }
 PERIODS = ("monthly", "yearly")
 
