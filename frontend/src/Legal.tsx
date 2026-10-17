@@ -105,21 +105,26 @@ function FooterForm({kind,onClose}:{kind:FormKind;onClose:()=>void}){
     </div></div>;
 }
 
-export function LegalFooter(){
+export function LegalFooter(_p:{tagline?:boolean}={}){
   const [map,setMap]=useState(false);const [form,setForm]=useState<FormKind|null>(null);
   const open=(k:FormKind)=>(e:React.MouseEvent)=>{e.preventDefault();setForm(k)};
   return <footer className="site-footer">
-    <div className="sf-help"><span>Need a hand?</span>
+    <div className="sf-top"><div className="sf-help"><b>Need a hand?</b>
       {(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}
-      <a href={`mailto:${LEGAL.email}`}><Mail size={13}/> {LEGAL.email}</a></div>
+      <a href={`mailto:${LEGAL.email}`}><Mail size={13}/> {LEGAL.email}</a></div></div>
     {map&&<nav id="sf-sitemap" className="sf-sitemap" aria-label="Sitemap">
       <div><h4>iSift</h4><a href="#/">Home</a><a href="#/pricing">Plans and pricing</a></div>
       <div><h4>Legal</h4>{LEGAL_LINKS.map(l=><a key={l.slug} href={`#/${l.slug}`}>{l.label}</a>)}</div>
       <div><h4>Support</h4>{(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}<a href={`mailto:${LEGAL.email}`}>Email {LEGAL.email}</a></div>
     </nav>}
     <div className="sf-bar">
-      <div className="sf-left"><span>Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span><LegalLinks/></div>
+      <LegalLinks/>
       <button type="button" className="sf-map" aria-expanded={map} aria-controls="sf-sitemap" onClick={()=>setMap(m=>!m)}>Sitemap <ChevronDown size={14} className={map?'up':''}/></button>
+    </div>
+    <div className="sf-base">
+      <span className="sf-copy">Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span>
+      <button type="button" className="sf-top-link" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})}>iSift · Back to top</button>
+      <span className="sf-tag">Private by design · Human-reviewed outcomes</span>
     </div>
     {form&&<FooterForm kind={form} onClose={()=>setForm(null)}/>}
   </footer>;

@@ -57,6 +57,8 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const [mute,setMute]=useState(!!initial?.options?.mute_on_entry);
   const [vidOff,setVidOff]=useState(!!initial?.options?.video_off_on_entry);
   const [autoRec,setAutoRec]=useState(!!initial?.options?.auto_record);
+  const [vroom,setVroom]=useState(initial?.options?.virtual_room!==false);const [vrAccount,setVrAccount]=useState(true);
+  useEffect(()=>{request('/account').then((a:any)=>setVrAccount(a?.profile?.virtual_room!==false)).catch(()=>{})},[]);
   const [invite,setInvite]=useState('');const [sendUpdate,setSendUpdate]=useState(true);
   const [hostOff,setHostOff]=useState(!!initial?.options?.host_video_off);
   const [canUnmute,setCanUnmute]=useState(initial?.options?.participants_can_unmute!==false);const [canVideo,setCanVideo]=useState(initial?.options?.participants_can_video!==false);
@@ -69,7 +71,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setErr('');
     try{
       const body:any={title,agenda,start_at:when,duration_minutes:dur,timezone:tz};
-      if(isRoom){body.waiting_room=waiting;body.options={mute_on_entry:mute,video_off_on_entry:vidOff,auto_record:autoRec,host_video_off:hostOff,participants_can_unmute:canUnmute,participants_can_video:canVideo};if(pmi)body.meeting_id_mode='personal';body.access=needPc?'passcode':signedIn?'signed_in':'open';if(needPc&&pcode.trim())body.passcode=pcode.trim()}
+      if(isRoom){body.waiting_room=waiting;body.options={mute_on_entry:mute,video_off_on_entry:vidOff,auto_record:autoRec,host_video_off:hostOff,participants_can_unmute:canUnmute,participants_can_video:canVideo,virtual_room:vroom};if(pmi)body.meeting_id_mode='personal';body.access=needPc?'passcode':signedIn?'signed_in':'open';if(needPc&&pcode.trim())body.passcode=pcode.trim()}
       if(!edit&&PLAT[kind]&&plats&&!plats[kind]?.ready){setSetup(kind);setBusy(false);return}
       const ext=!edit&&!!PLAT[kind];const win=ext?window.open('','isift-platform','width=1000,height=760'):null;
       if(win)try{win.document.title=PLAT[kind];win.document.body.innerHTML=`<p style="font:16px system-ui;padding:24px">Booking your ${PLAT[kind]} meeting…</p>`}catch{}
@@ -108,6 +110,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
       <label className="check"><input type="checkbox" checked={vidOff} onChange={e=>setVidOff(e.target.checked)}/> Participants’ video is off when they join</label>
       <label className="check"><input type="checkbox" checked={canUnmute} onChange={e=>setCanUnmute(e.target.checked)}/> Participants can unmute themselves</label>
       <label className="check"><input type="checkbox" checked={canVideo} onChange={e=>setCanVideo(e.target.checked)}/> Participants can start their own video</label>
+      <label className="check"><input type="checkbox" checked={vroom&&vrAccount} disabled={!vrAccount} onChange={e=>setVroom(e.target.checked)}/> Virtual room: show participants around a boardroom table (up to 10 people){!vrAccount&&<small className="muted"> — switched off for your account in My account</small>}</label>
       <label className="check"><input type="checkbox" checked={autoRec} onChange={e=>setAutoRec(e.target.checked)}/> Record the meeting automatically when I start it (everyone sees the recording banner)</label></fieldset>}
     {(people.contacts.length>0||people.groups.length>0)&&<label className="span2">Add from contacts<select value="" onChange={e=>{const v=e.target.value;if(v.startsWith('g:')){const g=people.groups.find((x:any)=>x.id===v.slice(2));addEmails((g?.contact_ids||[]).map((id:string)=>people.contacts.find((c:any)=>c.id===id)?.email))}else if(v){addEmails([people.contacts.find((c:any)=>c.id===v)?.email])}}}><option value="">Choose a contact or group…</option>{people.groups.map((g:any)=><option key={g.id} value={'g:'+g.id}>Group: {g.name}</option>)}{people.contacts.filter((c:any)=>c.email).map((c:any)=><option key={c.id} value={c.id}>{c.name} ({c.email})</option>)}</select></label>}
     <label className="span2">{edit?'Add invitees (optional)':'Invite people (optional)'}<input value={invite} onChange={e=>setInvite(e.target.value)} placeholder="name@example.com, other@example.com"/><small className="muted">They get a calendar invitation from your connected mail account (Connections page).{edit&&initial?.invitees?.length?` Already invited: ${initial.invitees.join(', ')}.`:''}</small></label>
@@ -151,7 +154,7 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {room&&row('Passcode',m.passcode?<><code>{m.passcode}</code> <button className="textbtn inline" onClick={()=>copy('pc',m.passcode)}>{copied==='pc'?'Copied':'Copy'}</button></>:<span className="muted">None</span>)}
       {secText&&row('Security',secText)}
       {link?row('Invite link',<><a href={link} onClick={e=>{if(room){e.preventDefault();location.hash=new URL(link).hash}}} className="md-link">{link}</a> <button className="textbtn inline" onClick={()=>copy('link',link)}>{copied==='link'?'Copied':'Copy link'}</button></>):row('Invite link',<span className="muted">This meeting has no online link.</span>)}
-      {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
+      {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
       {room&&row('Invited',m.invitees?.length?m.invitees.join(', '):<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
       {m.series&&row('Repeats','Part of a recurring series with one link for every meeting.')}
       {(m.kind==='teams'||m.kind==='meet')&&row(PLAT[m.kind],<span className="muted">Booked in {PLAT[m.kind]}. Changes to the time here do not change the {PLAT[m.kind]} event; change it there too.</span>)}

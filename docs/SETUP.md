@@ -224,3 +224,6 @@ The round **Ask** icon at the bottom right of the public home page only (not in 
 
 ## Footer forms (support request, contact us, feedback)
 The forms in the page footer email the message to info@isift.au (reply goes to the sender) using the account in Admin settings > Email and calendar ("Email sent by the app"). Without it the form tells people to email info@isift.au. Nothing is stored; 5 messages per hour per address.
+
+## Switching the virtual room (boardroom table) on and off
+It must be on in three places, otherwise the meeting shows only the gallery: **Admin settings > Video meetings > Virtual room available** (whole service), **My account > Profile > Virtual room** for the host (an administrator can change any person under **Admin settings > Users > Edit**), and the **Virtual room** checkbox in the meeting's options (ticked by default).

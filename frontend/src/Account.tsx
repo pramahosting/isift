@@ -28,7 +28,7 @@ export function AccountPage({request,notify,onChanged,goPricing,goBilling}:{requ
 }
 
 function ProfileTab({data,run,request,reload,busy}:any){
-  const [f,setF]=useState({display_name:data.user.display_name||'',phone:data.profile.phone,job_title:data.profile.job_title,department:data.profile.department,bio:data.profile.bio,language:data.profile.language});
+  const [f,setF]=useState({display_name:data.user.display_name||'',phone:data.profile.phone,job_title:data.profile.job_title,department:data.profile.department,bio:data.profile.bio,language:data.profile.language,virtual_room:data.profile.virtual_room!==false});
   const set=(k:string)=>(e:any)=>setF({...f,[k]:e.target.value});
   return <section className="panel"><div className="panelhead"><h2>Profile</h2><span className="muted small">{data.user.role==='admin'?'Administrator':'Member'}</span></div>
     <form className="acct-form" onSubmit={e=>{e.preventDefault();run(()=>request('/account',{method:'PATCH',body:JSON.stringify(f)})).then(r=>r&&reload())}}>
@@ -38,6 +38,7 @@ function ProfileTab({data,run,request,reload,busy}:any){
       <label>Job title<input value={f.job_title} onChange={set('job_title')} maxLength={100}/></label>
       <label>Department<input value={f.department} onChange={set('department')} maxLength={100}/></label>
       <label>Preferred language<input value={f.language} onChange={set('language')} maxLength={40} placeholder="English"/></label>
+      <label className="span2 check"><input type="checkbox" checked={f.virtual_room} onChange={e=>setF({...f,virtual_room:e.target.checked})}/> Virtual room: show meeting participants around a boardroom table (up to 10 people). Switch off to always show the gallery in meetings you host. You can also change this for each meeting.</label>
       <label className="span2">About me<textarea value={f.bio} onChange={set('bio')} maxLength={500} rows={3}/></label>
       <div className="span2"><button className="primary" disabled={busy}><Save size={16}/> Save profile</button></div></form></section>;
 }

@@ -11,7 +11,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
  useEffect(()=>{refresh()},[refresh]);
  useEffect(()=>{const t=setTimeout(()=>refresh(q.trim()),250);return()=>clearTimeout(t)},[q,refresh]);
  const openCreate=()=>{setForm({mode:'create',email:'',display_name:'',password:'',role:'user',is_active:true});setFormErr('');setMsg('')};
- const openEdit=u=>{setForm({mode:'edit',id:u.id,email:u.email,display_name:u.display_name,role:u.role,is_active:u.is_active,password:'',orig:u,builtin:u.builtin,hasPassword:u.has_password});setFormErr('');setMsg('')};
+ const openEdit=u=>{setForm({mode:'edit',id:u.id,email:u.email,display_name:u.display_name,role:u.role,is_active:u.is_active,password:'',orig:u,builtin:u.builtin,hasPassword:u.has_password,virtual_room:u.virtual_room!==false});setFormErr('');setMsg('')};
  const save=async e=>{e.preventDefault();setFormErr('');setSaving(true);
   try{
    if(form.mode==='create'){
@@ -23,6 +23,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     if(form.display_name.trim()&&form.display_name!==o.display_name)body.display_name=form.display_name.trim();
     if(form.role!==o.role)body.role=form.role;
     if(form.is_active!==o.is_active)body.is_active=form.is_active;
+    if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
     await request(`/admin/users/${form.id}`,{method:'PATCH',body:JSON.stringify(body)});setMsg(`Saved changes to ${form.email}.`);
@@ -44,6 +45,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     <label>Full name<input value={form.display_name} onChange={e=>setForm({...form,display_name:e.target.value})} maxLength={200}/></label>
     {(form.mode==='create'||form.hasPassword)&&!form.builtin&&<label>{form.mode==='create'?'Password':'New password (leave blank to keep)'}<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} autoComplete="new-password" minLength={8}/></label>}
     <label>Role<select value={form.role} disabled={form.builtin} onChange={e=>setForm({...form,role:e.target.value})}><option value="user">Member</option><option value="admin">Administrator</option></select></label>
+    {form.mode==="edit"&&<label className="checklabel"><input type="checkbox" checked={form.virtual_room!==false} onChange={e=>setForm({...form,virtual_room:e.target.checked})}/> Virtual room (boardroom table view) on for this account</label>}
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
    {form.builtin&&<p className="muted">The built-in administrator can only be renamed.</p>}

@@ -908,3 +908,35 @@ body{background:var(--canvas)}
 @media(max-width:650px){.sf-bar{flex-direction:column-reverse;align-items:flex-start}.site-footer{padding:16px 17px 24px}}
 .landing-footer+.site-footer{border-top:0}
 .legal-page .site-footer{margin-top:auto}.legal-page>.site-footer{width:100%}
+
+/* footer tidy-up: one block, help row on top, copyright + legal left, sitemap right; back-to-top centred */
+.site-footer{padding:22px 28px 28px}
+.sf-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px 24px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #e1ecf3}
+.sf-help{margin:0;gap:8px 20px}.sf-help b{color:#35566b}.sf-tag{color:#7693a7;font-size:12px}
+.sf-bar{align-items:center}
+.sf-left{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 22px}.sf-copy{white-space:nowrap}
+.sf-left .legal-links{gap:6px 16px}
+.to-top{left:50%;right:auto;transform:translateX(-50%)}.to-top:hover{transform:translateX(-50%) translateY(-2px)}
+@media(max-width:650px){.sf-top{flex-direction:column;align-items:flex-start}.sf-bar{flex-direction:column;align-items:flex-start;gap:10px}.sf-map{align-self:flex-start}.sf-left{flex-direction:column;align-items:flex-start;gap:8px}}
+
+/* footer: help row, legal links + sitemap, then one base line: copyright | back to top | tagline */
+.sf-top{border-bottom:0;padding-bottom:6px;margin-bottom:6px}
+.sf-bar{padding:10px 0 14px;margin-bottom:0}.sf-bar .legal-links{justify-content:flex-start;gap:6px 18px}
+.sf-base{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px 16px;padding-top:14px;border-top:1px solid #e1ecf3;font-size:12px;color:#7693a7}
+.sf-base .sf-copy{justify-self:start}.sf-base .sf-tag{justify-self:end;text-align:right}
+.sf-top-link{border:0;background:transparent;color:#5b7a90;font-size:12px;cursor:pointer;padding:0}.sf-top-link:hover,.sf-top-link:focus-visible{color:var(--v4);text-decoration:underline}
+@media(max-width:760px){.sf-base{grid-template-columns:1fr;justify-items:start}.sf-base .sf-tag{justify-self:start;text-align:left}}
+/* boardroom table seen at an angle: people lean in towards the table, far side smaller */
+.rm-room{perspective:1000px;perspective-origin:50% 42%}
+.rm-room.rect .rm-table{left:19%;right:19%;top:27%;bottom:27%;border-radius:30px;transform:rotateX(52deg);box-shadow:0 12px 0 #35241a,0 26px 34px #000a,inset 0 2px 0 #ffffff30}
+.rm-room.round .rm-table{left:22%;right:22%;top:20%;bottom:20%;border-radius:50%;transform:rotateX(52deg);box-shadow:0 12px 0 #35241a,0 26px 34px #000a,inset 0 2px 0 #ffffff30}
+.rm-seat{transform:translate(-50%,-50%) rotateY(var(--ry,0deg)) rotateX(var(--rx,0deg)) scale(var(--sc,1))}
+
+/* name plates sit on the table side of each person */
+.rm-seat.bot{flex-direction:column-reverse}
+.rm-seat.lft .rm-plate,.rm-seat.rgt .rm-plate{position:absolute;top:50%;transform:translateY(-50%);width:max-content;max-width:9vw}
+.rm-seat.lft .rm-plate{left:calc(100% + 6px)}.rm-seat.rgt .rm-plate{right:calc(100% + 6px)}
+
+/* the viewpoint is the centre of the table: everyone sits around it, equally far away, turned towards it */
+.rm-room{perspective:800px;perspective-origin:50% 50%}
+.rm-cam{position:absolute;left:50%;top:50%;width:14px;height:14px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#9ad7ff 0 25%,#1d2c3a 28% 60%,#0c141c 62%);box-shadow:0 0 0 3px #ffffff22,0 2px 6px #000a;z-index:1}
