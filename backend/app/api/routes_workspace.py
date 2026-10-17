@@ -258,8 +258,24 @@ async def get_pmi(db: AsyncSession, user: User, base_url: str = "") -> Room:
     r = Room(code=code, host_id=user.id, meeting_id=None, title=f"{user.display_name or user.email}'s Personal Meeting Room", access=access, passcode=pw, waiting_room=True, allow_guests=True, options={"pmi": True})
     db.add(r); await db.commit(); return r
 
+async def set_pmi_open(db: AsyncSession, r: Room, on: bool):
+    """Open room: no passcode and no admitting, anyone can start or join at any time. Off: back to a passcode and a waiting room."""
+    from app.api.routes_rooms import clean_access
+    r.options = {**(r.options or {}), "open_room": on}
+    if on: r.access, r.passcode, r.waiting_room, r.allow_guests = "open", None, False, True
+    else: r.access, r.passcode = clean_access("passcode", None); r.waiting_room = True
+    await db.commit()
+
+def _pmi_out(r: Room) -> dict:
+    c = r.code
+    return {"code": c, "pretty": f"{c[:3]} {c[3:6]} {c[6:]}", "passcode": r.passcode, "access": r.access, "waiting_room": r.waiting_room, "open_room": bool((r.options or {}).get("open_room"))}
+
 @router.get("/me/pmi")
 async def my_pmi(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    return _pmi_out(await get_pmi(db, user))
+
+@router.patch("/me/pmi")
+async def my_pmi_set(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     r = await get_pmi(db, user)
-    c = r.code
-    return {"code": c, "pretty": f"{c[:3]} {c[3:6]} {c[6:]}", "passcode": r.passcode, "access": r.access, "waiting_room": r.waiting_room}
+    if "open_room" in payload: await set_pmi_open(db, r, bool(payload["open_room"]))
+    return _pmi_out(r)

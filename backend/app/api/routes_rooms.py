@@ -57,7 +57,7 @@ def clean_options(raw, keep: dict | None = None) -> dict:
     """Meeting options chosen by the host. Unknown keys are dropped; invitees must look like email addresses."""
     from app.services.invites import EMAIL
     out = dict(keep or {}); raw = raw if isinstance(raw, dict) else {}
-    for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off", "participants_can_unmute", "participants_can_video", "virtual_room"):
+    for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off", "participants_can_unmute", "participants_can_video", "virtual_room", "open_room"):
         if k in raw: out[k] = bool(raw[k])
     if "invitees" in raw:
         out["invitees"] = sorted({str(e).strip().lower() for e in (raw["invitees"] or []) if EMAIL.match(str(e).strip())})[:200]
@@ -75,6 +75,7 @@ async def make_room(db: AsyncSession, user: User, title: str, base_url: str, mee
         meeting = Meeting(owner_id=user.id, external_id=f"room:{code}", title=title, organizer=user.email, start_at=start, end_at=start + timedelta(minutes=minutes), sensitivity="normal", join_url=url, status="scheduled")
         db.add(meeting); await db.flush()
     else: meeting.join_url = url
+    if (options or {}).get("open_room"): access, passcode, waiting = "open", None, False          # an open room needs no passcode and no admitting
     room = Room(code=code, host_id=user.id, meeting_id=meeting.id, title=title[:200], access=access, passcode=passcode, waiting_room=waiting, allow_guests=access != "signed_in", options=clean_options(options))
     db.add(room); await db.commit()
     return room, meeting
@@ -108,7 +109,7 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     host = await db.get(User, room.host_id)
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
-    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": room.access, "waiting_room": room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
+    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
             "max_people": settings.room_max_people, "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
 
 @router.post("/rooms/{code}/invite")
@@ -341,6 +342,7 @@ async def room_socket(ws: WebSocket, code: str):
                 host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
                 from app.services import virtual_room as vr
                 room_options["virtual_room"] = await vr.effective(db, await db.get(User, host_id), room_options)
+                if room_options.get("open_room"): access, waiting_room = "open", False                  # open room: anyone joins at any time, nobody is admitted
         if not room or ended:
             await _send(ws, {"type": "error", "message": "This meeting has ended or the link is not valid."}); await ws.close(); return
         user = await _user_from_token(first.get("token"))
@@ -356,6 +358,7 @@ async def room_socket(ws: WebSocket, code: str):
         pid = uuid.uuid4().hex[:10]
         if is_host and any(_rank(p) == 2 for p in state["peers"].values()): is_host, cohost_join = False, True      # the host role was handed to someone else: come back as co-host
         else: cohost_join = False
+        if room_options.get("open_room") and not is_host and not cohost_join and not any(_rank(p) >= 1 for p in state["peers"].values()): cohost_join = True   # nobody in charge is here: the first person in can run the room
         if waiting_room and not is_host and not cohost_join:
             state["waiting"][pid] = {"ws": ws, "name": name, "user_id": user.id if user else None}
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)
@@ -452,7 +455,7 @@ async def room_socket(ws: WebSocket, code: str):
             elif _rank(state["peers"][pid]) == 2 and t == "end":
                 async with SessionLocal() as db:
                     r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
-                    if r:
+                    if r and not (r.options or {}).get("open_room"):               # an open room is never closed for good: everyone leaves, the link keeps working
                         r.ended_at = datetime.now(timezone.utc); await finish_meeting(db, r); await db.commit()
                 await _broadcast(code, {"type": "ended"})
                 for p in list(state["peers"].values()) + list(state["waiting"].values()):
@@ -483,7 +486,7 @@ async def finish_meeting(db: AsyncSession, room: Room) -> None:
 
 async def end_room(db: AsyncSession, room: Room, cancel_meeting: bool) -> None:
     """Close a meeting room for everyone and, if asked, mark its calendar entry cancelled."""
-    if room.ended_at is None and not (room.options or {}).get("pmi"):
+    if room.ended_at is None and not (room.options or {}).get("pmi") and not ((room.options or {}).get("open_room") and not cancel_meeting):
         room.ended_at = datetime.now(timezone.utc)   # a personal meeting room is permanent
         if not cancel_meeting: await finish_meeting(db, room)
     if cancel_meeting and room.meeting_id:

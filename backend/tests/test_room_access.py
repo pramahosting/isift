@@ -1623,3 +1623,56 @@ def test_admin_pricing_table_controls_what_is_on_sale(client, monkeypatch):
     assert client.delete(f"/api/v1/admin/pricing/{new['id']}", headers=h).status_code == 200
     assert plans()["individual"]["available"] is False
     assert client.delete(f"/api/v1/admin/pricing/{new['id']}", headers=h).status_code == 404
+
+
+def test_open_room_needs_no_host_no_admit_and_never_closes(client):
+    h, tok = login(client)
+    r = make(client, h, access="passcode", waiting_room=True, options={"open_room": True})
+    assert r["access"] == "open" and r["waiting_room"] is False and not r["passcode"]          # the open room overrides passcode and waiting room
+    # nobody in charge is there: the first guest walks straight in and can run the room
+    ws1, g1 = join(client, r["code"], name="First"); w1 = g1.receive_json(); assert w1["type"] == "welcome" and w1["host"] is True and w1["cohost"] is True
+    ws2, g2 = join(client, r["code"], name="Second"); w2 = g2.receive_json(); assert w2["type"] == "welcome" and w2["host"] is False      # the next one is a normal participant
+    info = client.get(f"/api/v1/rooms/{r['code']}").json(); assert info["access"] == "open" and info["waiting_room"] is False
+    ws2.__exit__(None, None, None); ws1.__exit__(None, None, None)
+    # the real host presses End for all: everyone leaves but the link still works
+    hs, host = join(client, r["code"], token=tok); host.receive_json(); host.send_json({"type": "end"}); _until(host, "ended")
+    with contextlib.suppress(Exception): hs.__exit__(None, None, None)
+    ws3, g3 = join(client, r["code"], name="Later"); m3 = g3.receive_json(); ws3.__exit__(None, None, None); assert m3["type"] == "welcome"
+    # a normal room still closes
+    n = make(client, h, access="open", waiting_room=False)
+    hs, host = join(client, n["code"], token=tok); host.receive_json(); host.send_json({"type": "end"}); _until(host, "ended")
+    with contextlib.suppress(Exception): hs.__exit__(None, None, None)
+    ws4, g4 = join(client, n["code"], name="Late"); m4 = g4.receive_json(); ws4.__exit__(None, None, None); assert m4["type"] == "error"
+
+
+def test_personal_meeting_room_open_switch(client):
+    h, tok = login(client)
+    p = client.get("/api/v1/me/pmi", headers=h).json(); assert p["open_room"] is False and p["waiting_room"] is True
+    p = client.patch("/api/v1/me/pmi", json={"open_room": True}, headers=h).json(); assert p["open_room"] is True and p["access"] == "open" and p["waiting_room"] is False and not p["passcode"]
+    ws, g = join(client, p["code"], name="Walk in"); assert g.receive_json()["type"] == "welcome"; ws.__exit__(None, None, None)       # no admitting
+    p = client.patch("/api/v1/me/pmi", json={"open_room": False}, headers=h).json(); assert p["open_room"] is False and p["waiting_room"] is True and p["passcode"]
+
+
+def test_admin_and_owner_can_delete_open_room_meetings_but_not_personal_room(client, monkeypatch):
+    h, tok = login(client)
+    su = signed_up(client, monkeypatch, "owner2@example.com", "Own", "Er"); oh = {"Authorization": "Bearer " + su["access_token"]}
+    mk = lambda hh: client.post("/api/v1/meetings", json={"base_url": "http://t/", "title": "Standing", "provider": "room", "start_at": "2031-01-01T10:00:00Z", "duration_minutes": 30, "recurrence": {"every": "day", "count": 3}, "options": {"open_room": True}}, headers=hh)
+    r = mk(oh); assert r.status_code in (200, 201), r.text; mid = r.json()["id"]; code = r.json()["join_url"].rsplit("/", 1)[-1]
+    # another ordinary user cannot see or delete it; the administrator can list and delete the whole series
+    su2 = signed_up(client, monkeypatch, "other2@example.com", "Oth", "Er"); xh = {"Authorization": "Bearer " + su2["access_token"]}
+    assert client.delete(f"/api/v1/meetings/{mid}?series=true", headers=xh).status_code == 404
+    assert client.get("/api/v1/admin/meetings", headers=xh).status_code in (401, 403)
+    rows = client.get("/api/v1/admin/meetings", headers=h).json()["meetings"]; mine = [x for x in rows if x["owner"] == "owner2@example.com"]
+    assert len(mine) == 3 and all(x["open_room"] and x["series"] for x in mine)
+    ws, g = join(client, code, name="Guest"); assert g.receive_json()["type"] == "welcome"; ws.__exit__(None, None, None)           # the link works before
+    d = client.delete(f"/api/v1/meetings/{mid}?series=true", headers=h); assert d.status_code == 200, d.text
+    assert not [x for x in client.get("/api/v1/admin/meetings", headers=h).json()["meetings"] if x["owner"] == "owner2@example.com"]
+    ws, g = join(client, code, name="Late"); assert g.receive_json()["type"] == "error"; ws.__exit__(None, None, None)              # and the link stops after the series is deleted
+    # the owner can delete their own series too
+    r = mk(oh); assert client.delete(f"/api/v1/meetings/{r.json()['id']}?series=true", headers=oh).status_code == 200
+    # a personal meeting room is permanent: deleting a meeting scheduled on it never closes the room
+    p = client.get("/api/v1/me/pmi", headers=oh).json(); client.patch("/api/v1/me/pmi", json={"open_room": True}, headers=oh)
+    r = client.post("/api/v1/meetings", json={"base_url": "http://t/", "title": "On my room", "provider": "room", "start_at": "2031-02-01T10:00:00Z", "duration_minutes": 30, "meeting_id_mode": "personal"}, headers=oh); assert r.status_code in (200, 201), r.text
+    assert client.delete(f"/api/v1/meetings/{r.json()['id']}", headers=oh).status_code == 200
+    ws, g = join(client, p["code"], name="Still works"); assert g.receive_json()["type"] == "welcome"; ws.__exit__(None, None, None)
+    assert client.delete(f"/api/v1/rooms/{p['code']}", headers=oh).status_code in (404, 405)                                       # there is no way to delete the personal room

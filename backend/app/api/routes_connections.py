@@ -221,7 +221,7 @@ async def create_meeting(payload: dict, user: User = Depends(principal), db: Asy
         join, ext = z["join_url"], f"{plat}:{z['id']}"
     elif payload.get("provider") == "room":
         from app.api.routes_rooms import make_room
-        from app.api.routes_workspace import get_pmi
+        from app.api.routes_workspace import get_pmi, set_pmi_open
         times = _series(start, payload.get("recurrence")); start = times[0]; span = timedelta(minutes=minutes)
         recurring = len(times) > 1; use_pmi = payload.get("meeting_id_mode") == "personal"
         shared = recurring or use_pmi
@@ -236,6 +236,7 @@ async def create_meeting(payload: dict, user: User = Depends(principal), db: Asy
         if use_pmi:
             from app.api.routes_rooms import room_url
             room = await get_pmi(db, user)
+            if "open_room" in opts: await set_pmi_open(db, room, bool(opts["open_room"]))
             m0.join_url = room_url(str(payload.get("base_url") or ""), room.code)
         else:
             room, m0 = await make_room(db, user, title, str(payload.get("base_url") or ""), meeting=m0, access=payload.get("access"), passcode=payload.get("passcode"), waiting_room=payload.get("waiting_room"), options=opts)
@@ -364,12 +365,14 @@ async def delete_meeting(meeting_id: str, series: bool = False, user: User = Dep
     is cancelled instead so those records are kept."""
     from app.models import Room, Transcript, Minutes, ActionItem
     m = await db.get(Meeting, meeting_id)
-    if not m or m.owner_id != user.id: raise HTTPException(404, "Meeting not found")
+    admin_for_other = bool(m and m.owner_id != user.id and user.role == "admin")      # an administrator may delete anyone's iSift room meeting
+    if not m or (m.owner_id != user.id and not admin_for_other): raise HTTPException(404, "Meeting not found")
+    if admin_for_other and not (m.external_id or "").startswith(("room:", "local:")): raise HTTPException(403, "Only the person who scheduled a Zoom, Teams or Google Meet meeting can delete it, because it also lives in their account there.")
     targets = [m]
     ext = m.external_id or ""
     if series and ext.startswith(("room:", "local:")) and "#" in ext:
         stem = ext.split("#")[0] + "#"
-        targets = list((await db.execute(select(Meeting).where(Meeting.owner_id == user.id, Meeting.external_id.like(stem + "%")))).scalars().all())
+        targets = list((await db.execute(select(Meeting).where(Meeting.owner_id == m.owner_id, Meeting.external_id.like(stem + "%")))).scalars().all())
     removed = kept = 0; note = ""
     for t in targets:
         imported = not (t.external_id or "").startswith(("room:", "local:", "zoom:", "teams:", "meet:"))
@@ -382,7 +385,14 @@ async def delete_meeting(meeting_id: str, series: bool = False, user: User = Dep
         if has: kept += 1; continue
         for r in (await db.execute(select(Room).where(Room.meeting_id == t.id))).scalars().all(): r.meeting_id = None
         await db.flush(); await db.delete(t); removed += 1
-    db.add(AuditLog(actor=user.email, action="meeting.delete", resource_type="meeting", safe_metadata={"count": len(targets)})); await db.commit()
+    await db.flush()
+    from app.api.routes_rooms import end_room
+    from app.models import Room as _Room
+    for code in {(t.external_id or "")[5:].split("#")[0] for t in targets if (t.external_id or "").startswith("room:")}:
+        left = (await db.execute(select(Meeting.id).where(Meeting.external_id.like(f"room:{code}%"), Meeting.status != "cancelled").limit(1))).first()
+        rm = (await db.execute(select(_Room).where(_Room.code == code))).scalar_one_or_none()
+        if rm and not left and not (rm.options or {}).get("pmi"): await end_room(db, rm, True)           # the last meeting of a series is gone: the shared link stops working too (a personal room is never closed)
+    db.add(AuditLog(actor=user.email, action="meeting.delete", resource_type="meeting", safe_metadata={"count": len(targets), **({"owner": m.organizer} if admin_for_other else {})})); await db.commit()
     msg = (f"{removed} meeting{'s' if removed != 1 else ''} deleted." if removed else "Meeting cancelled.") + (f" {kept} kept as cancelled because transcripts or minutes exist." if kept else "") + note
     return {"ok": True, "message": msg, "removed": removed}
 
@@ -509,6 +519,7 @@ async def change_meeting(meeting_id: str, payload: dict, user: User = Depends(pr
             except ValueError as exc: raise HTTPException(422, str(exc))
             opts["invitees"] = sorted(set(room.options.get("invitees", [])) | set(new))
         room.options = clean_options(opts, keep=room.options or {})
+        if room.options.get("open_room"): room.access, room.passcode, room.waiting_room, room.allow_guests = "open", None, False, True; room.ended_at = None
     db.add(AuditLog(actor=user.email, action="meeting.update", resource_type="meeting", safe_metadata={}))
     await db.commit()
     note = ""
@@ -525,3 +536,16 @@ async def change_meeting(meeting_id: str, payload: dict, user: User = Depends(pr
                 note = f" Updated invitation sent to {len(inv)}."
             except mailer.MailError as exc: note = f" Saved, but the update could not be emailed: {exc}"
     return {**_details(m, room), "message": "Meeting saved." + note}
+
+
+@router.get("/admin/meetings")
+async def admin_meetings(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Every iSift room meeting that is not cancelled, for an administrator who needs to remove one."""
+    from app.models import Room
+    rows = (await db.execute(select(Meeting, User.email).join(User, User.id == Meeting.owner_id).where(Meeting.external_id.like("room:%"), Meeting.status != "cancelled").order_by(Meeting.start_at.desc()).limit(300))).all()
+    rooms = {r.code: r for r in (await db.execute(select(Room))).scalars().all()}
+    out = []
+    for m, email in rows:
+        code = (m.external_id or "")[5:].split("#")[0]; r = rooms.get(code)
+        out.append({"id": m.id, "title": m.title, "owner": email, "start_at": m.start_at.isoformat(), "series": "#" in (m.external_id or ""), "open_room": bool(r and (r.options or {}).get("open_room")), "personal": bool(r and (r.options or {}).get("pmi")), "join_url": m.join_url})
+    return {"meetings": out}
