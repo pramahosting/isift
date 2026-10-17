@@ -467,7 +467,7 @@ def _details(m: Meeting, room) -> dict:
             "waiting_room": room.waiting_room if room else None, "ended": bool(room and room.ended_at),
             "options": {k: bool(opts.get(k)) for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off")} | {"virtual_room": opts.get("virtual_room", True) is not False}, "invitees": opts.get("invitees", []),
             "series": "#" in (m.external_id or ""), "pmi": bool(opts.get("pmi")),
-            "editable": kind in ("room", "zoom", "teams", "meet", "local") and m.status != "cancelled", "organizer": m.organizer}
+            "editable": kind in ("room", "zoom", "teams", "meet", "local") and m.status != "cancelled", "organizer": __import__("app.services.identity", fromlist=["x"]).shown_email(m.organizer or "")}
 
 @router.get("/meetings/{meeting_id}/details")
 async def meeting_details(meeting_id: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

@@ -40,11 +40,13 @@ def _smtp_connect(acct: dict):
     except smtplib.SMTPAuthenticationError: raise MailError("The mail server refused the sign-in. Use an app password and your full address.")
     except (smtplib.SMTPException, OSError) as exc: raise MailError(f"Could not use the sending server ({type(exc).__name__}).")
 
-def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, method: str = "REQUEST"):
+def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, method: str = "REQUEST", attachments: list | None = None):
     msg = EmailMessage(); msg["From"] = acct.get("from") or acct["address"];
     if acct.get("reply_to"): msg["Reply-To"] = acct["reply_to"]
     msg["To"] = ", ".join(to); msg["Subject"] = subject; msg.set_content(body)
     if ics: msg.add_attachment(ics, maintype="text", subtype="calendar", filename="invite.ics", params={"method": method})
+    for fname, data, mime in attachments or []:                      # (file name, bytes, "type/subtype")
+        mt, st = mime.split("/", 1); msg.add_attachment(data, maintype=mt, subtype=st, filename=fname)
     s = _smtp_connect(acct)
     try: s.send_message(msg)
     except (smtplib.SMTPException, OSError) as exc: raise MailError(f"The message could not be sent ({type(exc).__name__}).")
@@ -52,8 +54,8 @@ def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | 
         try: s.quit()
         except Exception: pass
 
-async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None):
-    await asyncio.to_thread(_send_sync, acct, to, subject, body, ics)
+async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, attachments: list | None = None):
+    await asyncio.to_thread(_send_sync, acct, to, subject, body, ics, "REQUEST", attachments)
 
 def _imap_connect(acct: dict):
     host, port = acct["imap_host"], int(acct["imap_port"]); _check(host, port)

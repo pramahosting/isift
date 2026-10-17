@@ -279,3 +279,61 @@ async def my_pmi_set(payload: dict, user: User = Depends(principal), db: AsyncSe
     r = await get_pmi(db, user)
     if "open_room" in payload: await set_pmi_open(db, r, bool(payload["open_room"]))
     return _pmi_out(r)
+
+
+# ---------------- share a note or whiteboard by email, as a PDF ----------------
+@router.post("/notes/{nid}/share")
+async def share_note(nid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Email a note or whiteboard as a PDF attachment to typed addresses, contact groups and contacts. Every person gets their own message (no one sees the others).
+    A note is turned into a PDF here; a whiteboard (and a note with letters Helvetica cannot show) arrives as picture pages drawn by the browser (payload.pages, base64 JPEG)."""
+    import base64, binascii
+    from app.integrations import mail as mailer
+    from app.services import pdfmini
+    from app.services.invites import EMAIL
+    from app.api.routes_booking import _senders
+    n = await _own_note(db, user, nid)
+    want: dict[str, str] = {}
+    for e in payload.get("emails") or []:
+        e = str(e).strip().lower()
+        if not e: continue
+        if not EMAIL.match(e): raise HTTPException(400, f"'{e}' is not a valid email address.")
+        want[e] = ""
+    ids = {str(i) for i in payload.get("contact_ids") or []}
+    for gid in payload.get("group_ids") or []:
+        g = await db.get(ContactGroup, str(gid))
+        if g and g.owner_id == user.id: ids |= set(g.contact_ids or [])
+    if ids:
+        for c in (await db.execute(select(Contact).where(Contact.owner_id == user.id, Contact.id.in_(ids)))).scalars().all():
+            if c.email and EMAIL.match(c.email.strip()): want.setdefault(c.email.strip().lower(), c.name)
+    if not want: raise HTTPException(400, "Choose at least one person, group or email address.")
+    if len(want) > 50: raise HTTPException(400, "You can share with up to 50 people at a time.")
+    title = (n.title or "Untitled").strip() or "Untitled"; me = (user.display_name or user.email or "").strip()
+    pages = []
+    for p in payload.get("pages") or []:
+        try: pages.append(base64.b64decode(str(p).split(",", 1)[-1], validate=False))
+        except (binascii.Error, ValueError): raise HTTPException(400, "The picture could not be read.")
+    if sum(len(p) for p in pages) > 12_000_000 or len(pages) > 30: raise HTTPException(413, "That is too large to email. Try a smaller board.")
+    foot = f"Shared from iSift by {me}"
+    try:
+        if n.kind == "board" or pages:
+            if not pages: raise HTTPException(400, "The whiteboard picture is missing.")
+            pdf = pdfmini.image_pdf(pages, foot)
+        else:
+            if not pdfmini.encodable(title + n.content): return {"ok": False, "needs_pictures": True}
+            pdf = pdfmini.text_pdf(title, n.content, foot)
+    except ValueError: raise HTTPException(400, "The picture was not a valid image.")
+    senders = await _senders(db, user)
+    if not senders: raise HTTPException(400, "No email account is set up to send from. Add one in Commbox, or ask your administrator to set the app's email account.")
+    safe = re.sub(r"[^\w\- ]+", "", title).strip()[:80] or "iSift"; fname = f"{safe}.pdf"
+    note = str(payload.get("message") or "").strip()[:2000]
+    what = "whiteboard" if n.kind == "board" else "note"
+    sent, failed = [], []
+    for addr, nm in want.items():
+        body = f"Hello{(' ' + nm.split()[0]) if nm else ''},\n\n{me} shared a {what} with you: {title}.\n" + (f"\n{note}\n" if note else "") + f"\nIt is attached as a PDF.\n\nSent with iSift."
+        ok = False
+        for acct in senders:
+            try: await mailer.send(acct, [addr], f"{me} shared a {what}: {title}", body, attachments=[(fname, pdf, "application/pdf")]); ok = True; break
+            except Exception: continue
+        (sent if ok else failed).append(addr)
+    if not sent: raise HTTPException(502, "The email could not be sent. Check the sending account in Commbox or Admin settings.")
+    return {"ok": True, "sent": sent, "failed": failed, "file": fname}

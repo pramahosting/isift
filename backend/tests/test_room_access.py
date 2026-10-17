@@ -1676,3 +1676,56 @@ def test_admin_and_owner_can_delete_open_room_meetings_but_not_personal_room(cli
     assert client.delete(f"/api/v1/meetings/{r.json()['id']}", headers=oh).status_code == 200
     ws, g = join(client, p["code"], name="Still works"); assert g.receive_json()["type"] == "welcome"; ws.__exit__(None, None, None)
     assert client.delete(f"/api/v1/rooms/{p['code']}", headers=oh).status_code in (404, 405)                                       # there is no way to delete the personal room
+
+
+def test_share_note_and_board_as_pdf(client, monkeypatch):
+    import base64, subprocess
+    from app.integrations import mail as mailer
+    from app.api import routes_booking as rb
+    h, _ = login(client); sent = []
+    async def fake_send(acct, to, subject, body, ics=None, attachments=None): sent.append((to, subject, body, attachments))
+    monkeypatch.setattr(mailer, "send", fake_send)
+    async def senders(db, owner): return [{"address": "app@x.test", "platform": True}]
+    monkeypatch.setattr(rb, "_senders", senders)
+    n = client.post("/api/v1/notes", json={"kind": "doc", "title": "Plan: Q1", "content": "Line one\nSecond (line) \\ ok"}, headers=h).json()
+    url = f"/api/v1/notes/{n['id']}/share"
+    assert client.post(url, json={}, headers=h).status_code == 400                                                    # nobody chosen
+    assert client.post(url, json={"emails": ["not-an-email"]}, headers=h).status_code == 400
+    c1 = client.post("/api/v1/contacts", json={"name": "Ann Lee", "email": "ann@example.org"}, headers=h).json()
+    c2 = client.post("/api/v1/contacts", json={"name": "Ben", "email": "ben@example.org"}, headers=h).json()
+    g = client.post("/api/v1/contact-groups", json={"name": "Team", "contact_ids": [c1["id"], c2["id"]]}, headers=h).json()
+    r = client.post(url, json={"emails": ["Zed@example.com", "ann@example.org"], "group_ids": [g["id"]], "message": "Please read"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert sorted(x[0][0] for x in sent) == ["ann@example.org", "ben@example.org", "zed@example.com"]               # each once, one message each
+    fname, data, mime = sent[0][3][0]; assert mime == "application/pdf" and fname == "Plan Q1.pdf" and data.startswith(b"%PDF")
+    open("/tmp/share.pdf", "wb").write(data); out = subprocess.run(["pdftotext", "/tmp/share.pdf", "-"], capture_output=True, text=True).stdout
+    assert "Plan: Q1" in out and "Second (line)" in out
+    assert "Please read" in sent[0][2]
+    # letters Helvetica cannot show: the browser sends pictures instead
+    jp = subprocess.run(["convert", "-size", "200x120", "xc:white", "jpg:-"], capture_output=True).stdout
+    n2 = client.post("/api/v1/notes", json={"kind": "doc", "title": "日本", "content": "こんにちは"}, headers=h).json()
+    assert client.post(f"/api/v1/notes/{n2['id']}/share", json={"emails": ["a@b.co"]}, headers=h).json()["needs_pictures"] is True
+    sent.clear(); assert client.post(f"/api/v1/notes/{n2['id']}/share", json={"emails": ["a@b.co"], "pages": [base64.b64encode(jp).decode()]}, headers=h).status_code == 200
+    assert sent[0][3][0][1].startswith(b"%PDF")
+    # whiteboard needs a picture; garbage is refused
+    b = client.post("/api/v1/notes", json={"kind": "board", "title": "Flow", "content": ""}, headers=h).json()
+    assert client.post(f"/api/v1/notes/{b['id']}/share", json={"emails": ["a@b.co"]}, headers=h).status_code == 400
+    assert client.post(f"/api/v1/notes/{b['id']}/share", json={"emails": ["a@b.co"], "pages": [base64.b64encode(b"nope").decode()]}, headers=h).status_code == 400
+    sent.clear(); assert client.post(f"/api/v1/notes/{b['id']}/share", json={"emails": ["a@b.co"], "pages": ["data:image/jpeg;base64," + base64.b64encode(jp).decode()]}, headers=h).status_code == 200
+    # someone else's note, no sending account, failing mail
+    bob = signed_up(client, monkeypatch, "sharer@example.com", "Sam", "Lee"); hb = {"Authorization": "Bearer " + bob["access_token"]}
+    assert client.post(url, json={"emails": ["a@b.co"]}, headers=hb).status_code == 404
+    async def none(db, owner): return []
+    monkeypatch.setattr(rb, "_senders", none); assert client.post(url, json={"emails": ["a@b.co"]}, headers=h).status_code == 400
+    monkeypatch.setattr(rb, "_senders", senders)
+    async def boom(*a, **k): raise RuntimeError("smtp down")
+    monkeypatch.setattr(mailer, "send", boom); assert client.post(url, json={"emails": ["a@b.co"]}, headers=h).status_code == 502
+
+
+def test_admin_shown_as_isift_address(client):
+    from app.services.identity import shown_email
+    from app.core.config import settings
+    assert shown_email("admin@example.test") == "admin@isift.au" and shown_email("bob@gmail.com") == "bob@gmail.com"
+    h, _ = login(client); m = make(client, h, title="Org check", start_at="2031-05-01T10:00:00Z", duration_minutes=30)
+    rows = client.get("/api/v1/meetings", headers=h).json()
+    assert rows and all(r["organizer"] != "admin@example.test" for r in rows)
