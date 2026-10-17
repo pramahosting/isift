@@ -1556,3 +1556,26 @@ def test_new_time_reopens_an_ended_meeting(client):
     assert client.get(f"/api/v1/rooms/{r['code']}").status_code == 200 and client.get(f"/api/v1/rooms/{r['code']}").json()["ended"] is False
     client.post(f"/api/v1/rooms/{r['code']}/end", json={"cancel": False}, headers=h)
     client.patch(f"/api/v1/meetings/{mid}", json={"start_at": "2020-01-02T11:00:00Z"}, headers=h); assert get()["ended"] is True   # a time in the past stays ended
+
+
+def test_participants_cannot_control_others(client):
+    """Only the host (and co-hosts, for people below them) may mute, ask, switch off video or remove. A plain participant's attempts do nothing."""
+    with _meeting_of(client, 2) as (code, host, hid, guests, opened):
+        (g1, id1), (g2, id2) = guests
+        for target in (hid, id2):
+            g1.send_json({"type": "force", "id": target, "mic": False, "cam": False}); g1.send_json({"type": "ask", "id": target, "what": "mic"})
+            g1.send_json({"type": "kick", "id": target})
+        g1.send_json({"type": "mute_all"}); g1.send_json({"type": "policy", "audio": False, "video": False})
+        g1.send_json({"type": "chat", "text": "ping-end"})
+        for who in (host, g2):
+            for _ in range(40):
+                m = who.receive_json()
+                assert m["type"] not in ("force", "ask", "kicked", "policy"), m
+                if m["type"] == "chat" and m.get("text") == "ping-end": break
+            else: raise AssertionError("ping never arrived")
+        # the host can
+        host.send_json({"type": "force", "id": id2, "mic": False, "cam": False})
+        for _ in range(40):
+            m = g2.receive_json()
+            if m["type"] == "force": assert m["mic"] is False and m["cam"] is False; break
+        else: raise AssertionError("host force never arrived")
