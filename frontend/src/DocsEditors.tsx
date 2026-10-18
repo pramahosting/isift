@@ -1,10 +1,10 @@
 import React,{useEffect,useMemo,useRef,useState,useCallback,forwardRef,useImperativeHandle} from 'react';
 import {shapePng} from './Whiteboard';
 import {libOf} from './WbLib';
-import {Bold,Italic,Underline,Strikethrough,List,ListOrdered,AlignLeft,AlignCenter,AlignRight,AlignJustify,Link2,Table2,Undo2,Redo2,Eraser,Upload,Download,Printer,Plus,Trash2,Copy,ArrowUp,ArrowDown,Play,X,ChevronLeft,ChevronRight} from 'lucide-react';
+import {Bold,Italic,Underline,Strikethrough,List,ListOrdered,AlignLeft,AlignCenter,AlignRight,AlignJustify,Link2,Table2,Undo2,Redo2,Eraser,Upload,Download,Printer,Plus,Trash2,Copy,ArrowUp,ArrowDown,Play,X,ChevronLeft,ChevronRight,Shapes} from 'lucide-react';
 import {evaluate,show,colName,toCsv,fromCsv,Cells} from './sheetcalc';
 
-type EdProps={content:string;onChange:(c:string)=>void;readOnly?:boolean;title:string};
+type EdProps={content:string;onChange:(c:string)=>void;readOnly?:boolean;title:string;shelf?:boolean;onShelf?:()=>void};
 export type ShapeApi={insertShape:(lib:any)=>void};
 const download=(name:string,text:string,type:string)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
 const safeName=(t:string,ext:string)=>`${(t||'file').replace(/[^\w\- ]+/g,'').trim()||'file'}.${ext}`;
@@ -16,7 +16,7 @@ function cleanHtml(html:string):string{ // for files brought in from outside: no
   d.body.querySelectorAll('*').forEach(el=>{for(const a of Array.from(el.attributes)){const n=a.name.toLowerCase();if(n.startsWith('on')||(n==='href'&&!/^(https?:|mailto:)/i.test(a.value.trim()))||(n!=='href'&&n!=='style'&&n!=='colspan'&&n!=='rowspan'&&!(el.tagName==='IMG'&&((n==='src'&&/^data:image\/png;base64,/i.test(a.value))||n==='width'||n==='height'||n==='alt'))))el.removeAttribute(a.name)}});
   d.body.querySelectorAll('img').forEach(i=>{if(!/^data:image\/png;base64,/i.test(i.getAttribute('src')||''))i.remove()});
   return d.body.innerHTML}
-export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({content,onChange,readOnly,title},api){
+export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({content,onChange,readOnly,title,shelf,onShelf},api){
   const ref=useRef<HTMLDivElement>(null);const saved=useRef<Range|null>(null);const [pic,setPic]=useState<HTMLImageElement|null>(null);const file=useRef<HTMLInputElement>(null);const [words,setWords]=useState(0);
   const count=()=>setWords(((ref.current?.innerText||'').trim().match(/\S+/g)||[]).length);
   useEffect(()=>{if(ref.current){ref.current.innerHTML=content||'<p><br></p>';count()}},[]);
@@ -43,7 +43,7 @@ export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({conten
       <span className="wb-sep"/>{tb('Link',<Link2 size={16}/>,link)}{tb('Insert a 3 by 3 table',<Table2 size={16}/>,table)}{tb('Clear formatting',<Eraser size={16}/>,()=>cmd('removeFormat'))}
       <span className="wb-sep"/>{tb('Undo',<Undo2 size={16}/>,()=>cmd('undo'))}{tb('Redo',<Redo2 size={16}/>,()=>cmd('redo'))}
       {pic&&<><span className="wb-sep"/><span className="small muted">Shape</span><button type="button" className="textbtn" onMouseDown={e=>e.preventDefault()} onClick={()=>resizePic(0.8)}>Smaller</button><button type="button" className="textbtn" onMouseDown={e=>e.preventDefault()} onClick={()=>resizePic(1.25)}>Larger</button></>}
-      {tb('Open a text or HTML file into this document',<Upload size={16}/>,()=>file.current?.click())}<input ref={file} type="file" accept=".txt,.md,.html,.htm,text/plain,text/html" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/>
+      {tb('Open a text or HTML file into this document',<Upload size={16}/>,()=>file.current?.click())}<input ref={file} type="file" accept=".txt,.md,.html,.htm,text/plain,text/html" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/><span className="wb-sep"/>{onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onMouseDown={e=>e.preventDefault()} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
     </div>}
     <div className="wp-page" ref={ref} contentEditable={!readOnly} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Document" aria-readonly={!!readOnly} onInput={changed} onKeyUp={remember} onMouseUp={pickPic} onBlur={remember} spellCheck/>
     <div className="wp-foot"><small className="muted">{words} {words===1?'word':'words'}{readOnly?' · read only':''}</small>
@@ -104,7 +104,7 @@ function SlideView({s,theme,w}:{s:Slide;theme:string;w:number}){
   return <div className="pp-slide" style={{width:w,height:w*9/16}}><div style={{width:960,height:540,transform:`scale(${k})`,transformOrigin:'top left',background:s.bg||t.bg,color:t.fg,['--ac' as any]:t.accent}} className={`pp-in pp-${s.layout}`}>
     {s.layout!=='blank'&&<h2>{s.title}</h2>}{s.layout==='two'?<div className="pp-cols">{list(s.body)}{list(s.body2)}</div>:s.layout==='blank'?null:list(s.body)}
     {(s.shapes||[]).map(q=>{const lib=libOf(q.lib);if(!lib)return null;const p=shapePng(lib,q.text);return <img key={q.id} className="pp-shape" src={p.url} alt={lib.label} draggable={false} style={{left:q.x,top:q.y,width:q.w,height:q.w*p.h/p.w}}/>})}</div></div>}
-export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({content,onChange,readOnly,title},api){
+export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({content,onChange,readOnly,title,shelf,onShelf},api){
   const [deck,setDeck]=useState(()=>parseDeck(content));const [i,setI]=useState(0);const [show_,setShow]=useState(false);const stage=useRef<HTMLDivElement>(null);const [w,setW]=useState(560);
   useEffect(()=>{const el=stage.current;if(!el)return;const f=()=>setW(Math.max(240,Math.min(900,el.clientWidth)));f();const ro=new ResizeObserver(f);ro.observe(el);return()=>ro.disconnect()},[]);
   const idx=Math.min(i,deck.slides.length-1);const s=deck.slides[idx];
@@ -136,6 +136,7 @@ export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({conten
         <label className="wb-boardsz">Theme <select value={deck.theme} onChange={e=>save({...deck,theme:e.target.value})} aria-label="Theme">{Object.keys(THEMES).map(t=><option key={t} value={t}>{t[0].toUpperCase()+t.slice(1)}</option>)}</select></label></>}
       <button type="button" className="iconbtn" title="Print all slides or save as PDF" aria-label="Print slides" onClick={printAll}><Printer size={16}/></button>
       <button type="button" className="iconbtn" title="Download the presentation as a file" aria-label="Download presentation" onClick={exportJson}><Download size={16}/></button>
+      {onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
     </div>
     <div className="pp-main">
       <div className="pp-strip" role="listbox" aria-label="Slides">{deck.slides.map((x,j)=><button key={j} type="button" role="option" aria-selected={j===idx} className={`pp-thumb${j===idx?' on':''}`} onClick={()=>setI(j)}><span>{j+1}</span><SlideView s={x} theme={deck.theme} w={150}/></button>)}</div>
