@@ -176,24 +176,31 @@ def pdf_apply(raw: bytes, ops: list):
     covers: dict = {}
     dels = [o for o in ops if o.get("t") == "delete"]
     for i in sorted({page_of(o) for o in dels}):
-        l, b, r, t = _box(w.pages[i]); rects = [rect_of(o, i) for o in dels if page_of(o) == i]
+        l, b, r, t = _box(w.pages[i]); mine = [o for o in dels if page_of(o) == i]; rects = [rect_of(o, i) for o in mine]
+        for o in mine:     # the screen showed this text as a picture (or the text could not be found): cover exactly what was seen, in the colour of the paper around it
+            if o.get("cover"):
+                try: cx0, cy0, cx1, cy1 = [float(v) for v in o["cover"]]
+                except Exception: continue
+                W, H = r - l, t - b
+                covers.setdefault(i, []).append([max(0, min(cx0, cx1)), max(0, min(cy0, cy1)), min(W, max(cx0, cx1)), min(H, max(cy0, cy1)), _color(o.get("fill") or "#ffffff")])
         user = [[l + x0, t - y1, l + x1, t - y0] for x0, y0, x1, y1 in rects]
         _, hit = _strip_text(w, w.pages[i], user)
         for k, rc in enumerate(rects):     # nothing in the page content started inside this area (the text is drawn some other way): cover it instead
-            if k not in hit: covers.setdefault(i, []).append(rc); warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
+            if k not in hit and not mine[k].get("cover"): covers.setdefault(i, []).append(rc); warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
     if dels:   # check that nothing readable is left in the deleted areas; anything that is gets covered, and the person is told
         mid = io.BytesIO(); w.write(mid); left = _lines(mid.getvalue())
         for o in dels:
             i = page_of(o); x0, y0, x1, y1 = rect_of(o, i)
             if any(ln["bbox"][0] < x1 and ln["bbox"][2] > x0 and ln["bbox"][1] < y1 - 1 and ln["bbox"][3] > y0 + 1 and ln["text"].strip() for ln in left[i]):
-                covers.setdefault(i, []).append([x0, y0, x1, y1])
+                if not o.get("cover"): covers.setdefault(i, []).append([x0, y0, x1, y1])
                 warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
     layers: dict = {}
     for o in ops:
         if o.get("t") in ("text", "sign"): layers.setdefault(page_of(o), []).append(o)
     for i in sorted(set(layers) | set(covers)):
         l, b, r, t = _box(w.pages[i]); W, H = r - l, t - b; buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
-        for x0, y0, x1, y1 in covers.get(i, []): c.setFillColorRGB(1, 1, 1); c.setStrokeColorRGB(1, 1, 1); c.rect(x0, H - y1, x1 - x0, y1 - y0, stroke=0, fill=1)
+        for cv in covers.get(i, []):
+            x0, y0, x1, y1 = cv[:4]; col = cv[4] if len(cv) > 4 else (1, 1, 1); c.setFillColorRGB(*col); c.rect(x0, H - y1, x1 - x0, y1 - y0, stroke=0, fill=1)
         for o in layers.get(i, []):
             if o["t"] == "text":
                 text = latin(str(o.get("text") or "")[:4000])
@@ -205,7 +212,7 @@ def pdf_apply(raw: bytes, ops: list):
                 except Exception: track = 0.0
                 c.setFillColorRGB(*_color(o.get("color")))
                 for k, line in enumerate(text.split("\n")):
-                    tx = c.beginText(x, H - (y + size * 0.9465 + k * size * 1.2)); tx.setFont("Helvetica", size); tx.setCharSpace(track); tx.textOut(line); c.drawText(tx)
+                    tx = c.beginText(x, H - (y + size * 0.9465 + k * size * 1.2)); tx.setFont("Helvetica-Bold" if o.get("bold") else "Helvetica", size); tx.setCharSpace(track); tx.textOut(line); c.drawText(tx)
             else:
                 x0, y0, x1, y1 = rect_of(o, i)
                 c.drawImage(ImageReader(io.BytesIO(png_ok(b64_in(o.get("png"), 400_000)))), x0, H - y1, x1 - x0, y1 - y0, mask="auto", preserveAspectRatio=True, anchor="c")
