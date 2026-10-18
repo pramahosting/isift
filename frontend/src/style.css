@@ -1173,6 +1173,7 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .primary.join.busy{opacity:.8;cursor:progress}.primary.join.busy::before{content:"";display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 
 /* the table is in front of everyone: people sit on the far side and look at the viewer */
-.rm-room.rect .rm-table{left:9%;right:9%;top:52%;bottom:3%;border-radius:30px;transform:rotateX(52deg)}
-.rm-room.round .rm-table{left:22%;right:22%;top:50%;bottom:2%;border-radius:50%;transform:rotateX(52deg)}
+.rm-room.rect .rm-table{left:9%;right:9%;top:24%;bottom:24%;border-radius:30px;transform:rotateX(52deg)}
+.rm-room.round .rm-table{left:22%;right:22%;top:20%;bottom:20%;border-radius:50%;transform:rotateX(52deg)}
 .rm-cam{display:none}
+.rm-shape{display:flex;gap:6px}
