@@ -1,0 +1,145 @@
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {Upload,Type,Eraser,PenLine,Check,RotateCcw,Download,Trash2,X,Pencil,FilePlus2,Undo2,ShieldCheck,KeyRound} from 'lucide-react';
+
+/* Sign & Edit: upload a PDF or Word file, add or delete text, place a drawn signature, then Apply, Revert or Download.
+   The file is never kept on the server. Changes are staged here, and Apply sends the current file plus the staged changes to be edited. */
+
+type Sig={id?:string;name?:string;png:string};
+type Doc={name:string;kind:'pdf'|'docx';b64:string;info:any};
+const MIME:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
+const toB64=(f:File)=>new Promise<string>((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
+const uid=()=>Math.random().toString(36).slice(2,9);
+const COLORS=['#111827','#1d4ed8','#b91c1c'];
+
+/* Draw a signature with the mouse, finger or pen. Returns a PNG cropped to the ink, with a transparent background. */
+function SignaturePad({onDone,saved,onDelete,onUse,canSave}:{onDone:(s:Sig,keep:boolean,name:string)=>void;saved:Sig[];onDelete:(s:Sig)=>void;onUse:(s:Sig)=>void;canSave:boolean}){
+  const cv=useRef<HTMLCanvasElement>(null);const down=useRef(false);const [ink,setInk]=useState(false);const [keep,setKeep]=useState(canSave);const [name,setName]=useState('My signature');const [color,setColor]=useState(COLORS[1]);
+  const pos=(e:React.PointerEvent)=>{const c=cv.current!,r=c.getBoundingClientRect();return [(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]};
+  const start=(e:React.PointerEvent)=>{const c=cv.current!,g=c.getContext('2d')!;c.setPointerCapture(e.pointerId);down.current=true;const [x,y]=pos(e);g.strokeStyle=color;g.lineWidth=3;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(x,y);g.lineTo(x+.1,y+.1);g.stroke();setInk(true)};
+  const move=(e:React.PointerEvent)=>{if(!down.current)return;const g=cv.current!.getContext('2d')!;const [x,y]=pos(e);g.lineTo(x,y);g.stroke()};
+  const end=()=>{down.current=false};
+  const clear=()=>{const c=cv.current!;c.getContext('2d')!.clearRect(0,0,c.width,c.height);setInk(false)};
+  const finish=()=>{const c=cv.current!,g=c.getContext('2d')!,d=g.getImageData(0,0,c.width,c.height).data;let x0=c.width,y0=c.height,x1=0,y1=0;
+    for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(d[(y*c.width+x)*4+3]>8){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+    if(x1<=x0||y1<=y0)return;const p=6,w=x1-x0+1+p*2,h=y1-y0+1+p*2,o=document.createElement('canvas');o.width=w;o.height=h;o.getContext('2d')!.drawImage(c,x0-p,y0-p,w,h,0,0,w,h);
+    onDone({png:o.toDataURL('image/png'),name},keep,name);clear()};
+  return <div className="se-sigpad"><b>Draw your signature</b><canvas ref={cv} width={560} height={180} className="se-canvas" aria-label="Signature drawing area" onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end}/>
+    <div className="se-row"><span className="muted small">Ink</span>{COLORS.map(c=><button key={c} type="button" className={`se-swatch${color===c?' on':''}`} style={{background:c}} aria-label={'Ink colour '+c} onClick={()=>setColor(c)}/>)}<button type="button" className="textbtn" onClick={clear}><Eraser size={14}/> Clear</button></div>
+    {canSave&&<div className="se-row"><label className="check"><input type="checkbox" checked={keep} onChange={e=>setKeep(e.target.checked)}/> Save this signature for future use</label>{keep&&<input aria-label="Signature name" value={name} maxLength={40} onChange={e=>setName(e.target.value)} placeholder="Name it"/>}</div>}
+    <div className="se-row"><button type="button" className="primary" disabled={!ink} onClick={finish}><Check size={15}/> Use this signature</button></div>
+    {saved.length>0&&<div className="se-saved"><b>Saved signatures</b>{saved.map(s=><div key={s.id} className="se-savedrow"><img src={s.png} alt={s.name||'Saved signature'}/><span>{s.name}</span><button type="button" className="secondary" onClick={()=>onUse(s)}>Use</button><button type="button" className="iconbtn" aria-label={'Delete saved signature '+s.name} onClick={()=>onDelete(s)}><Trash2 size={15}/></button></div>)}</div>}
+  </div>;
+}
+
+type Op={id:string;t:'text'|'delete'|'sign'|'replace'|'add';page?:number;rect?:number[];x?:number;y?:number;size?:number;color?:string;text?:string;png?:string;i?:number;after?:number;width?:number};
+
+function PdfView({info,ops,setOps,tool,sig,size,color,locked}:{info:any;ops:Op[];setOps:(f:(o:Op[])=>Op[])=>void;tool:string;sig:Sig|null;size:number;color:string;locked:boolean}){
+  const [editing,setEditing]=useState<string|null>(null);
+  return <div className="se-pages">{info.pages.map((pg:any,pi:number)=>{
+    const W=Math.min(760,pg.w*1.25),f=W/pg.w;const mine=ops.filter(o=>o.page===pi);
+    const clickPage=(e:React.MouseEvent<HTMLDivElement>)=>{if(locked||e.target!==e.currentTarget&&!(e.target as HTMLElement).classList.contains('se-img'))return;const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/f,y=(e.clientY-r.top)/f;
+      if(tool==='text'){const id=uid();setOps(o=>[...o,{id,t:'text',page:pi,x,y,size,color,text:''}]);setEditing(id)}
+      else if(tool==='sign'&&sig){const img=new Image();img.onload=()=>{const w=150,h=w*img.height/img.width;setOps(o=>[...o,{id:uid(),t:'sign',page:pi,rect:[x,y,x+w,y+h],png:sig.png}])};img.src=sig.png}};
+    const lineClick=(l:any)=>{if(locked)return;if(tool==='delete'){const had=ops.find(o=>o.t==='delete'&&o.page===pi&&o.rect![0]===l.bbox[0]&&o.rect![1]===l.bbox[1]);setOps(o=>had?o.filter(x=>x!==had):[...o,{id:uid(),t:'delete',page:pi,rect:l.bbox,text:l.text}])}
+      else if(tool==='replace'){const id=uid();setOps(o=>[...o,{id,t:'delete',page:pi,rect:l.bbox,text:l.text},{id:id+'r',t:'text',page:pi,x:l.bbox[0],y:l.bbox[1],size:l.size,color:'#111827',text:l.text}]);setEditing(id+'r')}};
+    const drag=(o:Op,mode:'move'|'size')=>(e:React.PointerEvent)=>{e.stopPropagation();e.preventDefault();const sx=e.clientX,sy=e.clientY,r0=[...o.rect!];const t=e.currentTarget as HTMLElement;t.setPointerCapture(e.pointerId);
+      const mv=(ev:PointerEvent)=>{const dx=(ev.clientX-sx)/f,dy=(ev.clientY-sy)/f;setOps(all=>all.map(a=>{if(a.id!==o.id)return a;if(mode==='move')return {...a,rect:[r0[0]+dx,r0[1]+dy,r0[2]+dx,r0[3]+dy]};const nw=Math.max(30,r0[2]-r0[0]+dx),nh=(r0[3]-r0[1])*nw/(r0[2]-r0[0]);return {...a,rect:[r0[0],r0[1],r0[0]+nw,r0[1]+nh]}}))};
+      const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)};
+    return <div key={pi} className="se-pagewrap"><small className="muted">Page {pi+1} of {info.pages.length}</small>
+      <div className={`se-page tool-${locked?'none':tool}`} style={{width:W,height:pg.h*f}} onClick={clickPage}><img className="se-img" src={pg.image} alt={`Page ${pi+1}`} draggable={false} style={{width:W,height:pg.h*f}}/>
+        {(tool==='delete'||tool==='replace')&&!locked&&pg.lines.map((l:any,k:number)=><button key={k} type="button" className="se-line" title={tool==='delete'?'Delete this text':'Change this text'} aria-label={(tool==='delete'?'Delete: ':'Change: ')+l.text} style={{left:l.bbox[0]*f-2,top:l.bbox[1]*f-1,width:(l.bbox[2]-l.bbox[0])*f+4,height:(l.bbox[3]-l.bbox[1])*f+2}} onClick={()=>lineClick(l)}/>)}
+        {mine.map(o=>o.t==='delete'?<div key={o.id} className="se-del" title="Will be deleted" style={{left:o.rect![0]*f-2,top:o.rect![1]*f-1,width:(o.rect![2]-o.rect![0])*f+4,height:(o.rect![3]-o.rect![1])*f+2}}><button type="button" className="se-x" aria-label="Keep this text" onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id&&x.id!==o.id+'r'))}}><X size={11}/></button></div>
+          :o.t==='text'?<div key={o.id} className="se-text" style={{left:o.x!*f,top:o.y!*f}}>{editing===o.id?<textarea autoFocus rows={1} value={o.text} style={{fontSize:o.size!*f,color:o.color}} aria-label="Text to add" onChange={e=>setOps(a=>a.map(x=>x.id===o.id?{...x,text:e.target.value}:x))} onBlur={()=>{setEditing(null);if(!(o.text||'').trim())setOps(a=>a.filter(x=>x.id!==o.id))}}/>:<span style={{fontSize:o.size!*f,color:o.color}} onClick={e=>{e.stopPropagation();if(!locked)setEditing(o.id)}}>{o.text}</span>}<button type="button" className="se-x" aria-label="Remove this text" onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button></div>
+          :<div key={o.id} className="se-sig" style={{left:o.rect![0]*f,top:o.rect![1]*f,width:(o.rect![2]-o.rect![0])*f,height:(o.rect![3]-o.rect![1])*f}} onPointerDown={drag(o,'move')} onClick={e=>e.stopPropagation()}><img src={o.png} alt="Signature" draggable={false}/><button type="button" className="se-x" aria-label="Remove this signature" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button><span className="se-grip" aria-label="Resize signature" onPointerDown={drag(o,'size')}/></div>)}
+      </div></div>})}</div>;
+}
+
+function WordView({info,ops,setOps,sig,locked}:{info:any;ops:Op[];setOps:(f:(o:Op[])=>Op[])=>void;sig:Sig|null;locked:boolean}){
+  const [edit,setEdit]=useState<number|null>(null);const [adding,setAdding]=useState<number|null>(null);const [draft,setDraft]=useState('');
+  const rep=(i:number)=>ops.find(o=>o.t==='replace'&&o.i===i);const del=(i:number)=>ops.find(o=>o.t==='delete'&&o.i===i);
+  const set=(o:Op)=>setOps(a=>[...a.filter(x=>!(x.t===o.t&&x.i===o.i&&(o.t==='replace'||o.t==='delete'))),o]);
+  const drop=(id:string)=>setOps(a=>a.filter(x=>x.id!==id));
+  const extras=(i:number)=>ops.filter(o=>(o.t==='add'||o.t==='sign')&&o.after===i).map(o=>o.t==='add'?<div key={o.id} className="se-wadd"><span>{o.text}</span><button type="button" className="iconbtn" aria-label="Remove added text" onClick={()=>drop(o.id)}><X size={14}/></button></div>
+    :<div key={o.id} className="se-wadd"><img src={o.png} alt="Signature" style={{width:o.width!*48}}/><label className="small muted">Size <input type="range" min={0.8} max={4} step={0.1} value={o.width} aria-label="Signature size" onChange={e=>setOps(a=>a.map(x=>x.id===o.id?{...x,width:+e.target.value}:x))}/></label><button type="button" className="iconbtn" aria-label="Remove signature" onClick={()=>drop(o.id)}><X size={14}/></button></div>);
+  const tools=(i:number,label:string)=>!locked&&<span className="se-wtools">{adding===i?<span className="se-wform"><textarea autoFocus rows={2} aria-label="Text to add" value={draft} onChange={e=>setDraft(e.target.value)}/><button type="button" className="secondary" onClick={()=>{if(draft.trim())setOps(a=>[...a,{id:uid(),t:'add',after:i,text:draft}]);setDraft('');setAdding(null)}}>Add</button><button type="button" className="textbtn" onClick={()=>{setAdding(null);setDraft('')}}>Cancel</button></span>
+    :<><button type="button" className="textbtn" onClick={()=>{setAdding(i);setDraft('')}}><FilePlus2 size={13}/> Add text {label}</button><button type="button" className="textbtn" disabled={!sig} title={sig?'':'Draw or choose a signature first'} onClick={()=>sig&&setOps(a=>[...a,{id:uid(),t:'sign',after:i,png:sig.png,width:2}])}><PenLine size={13}/> Sign {label}</button></>}</span>;
+  return <div className="se-word">{info.tables>0&&<p className="muted small">This document has {info.tables} table{info.tables===1?'':'s'}. Text inside tables is kept as it is and cannot be changed here.</p>}
+    {info.paragraphs.map((p:any)=>{const d=del(p.i),r=rep(p.i);return <div key={p.i} className={`se-wp${d?' gone':''}`}>
+      {edit===p.i?<span className="se-wform"><textarea autoFocus rows={3} aria-label="New text for this paragraph" value={draft} onChange={e=>setDraft(e.target.value)}/><button type="button" className="secondary" onClick={()=>{set({id:uid(),t:'replace',i:p.i,text:draft});setEdit(null)}}>Keep change</button><button type="button" className="textbtn" onClick={()=>setEdit(null)}>Cancel</button></span>
+        :<p className={p.style.startsWith('Heading')||p.style==='Title'?'se-h':''}>{r?<><span className="se-new">{r.text||'(empty)'}</span></>:p.text||(p.pic?<em className="muted">(picture)</em>:<em className="muted">(blank line)</em>)}</p>}
+      {!locked&&edit!==p.i&&<span className="se-wtools">{d?<button type="button" className="textbtn" onClick={()=>drop(d.id)}><Undo2 size={13}/> Keep this paragraph</button>:<><button type="button" className="textbtn" onClick={()=>{setEdit(p.i);setDraft(r?.text??p.text)}}><Pencil size={13}/> Change</button><button type="button" className="textbtn" onClick={()=>set({id:uid(),t:'delete',i:p.i})}><Trash2 size={13}/> Delete</button></>}{r&&<button type="button" className="textbtn" onClick={()=>drop(r.id)}><Undo2 size={13}/> Undo change</button>}</span>}
+      {tools(p.i,'below')}{extras(p.i)}</div>})}
+    <div className="se-wp"><b>End of document</b>{tools(-1,'at the end')}{extras(-1)}</div></div>;
+}
+
+/* Certified digital signature (PDF): signs with the person's own certificate. The certificate file and password are used once and never stored. */
+function CertPanel({request,doc,onSigned,onClose,notify}:{request:any;doc:Doc;onSigned:(d:Doc)=>void;onClose:()=>void;notify:(m:string)=>void}){
+  const [p12,setP12]=useState<{name:string;b64:string}|null>(null);const [pw,setPw]=useState('');const [reason,setReason]=useState('');const [place,setPlace]=useState('');const [visible,setVisible]=useState(true);const [lock,setLock]=useState(true);const [page,setPage]=useState(doc.info.pages.length-1);
+  const [mk,setMk]=useState(false);const [nm,setNm]=useState('');const [em,setEm]=useState('');const [npw,setNpw]=useState('');const [err,setErr]=useState('');const [busy,setBusy]=useState('');
+  const pick=async(f?:File|null)=>{if(!f)return;setErr('');if(f.size>200000){setErr('That file is too large to be a certificate.');return}setP12({name:f.name,b64:await toB64(f)})};
+  const save=(b64:string,name:string)=>{const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);const url=URL.createObjectURL(new Blob([u],{type:'application/x-pkcs12'}));const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)};
+  const create=async()=>{setErr('');setBusy('Creating your certificate…');try{const r=await request('/docedit/certificate',{method:'POST',body:JSON.stringify({name:nm,email:em,password:npw})});save(r.data,r.name);setP12({name:r.name,b64:r.data});setPw(npw);setNpw('');setMk(false);notify('Certificate created and downloaded. Keep that file and its password safe: you need both to sign in future.')}catch(e:any){setErr(e.message)}setBusy('')};
+  const sign=async()=>{if(!p12)return;setErr('');setBusy('Signing…');try{const r=await request('/docedit/certify',{method:'POST',body:JSON.stringify({name:doc.name,data:doc.b64,p12:p12.b64,password:pw,reason,location:place,visible,page,lock})});
+      const info=await request('/docedit/inspect',{method:'POST',body:JSON.stringify({name:doc.name,data:r.data})});setPw('');onSigned({...doc,b64:r.data,info});notify('The PDF is digitally signed. Download it now.')}catch(e:any){setErr(e.message)}setBusy('')};
+  return <div className="se-sigpad se-cert"><div className="se-row"><b><ShieldCheck size={16}/> Certified digital signature</b><button type="button" className="iconbtn" aria-label="Close" onClick={onClose}><X size={16}/></button></div>
+    <p className="muted small">This seals the PDF with your own certificate. It shows who signed and when, and any change made afterwards is detected. Do this last: once signed, the file cannot be edited without breaking the signature. The certificate file and password are used once and are not kept.</p>
+    <label className="se-field">Certificate file (.p12 or .pfx)<input type="file" accept=".p12,.pfx,application/x-pkcs12" aria-label="Certificate file" onChange={e=>{pick(e.target.files?.[0]);e.target.value=''}}/></label>
+    {p12&&<small className="muted">Using {p12.name}</small>}
+    <label className="se-field">Certificate password<input type="password" autoComplete="off" value={pw} onChange={e=>setPw(e.target.value)} aria-label="Certificate password"/></label>
+    <button type="button" className="textbtn" onClick={()=>setMk(!mk)}><KeyRound size={14}/> {mk?'Hide':'I do not have a certificate: create one'}</button>
+    {mk&&<div className="se-mk"><p className="muted small">This makes a certificate in your name and downloads it as a file protected by a password you choose. Programs such as Adobe Reader will show it as “signer not verified” until the person opening the file chooses to trust it. For a signature that shows as verified, use a certificate from a recognised certificate authority and upload it above.</p>
+      <label className="se-field">Name on the certificate<input value={nm} maxLength={64} onChange={e=>setNm(e.target.value)} aria-label="Name on the certificate"/></label>
+      <label className="se-field">Email (optional)<input value={em} maxLength={120} onChange={e=>setEm(e.target.value)} aria-label="Email on the certificate"/></label>
+      <label className="se-field">Choose a password (8 or more characters)<input type="password" autoComplete="new-password" value={npw} onChange={e=>setNpw(e.target.value)} aria-label="New certificate password"/></label>
+      <button type="button" className="secondary" disabled={!nm.trim()||npw.length<8||!!busy} onClick={create}>Create and download certificate</button></div>}
+    <div className="se-row"><label className="check"><input type="checkbox" checked={visible} onChange={e=>setVisible(e.target.checked)}/> Show a signature stamp on the page</label>
+      {visible&&doc.info.pages.length>1&&<label className="small muted">Page <select value={page} aria-label="Page for the stamp" onChange={e=>setPage(+e.target.value)}>{doc.info.pages.map((_:any,i:number)=><option key={i} value={i}>{i+1}</option>)}</select></label>}</div>
+    <div className="se-row"><label className="check"><input type="checkbox" checked={lock} onChange={e=>setLock(e.target.checked)}/> Certify: no further changes allowed after signing</label></div>
+    <label className="se-field">Reason (optional)<input value={reason} maxLength={200} onChange={e=>setReason(e.target.value)} aria-label="Reason for signing"/></label>
+    <label className="se-field">Location (optional)<input value={place} maxLength={200} onChange={e=>setPlace(e.target.value)} aria-label="Location of signing"/></label>
+    {err&&<p className="error" role="alert">{err}</p>}{busy&&<p className="muted" role="status">{busy}</p>}
+    <div className="se-row"><button type="button" className="primary" disabled={!p12||!pw||!!busy} onClick={sign}><ShieldCheck size={15}/> Sign digitally</button></div></div>;
+}
+
+export function SignEdit({request,notify}:{request:any;notify:(m:string)=>void}){
+  const [orig,setOrig]=useState<Doc|null>(null);const [cur,setCur]=useState<Doc|null>(null);const [ops,setOps]=useState<Op[]>([]);const [tool,setTool]=useState<'text'|'delete'|'replace'|'sign'>('text');
+  const [sig,setSig]=useState<Sig|null>(null);const [saved,setSaved]=useState<Sig[]>([]);const [busy,setBusy]=useState('');const [err,setErr]=useState('');const [size,setSize]=useState(12);const [color,setColor]=useState(COLORS[0]);const [applied,setApplied]=useState(0);const [pad,setPad]=useState(false);const [certOpen,setCertOpen]=useState(false);
+  const loadSaved=useCallback(()=>request('/docedit/signatures').then((r:any)=>setSaved(r.items)).catch(()=>{}),[request]);
+  useEffect(()=>{loadSaved()},[loadSaved]);
+  const upload=async(f?:File|null)=>{if(!f)return;setErr('');if(!/\.(pdf|docx)$/i.test(f.name)){setErr(/\.doc$/i.test(f.name)?'Old .doc files are not supported. Save it as .docx in Word and upload that.':'Upload a PDF (.pdf) or Word (.docx) file.');return}
+    if(f.size>12*1024*1024){setErr('The file is larger than 12 MB.');return}setBusy('Opening your file…');
+    try{const b64=await toB64(f);const info=await request('/docedit/inspect',{method:'POST',body:JSON.stringify({name:f.name,data:b64})});const d:Doc={name:f.name,kind:info.kind,b64,info};setOrig(d);setCur(d);setOps([]);setApplied(0);setTool(info.kind==='pdf'?'text':'text')}catch(e:any){setErr(e.message)}setBusy('')};
+  const apply=async()=>{if(!cur||!ops.length)return;setErr('');setBusy('Applying your changes…');
+    const send=ops.filter(o=>!(o.t==='text'&&!(o.text||'').trim())).map(({id,...o})=>o);
+    try{const r=await request('/docedit/apply',{method:'POST',body:JSON.stringify({name:cur.name,data:cur.b64,ops:send})});const info=await request('/docedit/inspect',{method:'POST',body:JSON.stringify({name:cur.name,data:r.data})});setCur({...cur,b64:r.data,info});setOps([]);setApplied(n=>n+1);notify(r.warnings?.length?r.warnings[0]:'Changes applied. Download the file when you are ready.')}catch(e:any){setErr(e.message)}setBusy('')};
+  const revert=()=>{if(!orig)return;if((ops.length||applied||signed)&&!window.confirm('Go back to the file exactly as you uploaded it? Your changes will be lost.'))return;setCur(orig);setOps([]);setApplied(0);setErr('');setCertOpen(false)};
+  const download=()=>{if(!cur)return;const bin=atob(cur.b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);const url=URL.createObjectURL(new Blob([u],{type:MIME[cur.kind]}));const a=document.createElement('a');a.href=url;a.download=cur.name.replace(/(\.[^.]+)$/,'-edited$1');document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)};
+  const onSig=async(s:Sig,keep:boolean,name:string)=>{setSig(s);setPad(false);setTool('sign');if(keep){try{const r=await request('/docedit/signatures',{method:'POST',body:JSON.stringify({name,png:s.png})});setSig(r);loadSaved();notify('Signature saved for future use.')}catch(e:any){setErr(e.message)}}};
+  const delSig=async(s:Sig)=>{if(!window.confirm('Delete this saved signature?'))return;try{await request('/docedit/signatures/'+s.id,{method:'DELETE'});if(sig?.id===s.id)setSig(null);loadSaved()}catch(e:any){setErr(e.message)}};
+  const reset=()=>{if(ops.length&&!window.confirm('Close this file? Changes that you have not downloaded will be lost.'))return;if(applied&&!ops.length&&!window.confirm('Close this file? Changes that you have not downloaded will be lost.'))return;setOrig(null);setCur(null);setOps([]);setApplied(0);setErr('')};
+  const pdf=cur?.kind==='pdf';const sigs:any[]=(cur?.info?.signatures)||[];const signed=sigs.length>0;const changed=ops.length>0;const note=pdf?'Click the page where the text should go.':'Use the buttons beside each paragraph.';
+  return <section className="panel se">
+    {!cur?<div className="se-start"><h2>Upload a file to edit or sign</h2><p className="muted">Choose a PDF or a Word (.docx) file. You can add text, delete text and sign it with a signature you draw. Your original file stays untouched until you download the edited copy.</p>
+      <label className="primary se-upload"><Upload size={16}/> Choose a PDF or Word file<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Upload a PDF or Word file" onChange={e=>{upload(e.target.files?.[0]);e.target.value=''}}/></label>
+      <p className="muted small">PDF or .docx, up to 12 MB (PDFs up to 30 pages). Files are not stored on the server.</p>
+      {saved.length>0&&<p className="muted small">You have {saved.length} saved signature{saved.length===1?'':'s'}, ready to use once a file is open.</p>}</div>
+    :<>
+      <div className="panelhead se-head"><h2>{cur.name}</h2><span className="muted small">{pdf?'PDF':'Word'} · {applied?`${applied} round${applied===1?'':'s'} of changes applied`:'as uploaded'}{changed?` · ${ops.length} not yet applied`:''}</span>
+        <span className="se-actions"><button type="button" className="primary" disabled={!changed||!!busy} onClick={apply}><Check size={15}/> Apply changes</button><button type="button" className="secondary" disabled={!(changed||applied||signed)||!!busy} onClick={revert}><RotateCcw size={15}/> Revert changes</button>{pdf&&!signed&&<button type="button" className="secondary" disabled={changed||!!busy} title={changed?'Apply your changes first, then sign':'Add a certified digital signature'} onClick={()=>setCertOpen(!certOpen)}><ShieldCheck size={15}/> Digital signature</button>}<button type="button" className="secondary" disabled={!(applied||signed)||!!busy} title={applied||signed?'':'Apply your changes first'} onClick={download}><Download size={15}/> Download</button><button type="button" className="textbtn" onClick={reset}>Choose another file</button></span></div>
+      {changed&&<div className="shared-banner" role="status">You have changes that are not applied yet. Press Apply changes to put them in the file, then Download.</div>}
+      {sigs.map((g,i)=><div key={i} className={`shared-banner se-signed${g.intact?'':' bad'}`} role={g.intact?'status':'alert'}><ShieldCheck size={15}/> {g.intact?<>Digitally signed{g.signer?` by ${g.signer}`:''}. The file has not changed since it was signed.{!g.trusted&&' The signer’s identity is not verified by a recognised authority.'}{g.certified&&' No further changes are allowed.'} Editing is switched off: press Revert changes to go back to the file as uploaded.</>:<>This PDF has a digital signature that is no longer valid: the file was changed after it was signed.</>}</div>)}
+      {certOpen&&pdf&&!signed&&<CertPanel request={request} doc={cur} notify={notify} onClose={()=>setCertOpen(false)} onSigned={d=>{setCur(d);setApplied(n=>n+1);setCertOpen(false);setOps([])}}/>}
+      <div className={`se-tools${signed?' off':''}`} role="toolbar" aria-label="Editing tools" aria-disabled={signed}>
+        <button type="button" className={`wb-cat${tool==='text'?' on':''}`} aria-pressed={tool==='text'} onClick={()=>setTool('text')}><Type size={14}/> Add text</button>
+        {pdf&&<><button type="button" className={`wb-cat${tool==='replace'?' on':''}`} aria-pressed={tool==='replace'} onClick={()=>setTool('replace')}><Pencil size={14}/> Change text</button><button type="button" className={`wb-cat${tool==='delete'?' on':''}`} aria-pressed={tool==='delete'} onClick={()=>setTool('delete')}><Trash2 size={14}/> Delete text</button></>}
+        <button type="button" className={`wb-cat${tool==='sign'?' on':''}`} aria-pressed={tool==='sign'} onClick={()=>{setTool('sign');if(!sig&&!saved.length)setPad(true)}}><PenLine size={14}/> Sign</button>
+        {pdf&&tool==='text'&&<span className="se-opts"><label className="small muted">Size <select value={size} aria-label="Text size" onChange={e=>setSize(+e.target.value)}>{[9,10,11,12,14,16,18,24,32].map(n=><option key={n} value={n}>{n}</option>)}</select></label>{COLORS.map(c=><button key={c} type="button" className={`se-swatch${color===c?' on':''}`} style={{background:c}} aria-label={'Text colour '+c} onClick={()=>setColor(c)}/>)}</span>}
+        <span className="muted small se-hint">{tool==='delete'?'Click a line of text to delete it. Click the red box again to keep it.':tool==='replace'?'Click a line of text, then type the new words.':tool==='sign'?(sig?(pdf?'Click the page where the signature should go. Drag it to move; drag the corner to resize.':'Use "Sign below" beside a paragraph.'):'Draw a signature, or choose a saved one.'):note}</span></div>
+      {tool==='sign'&&!signed&&<div className="se-sigbar">{sig?<><img src={sig.png} alt="Signature in use" className="se-siguse"/><span className="small muted">Signature ready.</span></>:<span className="small muted">No signature chosen yet.</span>}<button type="button" className="secondary" onClick={()=>setPad(!pad)}>{pad?'Close signature box':sig?'Draw a new one or pick another':'Draw or pick a signature'}</button></div>}
+      {tool==='sign'&&pad&&!signed&&<SignaturePad onDone={onSig} saved={saved} canSave onDelete={delSig} onUse={s=>{setSig(s);setPad(false)}}/>}
+      {err&&<p className="error" role="alert">{err}</p>}{busy&&<p className="muted" role="status">{busy}</p>}
+      {pdf?<PdfView info={cur.info} ops={ops} setOps={setOps} tool={tool} sig={sig} size={size} color={color} locked={!!busy||signed}/>:<WordView info={cur.info} ops={ops} setOps={setOps} sig={sig} locked={!!busy}/>}
+      <p className="muted small">A drawn signature is a picture. For a sealed, tamper-evident signature on a PDF use Digital signature. {pdf?'Deleting text removes it from the PDF itself, not just from view.':'Word formatting that you do not touch stays as it was.'}</p></>}
+    {!cur&&err&&<p className="error" role="alert">{err}</p>}{!cur&&busy&&<p className="muted" role="status">{busy}</p>}
+  </section>;
+}

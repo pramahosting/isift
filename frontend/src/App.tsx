@@ -12,21 +12,22 @@ import {CommboxPage} from './Commbox';
 import {SchedulingPage,BookingPublic,BookingManage,ShareLauncher} from './Scheduling';
 import {MailApp} from './MailApp';
 import {HostDialog,TestAV,PmiCard,ChatPage,ContactsPage,NotesPage} from './Workspace';
+import {SignEdit} from './SignEdit';
 import {AccountPage} from './Account';
 import {PricingPage,PLAN_LABEL,HomePricing} from './Pricing';
 import {BillingPage,RefundsPanel} from './Billing';
 import {Notifications} from './Notifications';
 import {JoinWindowButton,RecordingsTable,JoinById,ConnectionsPage,JoinButton,providerOf,PROVIDER_LABEL} from './Connections';
-import {Plus,Bell,UserCircle,Tag,Send,Pencil,Trash2,MessageSquare,Contact,PenLine,Table2,Presentation,Files,ChevronsLeft,ChevronsRight,Headphones,Home,Users,Database,Menu,X,LayoutDashboard,CalendarDays,FileText,ListChecks,Sun,History,Settings,RefreshCw,LogIn,ShieldCheck,AlertTriangle,CheckCircle2,Clock3,ExternalLink,Save,Play,Upload,ChevronRight,LockKeyhole,LoaderCircle,Eye,EyeOff,LogOut,Sparkles,Mic,Zap,ArrowUp,Link2,Check,Video,Mail,CalendarPlus,CreditCard} from 'lucide-react';
+import {FileSignature,Plus,Bell,UserCircle,Tag,Send,Pencil,Trash2,MessageSquare,Contact,PenLine,Table2,Presentation,Files,ChevronsLeft,ChevronsRight,Headphones,Home,Users,Database,Menu,X,LayoutDashboard,CalendarDays,FileText,ListChecks,Sun,History,Settings,RefreshCw,LogIn,ShieldCheck,AlertTriangle,CheckCircle2,Clock3,ExternalLink,Save,Play,Upload,ChevronRight,LockKeyhole,LoaderCircle,Eye,EyeOff,LogOut,Sparkles,Mic,Zap,ArrowUp,Link2,Check,Video,Mail,CalendarPlus,CreditCard} from 'lucide-react';
 import type {User,Meeting,ActionItem,Briefing,WorkflowRun} from './contracts';
 
 const API=import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
 const COMM=['Commbox','Mail','Calendar','Contacts'];
-const DOC_TABS:[string,any,string,string][]=[['WordPerfect',FileText,'wp','Write documents with headings, lists, tables and links. Share them with people and groups.'],['SpreadTable',Table2,'sheet','Workbooks with formulas, several sheets and CSV import and export.'],['PowerPresentation',Presentation,'deck','Slides you can present, print and share.']];
+const DOC_TABS:[string,any,string,string][]=[['WordPerfect',FileText,'wp','Write documents with headings, lists, tables and links. Share them with people and groups.'],['SpreadTable',Table2,'sheet','Workbooks with formulas, several sheets and CSV import and export.'],['PowerPresentation',Presentation,'deck','Slides you can present, print and share.'],['Sign & Edit',FileSignature,'sign','Upload a PDF or Word file, add or delete text and sign it with a signature you draw.']];
 const MEET_TABS=['Meetings','Recordings','Transcripts','Minutes','Action items','Briefings','Booking'];
 const TAB_MOD:Record<string,string>={Meetings:'meetings',Recordings:'meetings',Transcripts:'transcripts',Minutes:'minutes','Action items':'actions',Briefings:'briefings',Booking:'scheduling'};
 const COMM_MOD:Record<string,string>={Mail:'mail',Calendar:'calendar',Contacts:'contacts'};
-const PAGE_MOD:Record<string,string>={...TAB_MOD,Docs:'docs',Chat:'chat',Notes:'docs',WordPerfect:'docs',SpreadTable:'docs',PowerPresentation:'docs',Whiteboard:'whiteboard',Connections:'connections'};
+const PAGE_MOD:Record<string,string>={...TAB_MOD,Docs:'docs',Chat:'chat',Notes:'docs',WordPerfect:'docs',SpreadTable:'docs',PowerPresentation:'docs','Sign & Edit':'docs',Whiteboard:'whiteboard',Connections:'connections'};
 const nav=[['Dashboard',LayoutDashboard],['Meetings',CalendarDays],['Commbox',Mail],['Chat',MessageSquare],['Notes',FileText],['Docs',Files],['Whiteboard',PenLine],['Connections',Link2],['Run history',History],['Users',Users],['Data import',Database],['Admin settings',Settings]];
 const CAPS=[
  {icon:Sun,title:'Start prepared',mods:['briefings','meetings'],text:'A morning briefing and a dashboard bring the day together.',points:['Weekday briefing with an overview and your meeting list, in your own time zone','Each meeting shows a few preparation points','Private, cancelled and all-day events are left out before processing']},
@@ -174,7 +175,7 @@ export default function App({initialToken,msal}){
   if(page==='Notes')return <><PageHead title="Notes" desc="Write and keep notes, agendas and drafts."/><NotesPage request={request} kind="doc" focus={focusFile?.kind==='doc'?focusFile:null} onFocused={()=>setFocusFile(null)}/></>;
   if(page==='Docs'||DOC_TABS.some(t=>t[0]===page)){const cur=DOC_TABS.find(t=>t[0]===page)||DOC_TABS[0];
     return <div className="commbox"><div className="cb-tabs" role="tablist" aria-label="Docs"><h1>Docs</h1>{DOC_TABS.map(([name,Icon])=><button key={name} role="tab" aria-selected={cur[0]===name} className={cur[0]===name?'on':''} onClick={()=>{setDocTab(name);setPage(name)}}><Icon size={17}/> {name}</button>)}</div>
-      <p className="muted docs-desc">{cur[3]}</p><NotesPage key={cur[2]} request={request} kind={cur[2] as any} focus={focusFile?.kind===cur[2]?focusFile:null} onFocused={()=>setFocusFile(null)}/></div>}
+      <p className="muted docs-desc">{cur[3]}</p>{cur[2]==='sign'?<SignEdit request={request} notify={setNotice}/>:<NotesPage key={cur[2]} request={request} kind={cur[2] as any} focus={focusFile?.kind===cur[2]?focusFile:null} onFocused={()=>setFocusFile(null)}/>}</div>}
   if(page==='Whiteboard')return <><PageHead title="Whiteboard" desc="Sketch ideas. Boards save automatically."/><NotesPage request={request} kind="board" focus={focusFile?.kind==='board'?focusFile:null} onFocused={()=>setFocusFile(null)}/></>;
   if(page==='Meeting')return <MeetingDetail onCopy={copyMeeting} id={detailId} startEdit={detailEdit} request={request} isAdmin={user?.role==='admin'} goSettings={loadSettings} onBack={()=>setPage('Meetings')} onChanged={load} notice={setNotice}/>;
   if(page==='Transcripts')return <><PageHead title="Transcripts" desc="Read what was said, line by line. Official Teams transcripts or explicitly authorized uploaded recordings."/><TranscriptsPage meetings={meetings} selected={selectedMeeting} transcript={transcript} onView={viewTranscript} onFetch={fetchTranscript} onUpload={uploadAudio}/></>;

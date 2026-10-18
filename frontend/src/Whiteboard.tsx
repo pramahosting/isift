@@ -102,7 +102,7 @@ function bboxOf(it:any,g:CanvasRenderingContext2D):[number,number,number,number]
 
 /* ---------------- drawing ---------------- */
 function rr(g:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,r:number){r=Math.max(0,Math.min(r,w/2,h/2));g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
-function drawShape(g:CanvasRenderingContext2D,s:any){
+export function drawShape(g:CanvasRenderingContext2D,s:any){
   const {x,y,w,h}=s;g.save();g.lineWidth=s.lw||2;g.strokeStyle=s.c||COLORS[0];g.setLineDash(s.dash||s.k==='container'?[8,6]:[]);g.fillStyle=s.f||'rgba(0,0,0,0)';
   if(drawLibShape(g,s,wrap,s.c||COLORS[0])){g.restore();return}
   g.beginPath();
@@ -187,18 +187,18 @@ function moveItem(it:any,o:any,dx:number,dy:number){
   else if(it.t==='line'){for(const wh of ['a','b'] as const)if(!o[wh].id)it[wh]={x:o[wh].x+dx,y:o[wh].y+dy}}
   else{it.x=o.x+dx;it.y=o.y+dy}
 }
-function Preview({item}:{item:any}){
+export function Preview({item}:{item:any}){
   const r=useRef<HTMLCanvasElement>(null);
   useEffect(()=>{const c=r.current;if(!c)return;const g=c.getContext('2d')!;g.clearRect(0,0,c.width,c.height);const sc=Math.min(46/item.w,34/item.h,1);
     g.save();g.translate(c.width/2,c.height/2);g.scale(sc,sc);g.translate(-item.w/2,-item.h/2);
     drawShape(g,{...item,x:0,y:0,text:item.k==='quad'||item.k==='uclass'?item.text:item.k==='svc'?item.text:'',lw:1.6/sc,size:item.k==='quad'?12:item.k==='svc'?15:13,c:item.prov?'#172033':'#172033',f:item.f||''});g.restore()},[item.id]);
   return <canvas ref={r} width={56} height={40} aria-hidden="true"/>;
 }
-export function Board({content,onChange,name,pictureRef,toolsHost,readOnly}:{readOnly?:boolean;content:string;onChange:(c:string)=>void;name?:string;toolsHost?:HTMLElement|null;pictureRef?:React.MutableRefObject<(()=>string|null)|null>}){
+export function Board({content,onChange,name,pictureRef,toolsHost,readOnly,libOpen=true}:{libOpen?:boolean;readOnly?:boolean;content:string;onChange:(c:string)=>void;name?:string;toolsHost?:HTMLElement|null;pictureRef?:React.MutableRefObject<(()=>string|null)|null>}){
   const cv=useRef<HTMLCanvasElement>(null);const items=useRef<any[]>([]);const hist=useRef<string[]>([]);const hidx=useRef(0);
   const [tool,setTool]=useState<Tool>('pen');const [color,setColor]=useState(COLORS[0]);const [w,setW]=useState(3);const [snap,setSnap]=useState(false);
   const [sel,setSel]=useState<string>('');const [,force]=useReducer((x:number)=>x+1,0);
-  const [cat,setCat]=useState('basic');const [libOpen,setLibOpen]=useState(true);const [bsz,setBsz]=useState({w:1200,h:700});
+  const [cat,setCat]=useState('basic');const [bsz,setBsz]=useState({w:1200,h:700});
   const view=useRef({s:1,x:0,y:0});const spaceDown=useRef(false);const viewTimer=useRef<any>(null);const bszRef=useRef(bsz);bszRef.current=bsz;
   const drag=useRef<any>(null);const draft=useRef<any>(null);const typing=useRef<any>(null);const taRef=useRef<HTMLTextAreaElement>(null);const wrapRef=useRef<HTMLDivElement>(null);
   const selItem=()=>items.current.find(i=>i.id===sel)||null;
@@ -352,7 +352,7 @@ export function Board({content,onChange,name,pictureRef,toolsHost,readOnly}:{rea
       {preset==='custom'&&<><label className="wb-boardsz">W <input type="number" min={300} max={4000} step={50} value={bsz.w} onChange={e=>setBoard({w:Number(e.target.value),h:bsz.h})} aria-label="Board width"/></label><label className="wb-boardsz">H <input type="number" min={300} max={4000} step={50} value={bsz.h} onChange={e=>setBoard({w:bsz.w,h:Number(e.target.value)})} aria-label="Board height"/></label></>}
       <span className="wb-sep"/>
       <label className="wb-boardsz">Insert a workflow <select value="" onChange={e=>{if(e.target.value)addTemplate(e.target.value)}} aria-label="Insert a ready-made workflow"><option value="">Choose…</option>{TEMPLATES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
-      <button type="button" className="textbtn" onClick={()=>setLibOpen(!libOpen)} aria-expanded={libOpen}>{libOpen?'Hide shapes':'Show shapes'}</button></>}</div>
+      </>}</div>
     {libOpen&&!ro&&<div className="wb-lib" aria-label="Shape library">
       <div className="wb-cats" role="tablist" aria-label="Shape categories">{CATS.map(c=><button key={c.id} type="button" role="tab" aria-selected={cat===c.id} className={`wb-cat${cat===c.id?' on':''}`} onClick={()=>setCat(c.id)}>{c.label}</button>)}</div>
       <div className="wb-items">{cat==='conn'?LINE_PRESETS.map(l=><button key={l.id} type="button" className={`wb-item${tool==='lp:'+l.id?' on':''}`} title={l.label} aria-pressed={tool==='lp:'+l.id} onClick={()=>setTool('lp:'+l.id)}><LinePreview p={l}/><span>{l.label}</span></button>)
@@ -384,3 +384,25 @@ function LinePreview({p}:{p:{k:string;ma:string;mb:string;dash?:boolean}}){
   useEffect(()=>{const c=r.current;if(!c)return;const g=c.getContext('2d')!;g.clearRect(0,0,c.width,c.height);g.strokeStyle=g.fillStyle='#172033';g.lineWidth=1.6;g.setLineDash(p.dash?[4,3]:[]);g.beginPath();g.moveTo(8,20);g.lineTo(48,20);g.stroke();drawMarker(g,p.mb,[48,20],[8,20]);drawMarker(g,p.ma,[8,20],[48,20])},[]);
   return <canvas ref={r} width={56} height={40} aria-hidden="true"/>;
 }
+
+
+/* ---- shared with WordPerfect and PowerPresentation: the same shape library, drawn to a picture ---- */
+const pngCache=new Map<string,{url:string;w:number;h:number}>();
+/** A library shape drawn to a transparent PNG, cropped to its ink. Size is in CSS pixels (the picture itself is drawn at double size). */
+export function shapePng(lib:any,text?:string,ink='#172033'):{url:string;w:number;h:number}{
+  const t=text===undefined?(lib.text||''):text;const key=`${lib.id}|${t}|${ink}`;const hit=pngCache.get(key);if(hit)return hit;
+  const m=14,K=2,c=document.createElement('canvas');c.width=(lib.w+m*2)*K;c.height=(lib.h+m*2+48)*K;const g=c.getContext('2d')!;g.scale(K,K);
+  drawShape(g,{...mkShape(lib,m,m,ink),text:t,lw:2,size:lib.k==='quad'?13:16,f:lib.f||''});
+  const d=g.getImageData(0,0,c.width,c.height).data;let x0=c.width,y0=c.height,x1=0,y1=0;
+  for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)if(d[(y*c.width+x)*4+3]>6){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  if(x1<=x0||y1<=y0){const r={url:c.toDataURL('image/png'),w:lib.w,h:lib.h};pngCache.set(key,r);return r}
+  const p=4,w=x1-x0+1+p*2,h=y1-y0+1+p*2,o=document.createElement('canvas');o.width=w;o.height=h;o.getContext('2d')!.drawImage(c,x0-p,y0-p,w,h,0,0,w,h);
+  const r={url:o.toDataURL('image/png'),w:Math.round(w/K),h:Math.round(h/K)};pngCache.set(key,r);return r}
+
+/** The shape library as a tray: pick a category, press a shape. Used by WordPerfect and PowerPresentation (the whiteboard has its own copy inside its tools). */
+export function ShapeShelf({onPick}:{onPick:(lib:any)=>void}){
+  const [cat,setCat]=useState('basic');const cats=CATS.filter(c=>c.id!=='conn');
+  return <div className="wb-lib doc-shelf" aria-label="Shape library">
+    <div className="wb-cats" role="tablist" aria-label="Shape categories">{cats.map(c=><button key={c.id} type="button" role="tab" aria-selected={cat===c.id} className={`wb-cat${cat===c.id?' on':''}`} onClick={()=>setCat(c.id)}>{c.label}</button>)}</div>
+    <div className="wb-items">{LIB.filter(l=>l.cat===cat).map(l=><button key={l.id} type="button" className="wb-item" title={`Insert ${l.label}`} aria-label={`Insert ${l.label}`} onClick={()=>onPick(l)}><Preview item={l}/><span>{l.label}</span></button>)}</div>
+    {['aws','azure','gcp','ai'].includes(cat)&&<small className="muted">Generic service tiles in {PROV[cat]?.name||'each'} colours, not official logos.</small>}</div>}
