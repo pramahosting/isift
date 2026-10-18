@@ -109,12 +109,15 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const [copied,setCopied]=useState('');
   const copyText=async(id:string,t:string)=>{try{await navigator.clipboard.writeText(t);setCopied(id);setTimeout(()=>setCopied(''),2000)}catch{window.prompt('Copy this:',t)}};
   const endMeeting=async()=>{if(!window.confirm('End this meeting? The link stops working and the meeting is cancelled.'))return;const r=await fetch(`${api}/rooms/${code}/end`,{method:'POST',headers:authH,body:JSON.stringify({cancel:true})});if(r.ok){local.current.audio?.stop();local.current.cam?.stop();onLeave()}else setErr('Could not end the meeting. Try again.')};
+  const [joining,setJoining]=useState(false);
+  useEffect(()=>{if(phase!=='lobby'||err)setJoining(false)},[phase,err]);
   const join=async()=>{
-    setErr('');
+    if(joining)return;setErr('');setJoining(true);
+    const slow=setTimeout(()=>{setErr('Could not reach the meeting. Check your connection and press Join again.');setJoining(false);try{ws.current?.close()}catch{}},20000);
     const sock=new WebSocket(wsUrl(api,code));ws.current=sock;
     sock.onopen=()=>send({type:'join',client:(()=>{try{let c=sessionStorage.getItem('isift.cid');if(!c){c=Math.random().toString(36).slice(2)+Date.now().toString(36);sessionStorage.setItem('isift.cid',c)}return c}catch{return ''}})(),name:name.trim()||'Guest',token:token||undefined,passcode:passcode.trim()||undefined});
     sock.onmessage=async ev=>{
-      const m=JSON.parse(ev.data);
+      clearTimeout(slow);const m=JSON.parse(ev.data);
       if(m.type==='waiting'){setPhase('waiting')}
       else if(m.type==='denied'){setErr('The host did not let you in.');setPhase('ended')}
       else if(m.type==='waiting-list'){setWaitList(m.list||[]);if((m.list||[]).length)setNotice(`${m.list[m.list.length-1].name} is waiting to join`)}
@@ -155,7 +158,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       else if(m.type==='ended'){leaveLocal();setPhase('ended')}
       else if(m.type==='error'){setErr(m.message);sock.close()}
     };
-    sock.onclose=()=>{setPhase(p=>p==='room'||p==='waiting'?'ended':p)};
+    sock.onclose=()=>{clearTimeout(slow);setPhase(p=>{if(p==='lobby'){setErr(e=>e||'Could not connect to the meeting. Press Join again.');setJoining(false)}return p==='room'||p==='waiting'?'ended':p})};
+    sock.onerror=()=>{setJoining(false)};
   };
   const leaveLocal=()=>{Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();ws.current?.close()};
   const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
@@ -286,7 +290,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     <div className="rm-lobbyctl"><button type="button" className={`secondary${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio}>{mic?<Mic size={16}/>:<MicOff size={16}/>} {mic?'Mic on':'Mic off'}</button><button type="button" className={`secondary${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam}>{cam?<Video size={16}/>:<VideoOff size={16}/>} {cam?'Camera on':'Camera off'}</button></div>
     <p className="muted small">The host may record this meeting. You will see a clear “Recording” banner if they do, and you can leave at any time.</p>
     {err&&<p className="syncerr" role="alert">{err}</p>}
-    <button className="primary join" onClick={join} disabled={!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
+    <button className={`primary join${joining?' busy':''}`} aria-busy={joining} onClick={join} disabled={joining||!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{joining?"Joining…":!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
   </div></div>;
   if(phase==='waiting')return <div className="rm-center"><div className="rm-card"><h1>Waiting for the host</h1><p>The host will let you in shortly. You can leave this page at any time.</p><button className="secondary" onClick={()=>{ws.current?.close();onLeave()}}>Cancel</button></div></div>;
   const list=Object.values(peers);const tiles=list.length+1;

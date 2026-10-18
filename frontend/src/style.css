@@ -1170,3 +1170,4 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 @keyframes rmtalk{50%{opacity:.35;transform:scale(.88)}}
 .rm-pbtn{background:none;border:0;padding:5px;border-radius:6px;display:inline-grid;place-items:center;color:inherit;cursor:pointer}
 .rm-pbtn:disabled{cursor:default;opacity:1}.rm-pbtn:not(:disabled):hover{background:#2f64f01a}
+.primary.join.busy{opacity:.8;cursor:progress}.primary.join.busy::before{content:"";display:inline-block;width:14px;height:14px;margin-right:8px;vertical-align:-2px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}

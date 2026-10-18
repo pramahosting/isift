@@ -58,7 +58,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const [mute,setMute]=useState(!!initial?.options?.mute_on_entry);
   const [vidOff,setVidOff]=useState(!!initial?.options?.video_off_on_entry);
   const [autoRec,setAutoRec]=useState(!!initial?.options?.auto_record);
-  const [vroom,setVroom]=useState(initial?.options?.virtual_room!==false);const [vrAccount,setVrAccount]=useState(true);
+  const [vroom,setVroom]=useState(initial?.options?.virtual_room===true);const [vrAccount,setVrAccount]=useState(true);
   useEffect(()=>{request('/account').then((a:any)=>setVrAccount(a?.profile?.virtual_room!==false)).catch(()=>{})},[]);
   const [invite,setInvite]=useState('');const [sendUpdate,setSendUpdate]=useState(true);
   const [hostOff,setHostOff]=useState(!!initial?.options?.host_video_off);
