@@ -9,6 +9,7 @@ const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:loc
 export function seatPoints(n:number,shape:'rect'|'round'):{x:number;y:number}[]{
   if(n<=0)return [];
   if(shape==='round')return Array.from({length:n},(_,i)=>{const a=Math.PI/2+i*2*Math.PI/n;return{x:50+37*Math.cos(a),y:50+31*Math.sin(a)}});
+  if(n===3)return [{x:34,y:80},{x:66,y:80},{x:50,y:20}];                     // three people: one each side of the table, a tight triangle, all turned toward it
   const ends=n>=7?2:0,rem=n-ends,bottom=Math.ceil(rem/2),top=rem-bottom;
   const row=(k:number,y:number)=>Array.from({length:k},(_,i)=>({x:k===1?50:16+(68*i)/(k-1),y}));
   const B=row(bottom,80),T=row(top,20).reverse();
@@ -63,7 +64,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   // ---- local media ----
   const getMedia=useCallback(async()=>{
     let stream:MediaStream|null=null;
-    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:{width:{ideal:1280},height:{ideal:720}}})}
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:{width:{ideal:1280},height:{ideal:720}}})}
     catch{try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote('Camera not available - joining with microphone only.')}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}}
     if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
     setLocalStream(stream);return stream;
@@ -355,7 +356,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
     <div className="rm-main">{pinnedRow?<div className="rm-spot"><div className="rm-spot-main">{spotTile(pinnedRow)}<div className="rm-spot-tag"><b>Highlighted: {pinnedRow.name}{pinnedRow.self?' (you)':''}</b><button type="button" onClick={()=>setPin('')}>Back to everyone</button></div></div><div className="rm-spot-strip">{ordered.filter(r=>r.id!==pin).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div></div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
       <div className="rm-table" aria-hidden="true"/><div className="rm-cam" aria-hidden="true" title="Everyone is seen from the centre of the table"/>
-      {seatRows.map((r,i)=>{const pt=seats[i];return <div key={r.id} className={`rm-seat ${pt.y<35?'top':pt.y>65?'bot':pt.x<50?'lft':'rgt'}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:Math.round(pt.y),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*28).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*14).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
+      {seatRows.map((r,i)=>{const pt=seats[i];return <div key={r.id} className={`rm-seat ${pt.y<35?'top':pt.y>65?'bot':pt.x<50?'lft':'rgt'}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:Math.round(pt.y),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*22).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
         <VideoTile stream={r.self?localStream:r.stream} name={r.name} muted={r.self} off={r.self?(!cam&&!screen):(!r.cam&&!r.screen)} self={r.self} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===(r.self?'__me':r.id)} plate onDouble={()=>togglePin(r.id)}/>
         <div className="rm-plate" title={r.name}><span className="rm-plname">{r.name}{r.self?' (you)':''}</span>{r.host&&<em>{r.cohost?'co-host':'host'}</em>}{r.screen&&<em>sharing</em>}<span className="rm-plstate">{(r.self?mic:r.mic)?null:<MicOff size={12} className="off" aria-label="Muted"/>}{(r.self?cam:r.cam)?null:<VideoOff size={12} className="off" aria-label="Camera off"/>}</span></div></div>})}
     </div></div>:<div ref={gridRef} className={`rm-grid n${Math.min(tiles,9)}${tiles>TABLE_MAX?' big':''}`}>
