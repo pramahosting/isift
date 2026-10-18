@@ -3,8 +3,6 @@
 PDF editing uses pypdf, pypdfium2, pdfminer.six and ReportLab (all permissive licences). Deleting removes the text-drawing instructions from the file; if any text cannot be removed it is covered and the person is warned.
 Word editing uses python-docx on the body paragraphs. All functions are synchronous; callers run them in a thread."""
 import base64, io, logging
-from docx import Document
-from docx.shared import Inches
 
 MAX_BYTES = 12 * 1024 * 1024
 MAX_PAGES = 30
@@ -201,6 +199,8 @@ def pdf_apply(raw: bytes, ops: list):
 
 # ---------- Word ----------
 def _open_docx(raw: bytes):
+    try: from docx import Document
+    except ImportError: raise EditError("Word editing is not installed on this server (python-docx).")
     try: return Document(io.BytesIO(raw))
     except Exception: raise EditError("This Word file could not be opened. It may be damaged or protected.")
 
@@ -211,6 +211,7 @@ def docx_inspect(raw: bytes) -> dict:
     return {"kind": "docx", "paragraphs": paras, "tables": len(d.tables)}
 
 def docx_apply(raw: bytes, ops: list) -> bytes:
+    from docx.shared import Inches
     d = _open_docx(raw); ps = list(d.paragraphs); n = len(ps)
     def idx(o, allow_end=False):
         try: i = int(o.get("i", o.get("after")))
