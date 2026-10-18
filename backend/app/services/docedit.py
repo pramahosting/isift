@@ -74,8 +74,19 @@ def _lines(raw: bytes) -> list:
                 if isinstance(o, LTTextLine):
                     txt = o.get_text().strip()
                     if txt:
-                        size = max((c.size for c in o if isinstance(c, LTChar)), default=11)
-                        out.append({"bbox": [round(o.x0 - l, 2), round(t - o.y1, 2), round(o.x1 - l, 2), round(t - o.y0, 2)], "text": txt, "size": round(size, 1)})
+                        chars = [c for c in o if isinstance(c, LTChar)]
+                        size = max((c.size for c in chars), default=11)
+                        gaps = sorted(b.x0 - a.x1 for a, b in zip(chars, chars[1:]) if a.get_text().strip() and b.get_text().strip())
+                        track = gaps[len(gaps) // 2] if gaps else 0.0     # letter spacing used by the original (forms often space letters out)
+                        if track > 0.4 and chars:    # spaced-out letters: rebuild the text from the letters so the spacing is not read as extra spaces
+                            built = ""
+                            for k, ch in enumerate(chars):
+                                if k and (ch.x0 - chars[k - 1].x1) > track + 0.35 * ch.size and not built.endswith(" "): built += " "
+                                built += ch.get_text()
+                            txt = built.strip() or txt
+                        base = (t - chars[0].matrix[5]) if chars else (t - o.y0)
+                        out.append({"bbox": [round(o.x0 - l, 2), round(t - o.y1, 2), round(o.x1 - l, 2), round(t - o.y0, 2)], "text": txt, "size": round(size, 1),
+                                    "base": round(base, 2), "track": round(track, 2) if track > 0.4 else 0})
                 elif hasattr(o, "__iter__"):
                     for c in o: walk(c)
             for o in pages[i]: walk(o)
@@ -108,11 +119,12 @@ def _strip_text(rd, pg, rects: list) -> int:
     """Remove the text-drawing instructions that start inside any rectangle (user-space points, y up). Returns how many were removed."""
     from pypdf.generic import ContentStream, NameObject
     cs = ContentStream(pg.get_contents(), rd); ops = cs.operations
-    I = [1, 0, 0, 1, 0, 0]; ctm = list(I); stack = []; tm = list(I); tlm = list(I); lead = 0.0; prev_del = False; keep = []; gone = 0
+    I = [1, 0, 0, 1, 0, 0]; ctm = list(I); stack = []; tm = list(I); tlm = list(I); lead = 0.0; prev_del = False; keep = []; gone = 0; hits: set = set()
     f = lambda v: float(v)
     def inside(m):
         x, y = _mul(tm, ctm)[4:6]
-        return any(r[0] - 2 <= x <= r[2] + 2 and r[1] - 1 <= y <= r[3] + 1 for r in rects)
+        h = [k for k, r in enumerate(rects) if r[0] - 2 <= x <= r[2] + 2 and r[1] - 1 <= y <= r[3] + 1]
+        hits.update(h); return bool(h)
     for operands, op in ops:
         o = op.decode() if isinstance(op, bytes) else str(op)
         try:
@@ -137,7 +149,7 @@ def _strip_text(rd, pg, rects: list) -> int:
             if inside(tm): gone += 1; prev_del = True; keep.append(([], b"T*")); continue
             prev_del = False
         keep.append((operands, op))
-    cs.operations = keep; pg.replace_contents(cs); return gone
+    cs.operations = keep; pg.replace_contents(cs); return gone, hits
 
 def pdf_apply(raw: bytes, ops: list):
     """Returns (edited PDF bytes, warnings)."""
@@ -166,7 +178,9 @@ def pdf_apply(raw: bytes, ops: list):
     for i in sorted({page_of(o) for o in dels}):
         l, b, r, t = _box(w.pages[i]); rects = [rect_of(o, i) for o in dels if page_of(o) == i]
         user = [[l + x0, t - y1, l + x1, t - y0] for x0, y0, x1, y1 in rects]
-        _strip_text(w, w.pages[i], user)
+        _, hit = _strip_text(w, w.pages[i], user)
+        for k, rc in enumerate(rects):     # nothing in the page content started inside this area (the text is drawn some other way): cover it instead
+            if k not in hit: covers.setdefault(i, []).append(rc); warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
     if dels:   # check that nothing readable is left in the deleted areas; anything that is gets covered, and the person is told
         mid = io.BytesIO(); w.write(mid); left = _lines(mid.getvalue())
         for o in dels:
@@ -187,8 +201,11 @@ def pdf_apply(raw: bytes, ops: list):
                 size = max(6.0, min(float(o.get("size") or 12), 72.0))
                 try: x = float(o.get("x")); y = float(o.get("y"))
                 except Exception: raise EditError("An edit has no valid position.")
-                c.setFont("Helvetica", size); c.setFillColorRGB(*_color(o.get("color")))
-                for k, line in enumerate(text.split("\n")): c.drawString(x, H - (y + size + k * size * 1.2), line)
+                try: track = max(0.0, min(float(o.get("track") or 0), 40.0))
+                except Exception: track = 0.0
+                c.setFillColorRGB(*_color(o.get("color")))
+                for k, line in enumerate(text.split("\n")):
+                    tx = c.beginText(x, H - (y + size * 0.9465 + k * size * 1.2)); tx.setFont("Helvetica", size); tx.setCharSpace(track); tx.textOut(line); c.drawText(tx)
             else:
                 x0, y0, x1, y1 = rect_of(o, i)
                 c.drawImage(ImageReader(io.BytesIO(png_ok(b64_in(o.get("png"), 400_000)))), x0, H - y1, x1 - x0, y1 - y0, mask="auto", preserveAspectRatio=True, anchor="c")
