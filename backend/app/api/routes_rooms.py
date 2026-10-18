@@ -322,7 +322,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
         await _send(ws, {"type": "error", "message": "This meeting is full."}); return False
     peers_before = [_pub(i, p) for i, p in _view(state, None)]           # a newcomer starts in the main room
     state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None}
-    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)),
+    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None})
     await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
@@ -427,7 +427,7 @@ async def room_socket(ws: WebSocket, code: str):
                 await _tell_hosts(state)
             elif _rank(state["peers"][pid]) == 2 and t == "record":
                 state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
-            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom"):
+            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape"):
                 me = state["peers"][pid]; target = state["peers"].get(msg.get("id"))
                 if t == "kick":
                     if target and msg.get("id") != pid and _rank(target) < _rank(me): await _send(target["ws"], {"type": "kicked"}); await target["ws"].close()
@@ -446,6 +446,9 @@ async def room_socket(ws: WebSocket, code: str):
                     if state.get("vroom_allowed", True):
                         state["vroom"] = bool(msg.get("on"))
                         await _broadcast(code, {"type": "vroom", "on": state["vroom"], "by": me["name"]})
+                elif t == "tshape":                  # the host or a co-host flips the boardroom table between rectangular and round; everyone sees it
+                    state["shape"] = "round" if msg.get("shape") == "round" else "rect"
+                    await _broadcast(code, {"type": "tshape", "shape": state["shape"], "by": me["name"]})
                 elif t == "policy":
                     for key, field in (("audio", "audio"), ("video", "video")):
                         if key in msg: state["policy"][field] = bool(msg[key])

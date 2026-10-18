@@ -2022,3 +2022,16 @@ def test_default_meeting_starts_in_gallery_but_host_can_switch_virtual_room_on(c
         if m["type"] == "vroom": break
     assert m["on"] is True
     hs.__exit__(None, None, None)
+
+def test_table_shape_change_is_shared_with_everyone(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    hs, hw = join(client, r["code"], name="Host", token=tok); assert hw.receive_json()["shape"] == "rect"
+    gs, gw = join(client, r["code"], name="Guest"); gw.receive_json()
+    gw.send_json({"type": "tshape", "shape": "round"})                        # a plain participant cannot change it
+    hw.send_json({"type": "tshape", "shape": "round"})                        # the host can
+    while True:
+        m = hw.receive_json()
+        if m["type"] == "tshape": break
+    assert m["shape"] == "round"
+    ls, lw = join(client, r["code"], name="Late"); assert lw.receive_json()["shape"] == "round"   # later joiners see the current shape
+    for x in (ls, gs, hs): x.__exit__(None, None, None)
