@@ -1135,3 +1135,9 @@ label.se-upload,.se-upload{background:#e3e8f1!important;color:#172033!important;
 .se-grab{position:absolute;left:-19px;top:-9px;width:18px;height:18px;border-radius:50%;background:#2f64f0;color:#fff;display:flex;align-items:center;justify-content:center;cursor:move;opacity:0;pointer-events:none;touch-action:none}.se-text:hover .se-grab,.se-text:focus-within .se-grab,.se-text.editing .se-grab{opacity:1;pointer-events:auto}
 .se-new{padding:6px 12px}.ws-editor.se{padding:16px}.se-start h2{margin:0}
 .ws-ch:disabled{opacity:.6}
+
+.se-up{display:flex;gap:14px;align-items:center;border:1px solid var(--line,#dde3ee);border-radius:12px;padding:16px;background:#fbfcfe;max-width:620px;margin:10px 0}.se-upbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.se-upbody b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-bar{height:10px;border-radius:6px;background:#e3e8f1;overflow:hidden}.se-bar i{display:block;height:100%;background:#2f64f0;border-radius:6px;transition:width .2s}
+.se-bar.wait i{background:repeating-linear-gradient(45deg,#2f64f0 0 10px,#6b8df5 10px 20px);background-size:28px 28px;animation:se-stripe 1s linear infinite}@keyframes se-stripe{to{background-position:28px 0}}
+.se-uprow{cursor:default}
+.se-new{position:relative;display:inline-flex;gap:6px;align-items:center;cursor:pointer;overflow:hidden}.se-new input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}

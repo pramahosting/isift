@@ -7,7 +7,7 @@ import {Plus,ChevronsLeft,ChevronsRight,FileSignature,Move,Upload,Type,Eraser,Pe
 type Sig={id?:string;name?:string;png:string};
 type Doc={name:string;kind:'pdf'|'docx';b64:string;info:any};
 const MIME:Record<string,string>={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
-const toB64=(f:File)=>new Promise<string>((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
+const toB64=(f:File,onP?:(p:number)=>void)=>new Promise<string>((ok,no)=>{const r=new FileReader();if(onP)r.onprogress=e=>{if(e.lengthComputable)onP(e.loaded/e.total)};r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
 const uid=()=>Math.random().toString(36).slice(2,9);
 const COLORS=['#111827','#1d4ed8','#b91c1c'];
 
@@ -45,7 +45,36 @@ function SignaturePad({onDone,saved,onDelete,onUse,canSave}:{onDone:(s:Sig,keep:
   </div>;
 }
 
-type Op={id:string;t:'text'|'delete'|'sign'|'replace'|'add';page?:number;rect?:number[];x?:number;y?:number;size?:number;track?:number;color?:string;text?:string;png?:string;i?:number;after?:number;width?:number};
+type Op={id:string;t:'text'|'delete'|'sign'|'replace'|'add';page?:number;rect?:number[];x?:number;y?:number;size?:number;track?:number;cover?:number[];fill?:string;color?:string;text?:string;png?:string;i?:number;after?:number;width?:number};
+
+/* Look at the page picture itself to find exactly where a line of text is drawn, how big it is, how widely its letters are spaced, its colour and the colour of the paper behind it.
+   This works whether the text is real text or part of a picture, so the replacement can match the original and the old text can be covered. */
+const imgCache=new Map<string,Promise<HTMLImageElement>>();
+const loadImg=(src:string)=>{let p=imgCache.get(src);if(!p){p=new Promise<HTMLImageElement>((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=src});imgCache.set(src,p);if(imgCache.size>6)imgCache.delete(imgCache.keys().next().value as string)}return p};
+const hex=(r:number,g:number,b:number)=>'#'+[r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+const med=(a:number[])=>{if(!a.length)return 255;const b=[...a].sort((x,y)=>x-y);return b[b.length>>1]};
+async function analyse(pg:any,l:any){
+  try{const img=await loadImg(pg.image);const s=img.naturalWidth/pg.w;const [x0,y0,x1,y1]=l.bbox as number[];const h=Math.max(6,y1-y0);
+    const wx0=Math.max(0,Math.floor((x0-3)*s)),wx1=Math.min(img.naturalWidth,Math.ceil((x1+3)*s)),wy0=Math.max(0,Math.floor((y0-2.2*h)*s)),wy1=Math.min(img.naturalHeight,Math.ceil((y1+2.2*h)*s));
+    const W=wx1-wx0,H=wy1-wy0;if(W<4||H<4)return null;const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d',{willReadFrequently:true})!;g.drawImage(img,wx0,wy0,W,H,0,0,W,H);const d=g.getImageData(0,0,W,H).data;
+    const luma=(k:number)=>.299*d[k]+.587*d[k+1]+.114*d[k+2];const dark=(x:number,y:number)=>luma((y*W+x)*4)<120;
+    const rows=new Array(H).fill(0);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(dark(x,y))rows[y]++;
+    /* the band of rows with the most ink is the text; thin tick marks and neighbouring lines count for less */
+    let best:[number,number,number]|null=null;let y=0;while(y<H){if(rows[y]>0){let a=y,e=y,sum=0;while(e<H&&(rows[e]>0||(e+1<H&&rows[e+1]>0))){sum+=rows[e];e++}e--;const ht=e-a+1;if(ht>=.35*h*s&&ht<=3*h*s&&(!best||sum>best[2]))best=[a,e,sum];y=e+1}else y++}
+    if(!best)return null;const [ra,rb]=best;let ca=W,cb=-1;for(let x=0;x<W;x++)for(let yy=ra;yy<=rb;yy++)if(dark(x,yy)){if(x<ca)ca=x;if(x>cb)cb=x;break}
+    if(cb<ca)return null;
+    const L=(wx0+ca)/s,R=(wx0+cb+1)/s,T=(wy0+ra)/s,B=(wy0+rb+1)/s;
+    const ring:number[][]=[[],[],[]];const take=(x:number,yy:number)=>{if(x<0||yy<0||x>=W||yy>=H)return;const k=(yy*W+x)*4;if(luma(k)>150){ring[0].push(d[k]);ring[1].push(d[k+1]);ring[2].push(d[k+2])}};
+    for(let x=ca-3;x<=cb+3;x++){take(x,ra-3);take(x,rb+3)}for(let yy=ra-3;yy<=rb+3;yy++){take(ca-3,yy);take(cb+3,yy)}
+    const inkPx:number[][]=[];for(let yy=ra;yy<=rb;yy++)for(let x=ca;x<=cb;x++){const k=(yy*W+x)*4;if(luma(k)<120)inkPx.push([luma(k),d[k],d[k+1],d[k+2]])}
+    inkPx.sort((p,q)=>p[0]-q[0]);const dk=inkPx.slice(0,Math.max(1,Math.floor(inkPx.length*.3)));
+    const color=hex(med(dk.map(p=>p[1])),med(dk.map(p=>p[2])),med(dk.map(p=>p[3])));const fill=hex(med(ring[0]),med(ring[1]),med(ring[2]));
+    const txt:string=String(l.text||'');const desc=/[gjpqy,;()]/.test(txt);const ink=B-T;const size=Math.max(6,Math.min(72,ink/(desc?.93:.716)));const base=desc?B-.21*size:B;
+    const m=document.createElement('canvas').getContext('2d')!;m.font=`${size}px Helvetica, Arial, sans-serif`;const nat=m.measureText(txt).width;const n=[...txt].length;
+    const track=n>1?Math.max(0,((R-L)-(nat-.12*size))/(n-1)):0;
+    return {rect:[L-1.5,T-1.5,R+1.5,B+1.5] as number[],x:L-.07*size,base,size:Math.round(size*10)/10,track:track>.4?Math.round(track*100)/100:0,color,fill}
+  }catch{return null}
+}
 
 function PdfView({info,ops,setOps,tool,sig,size,color,locked}:{info:any;ops:Op[];setOps:(f:(o:Op[])=>Op[])=>void;tool:string;sig:Sig|null;size:number;color:string;locked:boolean}){
   const [editing,setEditing]=useState<string|null>(null);
@@ -63,8 +92,11 @@ function PdfView({info,ops,setOps,tool,sig,size,color,locked}:{info:any;ops:Op[]
     const clickPage=(e:React.MouseEvent<HTMLDivElement>)=>{if(locked||e.target!==e.currentTarget&&!(e.target as HTMLElement).classList.contains('se-img'))return;const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/f,y=(e.clientY-r.top)/f;
       if(tool==='text'){const id=uid();setOps(o=>[...o,{id,t:'text',page:pi,x,y,size,color,text:''}]);setEditing(id)}
       else if(tool==='sign'&&sig){const img=new Image();img.onload=()=>{const w=150,h=w*img.height/img.width;setOps(o=>[...o,{id:uid(),t:'sign',page:pi,rect:[x,y,x+w,y+h],png:sig.png}])};img.src=sig.png}};
-    const lineClick=(l:any)=>{if(locked)return;if(tool==='delete'){const had=ops.find(o=>o.t==='delete'&&o.page===pi&&o.rect![0]===l.bbox[0]&&o.rect![1]===l.bbox[1]);setOps(o=>had?o.filter(x=>x!==had):[...o,{id:uid(),t:'delete',page:pi,rect:l.bbox,text:l.text}])}
-      else if(tool==='replace'){const id=uid();setOps(o=>[...o,{id,t:'delete',page:pi,rect:l.bbox,text:l.text},{id:id+'r',t:'text',page:pi,x:l.bbox[0],y:(l.base??l.bbox[3])-l.size*.9465,size:l.size,color:'#111827',text:l.text,track:l.track||0}]);setEditing(id+'r')}};
+    const lineClick=async(l:any)=>{if(locked)return;
+      if(tool==='delete'){const had=ops.find(o=>o.t==='delete'&&o.page===pi&&o.rect![0]===l.bbox[0]&&o.rect![1]===l.bbox[1]);if(had){setOps(o=>o.filter(x=>x!==had));return}}
+      const a=await analyse(pg,l);const del:Op={id:uid(),t:'delete',page:pi,rect:l.bbox,text:l.text,...(a?{cover:a.rect,fill:a.fill}:{})};
+      if(tool==='delete')setOps(o=>[...o,del]);
+      else if(tool==='replace'){const size=a?a.size:l.size;setOps(o=>[...o,del,{id:del.id+'r',t:'text',page:pi,x:a?a.x:l.bbox[0],y:(a?a.base:(l.base??l.bbox[3]))-size*.9465,size,color:a?a.color:'#111827',text:l.text,track:a?a.track:(l.track||0)}]);setEditing(del.id+'r')}};
     const drag=(o:Op,mode:'move'|'size')=>(e:React.PointerEvent)=>{e.stopPropagation();e.preventDefault();const sx=e.clientX,sy=e.clientY,r0=[...o.rect!];const t=e.currentTarget as HTMLElement;t.setPointerCapture(e.pointerId);
       const mv=(ev:PointerEvent)=>{const dx=(ev.clientX-sx)/f,dy=(ev.clientY-sy)/f;setOps(all=>all.map(a=>{if(a.id!==o.id)return a;if(mode==='move')return {...a,rect:[r0[0]+dx,r0[1]+dy,r0[2]+dx,r0[3]+dy]};const nw=Math.max(30,r0[2]-r0[0]+dx),nh=(r0[3]-r0[1])*nw/(r0[2]-r0[0]);return {...a,rect:[r0[0],r0[1],r0[0]+nw,r0[1]+nh]}}))};
       const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)};
@@ -72,7 +104,7 @@ function PdfView({info,ops,setOps,tool,sig,size,color,locked}:{info:any;ops:Op[]
       <div className={`se-page tool-${locked?'none':tool}`} style={{width:W,height:pg.h*f}} onClick={clickPage}><img className="se-img" src={pg.image} alt={`Page ${pi+1}`} draggable={false} style={{width:W,height:pg.h*f}}/>
         {(tool==='delete'||tool==='replace')&&!locked&&pg.lines.length===0&&<div className="se-nolines" role="status">No text you can select was found on this page. It may be a scanned picture. Use Add text to write over it.</div>}
         {(tool==='delete'||tool==='replace')&&!locked&&pg.lines.map((l:any,k:number)=><button key={k} type="button" className="se-line" title={tool==='delete'?'Delete this text':'Change this text'} aria-label={(tool==='delete'?'Delete: ':'Change: ')+l.text} style={{left:l.bbox[0]*f-2,top:l.bbox[1]*f-1,width:(l.bbox[2]-l.bbox[0])*f+4,height:(l.bbox[3]-l.bbox[1])*f+2}} onClick={()=>lineClick(l)}/>)}
-        {mine.map(o=>o.t==='delete'?<div key={o.id} className={`se-del${mine.some(x=>x.id===o.id+'r')?' cover':''}`} title={mine.some(x=>x.id===o.id+'r')?'Being changed':'Will be deleted'} style={{left:o.rect![0]*f-2,top:o.rect![1]*f-1,width:(o.rect![2]-o.rect![0])*f+4,height:(o.rect![3]-o.rect![1])*f+2}}><button type="button" className="se-x" aria-label="Keep this text" onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id&&x.id!==o.id+'r'))}}><X size={11}/></button></div>
+        {mine.map(o=>o.t==='delete'?<div key={o.id} className={`se-del${mine.some(x=>x.id===o.id+'r')?' cover':''}`} title={mine.some(x=>x.id===o.id+'r')?'Being changed':'Will be deleted'} style={{left:(o.cover||o.rect!)[0]*f-2,top:(o.cover||o.rect!)[1]*f-1,width:((o.cover||o.rect!)[2]-(o.cover||o.rect!)[0])*f+4,height:((o.cover||o.rect!)[3]-(o.cover||o.rect!)[1])*f+2,...(o.fill&&mine.some(x=>x.id===o.id+'r')?{background:o.fill}:{})}}><button type="button" className="se-x" aria-label="Keep this text" onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id&&x.id!==o.id+'r'))}}><X size={11}/></button></div>
           :o.t==='text'?<div key={o.id} className={`se-text${editing===o.id?' editing':''}`} style={{left:o.x!*f,top:o.y!*f}} onPointerDown={dragText(o,f)}>{editing===o.id?<textarea autoFocus rows={1} value={o.text} style={{fontSize:o.size!*f,color:o.color,height:o.size!*f*1.3,letterSpacing:(o.track||0)*f,width:Math.max(60,(o.text||'').length*(o.size!*.62+(o.track||0))*f+12)}} aria-label="Text to add" onFocus={e=>{if(o.id.endsWith('r'))e.currentTarget.select()}} onChange={e=>setOps(a=>a.map(x=>x.id===o.id?{...x,text:e.target.value}:x))} onKeyDown={e=>{if(e.key==='Escape'||(e.key==='Enter'&&!e.shiftKey)){e.preventDefault();(e.target as HTMLElement).blur()}}} onBlur={()=>finishText(o)}/>:<span style={{fontSize:o.size!*f,color:o.color,letterSpacing:(o.track||0)*f}} title="Drag to move, click to edit">{o.text}</span>}<span className="se-grab" title="Drag to move this text anywhere" aria-label="Move this text"><Move size={11}/></span><button type="button" className="se-x" aria-label="Remove this text" onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button></div>
           :<div key={o.id} className="se-sig" style={{left:o.rect![0]*f,top:o.rect![1]*f,width:(o.rect![2]-o.rect![0])*f,height:(o.rect![3]-o.rect![1])*f}} onPointerDown={drag(o,'move')} onClick={e=>e.stopPropagation()}><img src={o.png} alt="Signature" draggable={false}/><button type="button" className="se-x" aria-label="Remove this signature" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button><span className="se-grip" aria-label="Resize signature" onPointerDown={drag(o,'size')}/></div>)}
       </div></div>})}</div>;
@@ -125,17 +157,28 @@ function CertPanel({request,doc,onSigned,onClose,notify}:{request:any;doc:Doc;on
     <div className="se-row"><button type="button" className="primary" disabled={!p12||!pw||!!busy} onClick={sign}><ShieldCheck size={15}/> Sign digitally</button>{!busy&&(!p12?<span className="muted small">First choose a certificate file, or create one above.</span>:!pw?<span className="muted small">Enter the certificate password.</span>:null)}</div></div>;
 }
 
-export function SignEdit({request,notify,userId}:{request:any;notify:(m:string)=>void;userId?:string}){
+export function SignEdit({request,requestUp,notify,userId}:{request:any;requestUp?:any;notify:(m:string)=>void;userId?:string}){
   const [cur,setCur]=useState<Doc|null>(null);const [ops,setOps]=useState<Op[]>([]);const [tool,setTool]=useState<'text'|'delete'|'replace'|'sign'>('text');
-  const [sig,setSig]=useState<Sig|null>(null);const [saved,setSaved]=useState<Sig[]>([]);const [busy,setBusy]=useState('');const [err,setErr]=useState('');const [size,setSize]=useState(12);const [color,setColor]=useState(COLORS[0]);const [applied,setApplied]=useState(0);const [pad,setPad]=useState(false);const [certOpen,setCertOpen]=useState(false);const [docId,setDocId]=useState('');const [hist,setHist]=useState<Meta[]>([]);const uidk=String(userId||'');const [paneOff,setPaneOff]=useState(()=>{try{return localStorage.getItem('isift.pane.sign')==='1'}catch{return false}});const flipPane=()=>setPaneOff(v=>{try{localStorage.setItem('isift.pane.sign',v?'0':'1')}catch{}return !v});
+  const [sig,setSig]=useState<Sig|null>(null);const [saved,setSaved]=useState<Sig[]>([]);const [busy,setBusy]=useState('');const [err,setErr]=useState('');const [size,setSize]=useState(12);const [color,setColor]=useState(COLORS[0]);const [applied,setApplied]=useState(0);const [pad,setPad]=useState(false);const [certOpen,setCertOpen]=useState(false);const [docId,setDocId]=useState('');const [up,setUp]=useState<{name:string;size:number;pct:number;label:string}|null>(null);const upTok=useRef(0);const [hist,setHist]=useState<Meta[]>([]);const uidk=String(userId||'');const [scope,setScope]=useState<'mine'|'with'|'by'>('mine');const [paneOff,setPaneOff]=useState(()=>{try{return localStorage.getItem('isift.pane.sign')==='1'}catch{return false}});const flipPane=()=>setPaneOff(v=>{try{localStorage.setItem('isift.pane.sign',v?'0':'1')}catch{}return !v});
   const loadSaved=useCallback(()=>request('/docedit/signatures').then((r:any)=>setSaved(r.items)).catch(()=>{}),[request]);
   useEffect(()=>{loadSaved()},[loadSaved]);
   const loadHist=useCallback(()=>histList(uidk).then(setHist),[uidk]);
   useEffect(()=>{loadHist()},[loadHist]);
   const keep=(id:string,d:Doc,n:number,blobs:{orig?:string;cur:string},up?:number)=>histSave(uidk,{id,name:d.name,kind:d.kind,applied:n,uploaded:up??hist.find(h=>h.id===id)?.uploaded??Date.now(),edited:Date.now(),size:Math.round(blobs.cur.length*.75)},blobs).then(loadHist);
-  const upload=async(f?:File|null)=>{if(!f)return;if(ops.length&&!window.confirm('You have changes that are not applied yet. Leave without applying them?'))return;setErr('');if(!/\.(pdf|docx)$/i.test(f.name)){setErr(/\.doc$/i.test(f.name)?'Old .doc files are not supported. Save it as .docx in Word and upload that.':'Upload a PDF (.pdf) or Word (.docx) file.');return}
-    if(f.size>12*1024*1024){setErr('The file is larger than 12 MB.');return}setBusy('Opening your file…');
-    try{const b64=await toB64(f);const info=await request('/docedit/inspect',{method:'POST',body:JSON.stringify({name:f.name,data:b64})});const d:Doc={name:f.name,kind:info.kind,b64,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(0);resetHist(d,e0,0);setTool('text');const id=uid()+uid();setDocId(id);keep(id,d,0,{orig:b64,cur:b64},Date.now())}catch(e:any){setErr(e.message)}setBusy('')};
+  const mb=(n:number)=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+  const cancelUp=()=>{upTok.current++;setUp(null);setBusy('')};
+  const upload=async(f?:File|null)=>{if(!f)return;if(ops.length&&!window.confirm('You have changes that are not applied yet. Leave without applying them?'))return;setErr('');const tok=++upTok.current;
+    setUp({name:f.name,size:f.size,pct:0,label:'Reading the file…'});   // the chosen file shows at once, with its progress
+    const bad=!/\.(pdf|docx)$/i.test(f.name)?(/\.doc$/i.test(f.name)?'Old .doc files are not supported. Save it as .docx in Word and upload that.':'Upload a PDF (.pdf) or Word (.docx) file.'):f.size>12*1024*1024?'The file is larger than 12 MB.':'';
+    if(bad){setErr(bad);setUp(null);return}
+    setBusy('Opening your file…');
+    try{const b64=await toB64(f,p=>{if(tok===upTok.current)setUp(u=>u&&{...u,pct:Math.round(p*20),label:'Reading the file…'})});
+      const body=JSON.stringify({name:f.name,data:b64});const send=requestUp||(async(path:string,b:string)=>request(path,{method:'POST',body:b}));
+      const info=await send('/docedit/inspect',body,(sent:number,total:number,phase:string)=>{if(tok!==upTok.current)return;setUp(u=>u&&(phase==='wait'?{...u,pct:90,label:'Processing the pages…'}:{...u,pct:20+Math.round(sent/total*68),label:'Uploading…'}))});
+      if(tok!==upTok.current)return;setUp(u=>u&&{...u,pct:100,label:'Done'});
+      const d:Doc={name:f.name,kind:info.kind,b64,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(0);resetHist(d,e0,0);setTool('text');const id=uid()+uid();setDocId(id);keep(id,d,0,{orig:b64,cur:b64},Date.now())}
+    catch(e:any){if(tok===upTok.current)setErr(e.message)}
+    if(tok===upTok.current){setUp(null);setBusy('')}};
   /* Undo and redo: every change (text added, moved, deleted, a round applied, a signature placed) is a step. Quick changes such as a drag count as one. */
   const hs=useRef<{past:any[];future:any[];last:any;pending:any;timer:any}>({past:[],future:[],last:null,pending:null,timer:null});const [hn,setHn]=useState<[number,number]>([0,0]);
   const syncHn=()=>setHn([hs.current.past.length,hs.current.future.length]);
@@ -161,11 +204,16 @@ export function SignEdit({request,notify,userId}:{request:any;notify:(m:string)=
   const getRec=async(m:Meta)=>{try{const b=await histBlobs(uidk,m.id);if(b)saveFile(b.cur,m.kind,m.name)}catch(e:any){setErr(e.message)}};
   const delRec=async(m:Meta)=>{if(!window.confirm('Remove "'+m.name+'" from your list? The copy kept in this browser is deleted.'))return false;await histDelete(uidk,m.id);loadHist();return true};
   const pdf=cur?.kind==='pdf';const sigs:any[]=(cur?.info?.signatures)||[];const signed=sigs.length>0;const changed=ops.length>0;const note=pdf?'Click the page where the text should go.':'Use the buttons beside each paragraph.';
-  const pane=<section className="panel ws-pane" aria-hidden={paneOff}><div className="panelhead"><h2><FileSignature size={18}/> Sign &amp; Edit PDF</h2><span className="ws-pane-btns"><label className="primary se-upload se-new" title="Upload a PDF or Word file"><Plus size={15}/> New<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Upload a new PDF or Word file" onChange={e=>{upload(e.target.files?.[0]);e.target.value=''}}/></label><button type="button" className="iconbtn" aria-label="Hide this panel" title="Hide this panel to give the work area more room" onClick={flipPane}><ChevronsLeft size={18}/></button></span></div>
-    {hist.length?hist.map(m=><button key={m.id} type="button" className={`ws-ch shared-row${docId===m.id?' on':''}`} disabled={!!busy} onClick={()=>{if(m.id!==docId)openRec(m)}}><div className="ws-main"><b>{m.name}</b><small className="muted">{m.kind==='pdf'?'PDF':'Word'} · {m.applied?`${m.applied} round${m.applied===1?'':'s'} of changes`:'not changed yet'} · edited {when(m.edited)}</small></div></button>):<p className="muted pad">Nothing here yet. Press New.</p>}
+  const pane=<section className="panel ws-pane" aria-hidden={paneOff}><div className="panelhead"><h2><FileSignature size={18}/> Sign &amp; Edit PDF</h2><span className="ws-pane-btns"><label className="primary se-new" title="Upload a PDF or Word file"><Plus size={15}/> New<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Upload a new PDF or Word file" onChange={e=>{upload(e.target.files?.[0]);e.target.value=''}}/></label><button type="button" className="iconbtn" aria-label="Hide this panel" title="Hide this panel to give the work area more room" onClick={flipPane}><ChevronsLeft size={18}/></button></span></div>
+    <div className="notes-scope" role="tablist" aria-label="Which files">{([['mine','My files'],['with','Shared with me'],['by','Shared by me']] as const).map(([v,l])=><button key={v} type="button" role="tab" aria-selected={scope===v} className={`wb-cat${scope===v?' on':''}`} onClick={()=>setScope(v)}>{l}</button>)}</div>
+    {scope==='mine'&&up&&<div className="ws-ch shared-row on se-uprow"><div className="ws-main"><b>{up.name}</b><small className="muted">{up.label} {up.pct}%</small></div></div>}
+    {scope!=='mine'?<p className="muted pad">{scope==='with'?'Nothing has been shared with you yet.':'You have not shared anything yet.'}</p>:hist.length||up?hist.map(m=><button key={m.id} type="button" className={`ws-ch shared-row${docId===m.id?' on':''}`} disabled={!!busy} onClick={()=>{if(m.id!==docId)openRec(m)}}><div className="ws-main"><b>{m.name}</b><small className="muted">{m.kind==='pdf'?'PDF':'Word'} · {m.applied?`${m.applied} round${m.applied===1?'':'s'} of changes`:'not changed yet'} · edited {when(m.edited)}</small></div></button>):<p className="muted pad">Nothing here yet. Press New.</p>}
     <small className="muted pad">Private to you, kept in this browser only and never on the server. Press New to upload the next file.</small></section>;
   return <div className={`ws-two notes${paneOff?' pane-off':''}`}>{pane}<section className="panel ws-editor se">{paneOff&&<button type="button" className="textbtn ws-pane-open" aria-label="Show the files panel" onClick={flipPane}><ChevronsRight size={16}/> Show Sign &amp; Edit PDF panel</button>}
-    {!cur?<div className="se-start"><h2>Upload a file to edit or sign</h2><p className="muted">Choose a PDF or a Word (.docx) file. You can add text, delete text and sign it with a signature you draw. Your original file stays untouched until you download the edited copy.</p>
+    {up?<div className="se-up" role="status" aria-live="polite"><FileText size={34}/><div className="se-upbody"><b>{up.name}</b><small className="muted">{mb(up.size)}</small>
+      <div className={`se-bar${up.pct>=90&&up.pct<100?' wait':''}`} role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={up.pct}><i style={{width:up.pct+'%'}}/></div>
+      <small>{up.label} <b>{up.pct}%</b>{up.pct>=20&&up.pct<90?` · ${mb(Math.round(up.size*(up.pct-20)/68))} of ${mb(up.size)} sent`:''}</small></div><button type="button" className="textbtn" onClick={cancelUp}>Cancel</button></div>
+    :!cur?<div className="se-start"><h2>Upload a file to edit or sign</h2><p className="muted">Choose a PDF or a Word (.docx) file. You can add text, delete text and sign it with a signature you draw. Your original file stays untouched until you download the edited copy.</p>
       <label className="primary se-upload"><Upload size={16}/> Choose a PDF or Word file<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Upload a PDF or Word file" onChange={e=>{upload(e.target.files?.[0]);e.target.value=''}}/></label>
       <p className="muted small">PDF or .docx, up to 12 MB (PDFs up to 30 pages). Files are not stored on the server. Every file you open is kept in the list on the left, in this browser only.</p>
       {saved.length>0&&<p className="muted small">You have {saved.length} saved signature{saved.length===1?'':'s'}, ready to use once a file is open.</p>}</div>
