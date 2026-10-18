@@ -368,7 +368,10 @@ async def room_socket(ws: WebSocket, code: str):
         pid = uuid.uuid4().hex[:10]
         if is_host and any(_rank(p) == 2 for p in state["peers"].values()): is_host, cohost_join = False, True      # the host role was handed to someone else: come back as co-host
         else: cohost_join = False
-        if room_options.get("open_room") and not is_host and not cohost_join: cohost_join = True   # nobody in charge is here: the first person in can run the room
+        if room_options.get("open_room") and not is_host and not cohost_join:
+            ranks = [_rank(p) for p in state["peers"].values()]
+            if 2 not in ranks: is_host = True               # open room, nobody in charge: the first person in becomes the host
+            elif 1 not in ranks: cohost_join = True         # the second person in becomes the co-host; everybody after is a normal participant   # nobody in charge is here: the first person in can run the room
         if waiting_room and not is_host and not cohost_join:
             state["waiting"][pid] = {"ws": ws, "name": name, "user_id": user.id if user else None}
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)

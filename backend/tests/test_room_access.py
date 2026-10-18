@@ -1630,8 +1630,10 @@ def test_open_room_needs_no_host_no_admit_and_never_closes(client):
     r = make(client, h, access="passcode", waiting_room=True, options={"open_room": True})
     assert r["access"] == "open" and r["waiting_room"] is False and not r["passcode"]          # the open room overrides passcode and waiting room
     # nobody in charge is there: the first guest walks straight in and can run the room
-    ws1, g1 = join(client, r["code"], name="First"); w1 = g1.receive_json(); assert w1["type"] == "welcome" and w1["host"] is True and w1["cohost"] is True
-    ws2, g2 = join(client, r["code"], name="Second"); w2 = g2.receive_json(); assert w2["type"] == "welcome" and w2["host"] is True and w2["cohost"] is True      # in an open room everyone gets the host controls
+    ws1, g1 = join(client, r["code"], name="First"); w1 = g1.receive_json(); assert w1["type"] == "welcome" and w1["host"] is True and w1["cohost"] is False      # the first one in is the host
+    ws2, g2 = join(client, r["code"], name="Second"); w2 = g2.receive_json(); assert w2["type"] == "welcome" and w2["host"] is True and w2["cohost"] is True      # the second is the co-host
+    ws5, g5 = join(client, r["code"], name="Third"); w5 = g5.receive_json(); assert w5["host"] is False and w5["cohost"] is False                         # everybody else is a participant
+    ws5.__exit__(None, None, None)
     info = client.get(f"/api/v1/rooms/{r['code']}").json(); assert info["access"] == "open" and info["waiting_room"] is False
     ws2.__exit__(None, None, None); ws1.__exit__(None, None, None)
     # the real host presses End for all: everyone leaves but the link still works
