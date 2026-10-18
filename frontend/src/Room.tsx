@@ -6,16 +6,14 @@ type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStrea
 const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
 
 // Seat positions (percent of the room) for n people around the table. Index 0 is "you", at the bottom, so everyone sees themselves nearest.
-export function seatPoints(n:number,shape:'rect'|'round'):{x:number;y:number}[]{
+export function seatPoints(n:number,_shape?:'rect'|'round'):{x:number;y:number}[]{
+  // Everyone sits on the far side of the table, looking at the viewer, with the table in front of them (one row up to 5 people, two rows above that).
   if(n<=0)return [];
-  if(shape==='round')return Array.from({length:n},(_,i)=>{const a=Math.PI/2+i*2*Math.PI/n;return{x:50+37*Math.cos(a),y:50+31*Math.sin(a)}});
-  if(n===3)return [{x:34,y:80},{x:66,y:80},{x:50,y:20}];                     // three people: one each side of the table, a tight triangle, all turned toward it
-  const ends=n>=7?2:0,rem=n-ends,bottom=Math.ceil(rem/2),top=rem-bottom;
-  const row=(k:number,y:number)=>Array.from({length:k},(_,i)=>({x:k===1?50:16+(68*i)/(k-1),y}));
-  const B=row(bottom,80),T=row(top,20).reverse();
-  const P=[...B,...(ends?[{x:90,y:50}]:[]),...T,...(ends?[{x:10,y:50}]:[])];
-  const me=Math.floor((bottom-1)/2);
-  return [P[me],...P.slice(me+1),...P.slice(0,me)];
+  const sw=n<=2?22:n<=4?19:n<=6?17:14;
+  const back=n<=5?0:Math.floor(n/2),front=n-back;
+  const row=(k:number,y:number)=>{const step=k<2?0:Math.min(sw+2,76/(k-1));return Array.from({length:k},(_,i)=>({x:50+(i-(k-1)/2)*step,y}))};
+  const byCentre=(r:{x:number;y:number}[])=>[...r].sort((a,b)=>Math.abs(a.x-50)-Math.abs(b.x-50)||b.x-a.x);   // the middle seat first, then right, left, right...
+  return [...byCentre(row(front,back?50:42)),...byCentre(row(back,26))];
 }
 // The boardroom table is for rooms of 10 or fewer people (the main meeting or a discussion group); bigger rooms use the gallery.
 export const TABLE_MAX=10;
@@ -355,8 +353,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <label><input type="checkbox" checked={!!hostInfo.waiting_room} onChange={e=>changeSecurity({waiting_room:e.target.checked})}/> Waiting room</label>
       <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
     <div className="rm-main">{pinnedRow?<div className="rm-spot"><div className="rm-spot-main">{spotTile(pinnedRow)}<div className="rm-spot-tag"><b>Highlighted: {pinnedRow.name}{pinnedRow.self?' (you)':''}</b><button type="button" onClick={()=>setPin('')}>Back to everyone</button></div></div><div className="rm-spot-strip">{ordered.filter(r=>r.id!==pin).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div></div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
-      <div className="rm-table" aria-hidden="true"/><div className="rm-cam" aria-hidden="true" title="Everyone is seen from the centre of the table"/>
-      {seatRows.map((r,i)=>{const pt=seats[i];return <div key={r.id} className={`rm-seat ${pt.y<35?'top':pt.y>65?'bot':pt.x<50?'lft':'rgt'}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:Math.round(pt.y),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*22).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
+      <div className="rm-table" aria-hidden="true"/>
+      {seatRows.map((r,i)=>{const pt=seats[i];return <div key={r.id} className={`rm-seat top${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:Math.round(pt.y),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*12).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
         <VideoTile stream={r.self?localStream:r.stream} name={r.name} muted={r.self} off={r.self?(!cam&&!screen):(!r.cam&&!r.screen)} self={r.self} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===(r.self?'__me':r.id)} plate onDouble={()=>togglePin(r.id)}/>
         <div className="rm-plate" title={r.name}><span className="rm-plname">{r.name}{r.self?' (you)':''}</span>{r.host&&<em>{r.cohost?'co-host':'host'}</em>}{r.screen&&<em>sharing</em>}<span className="rm-plstate">{(r.self?mic:r.mic)?null:<MicOff size={12} className="off" aria-label="Muted"/>}{(r.self?cam:r.cam)?null:<VideoOff size={12} className="off" aria-label="Camera off"/>}</span></div></div>})}
     </div></div>:<div ref={gridRef} className={`rm-grid n${Math.min(tiles,9)}${tiles>TABLE_MAX?' big':''}`}>
