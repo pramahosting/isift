@@ -1970,3 +1970,33 @@ def test_shapes_in_documents_and_slides(client):
     deck = {"v": 1, "theme": "light", "slides": [{"layout": "title", "title": "T", "body": [], "notes": "", "shapes": [{"id": "a1", "lib": "rect", "text": "Hello", "x": 100, "y": 80, "w": 200}]}]}
     d = client.post("/api/v1/notes", headers=h, json={"kind": "deck", "title": "Deck", "content": json.dumps(deck)}).json()
     assert json.loads(client.get(f"/api/v1/notes/{d['id']}", headers=h).json()["content"])["slides"][0]["shapes"][0]["lib"] == "rect"
+
+def test_host_switches_virtual_room_during_meeting(client):
+    """The host (or a co-host) can switch the virtual room off and on while the meeting runs; everyone is told and late joiners see the current state."""
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False, options={"virtual_room": True})
+    hs, hw = join(client, r["code"], name="Host", token=tok); wel = hw.receive_json()
+    assert wel["host"] is True and wel["options"]["virtual_room"] is True and wel["vroom_allowed"] is True
+    gs, gw = join(client, r["code"], name="Guest"); gw.receive_json()
+    gw.send_json({"type": "vroom", "on": False})                      # a guest cannot switch it
+    hw.send_json({"type": "vroom", "on": False})
+    got = []
+    while True:
+        m = gw.receive_json()
+        if m["type"] == "vroom": got.append(m); break
+    assert got[0]["on"] is False and got[0]["by"]
+    ls, lw = join(client, r["code"], name="Late"); late = lw.receive_json()
+    assert late["type"] == "welcome" and late["options"]["virtual_room"] is False and late["vroom_allowed"] is True
+    hw.send_json({"type": "vroom", "on": True})
+    while True:
+        m = lw.receive_json()
+        if m["type"] == "vroom": break
+    assert m["on"] is True
+    for x in (ls, gs, hs): x.__exit__(None, None, None)
+
+def test_virtual_room_switch_unavailable_when_host_account_has_it_off(client):
+    h, tok = login(client)
+    assert client.patch("/api/v1/account", json={"virtual_room": False}, headers=h).status_code == 200
+    r = make(client, h, access="open", waiting_room=False)
+    hs, hw = join(client, r["code"], name="Host", token=tok); wel = hw.receive_json()
+    try: assert wel["vroom_allowed"] is False and wel["options"]["virtual_room"] is False
+    finally: hs.__exit__(None, None, None)
