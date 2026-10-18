@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {Plus,ChevronsLeft,ChevronsRight,FileSignature,Move,Upload,Type,Eraser,PenLine,Check,Download,Trash2,X,Pencil,FilePlus2,Undo2,ShieldCheck,KeyRound,FolderOpen,FileText,Redo2} from 'lucide-react';
+import {Copy,Eraser as Whiteout,ImagePlus,Plus,ChevronsLeft,ChevronsRight,FileSignature,Move,Upload,Type,Eraser,PenLine,Check,Download,Trash2,X,Pencil,FilePlus2,Undo2,ShieldCheck,KeyRound,FolderOpen,FileText,Redo2} from 'lucide-react';
 
 /* Sign & Edit PDF: upload a PDF or Word file, add or delete text, place a drawn signature, then Apply, Revert or Download.
    The file is never kept on the server. Changes are staged here, and Apply sends the current file plus the staged changes to be edited. */
@@ -45,7 +45,7 @@ function SignaturePad({onDone,saved,onDelete,onUse,canSave}:{onDone:(s:Sig,keep:
   </div>;
 }
 
-type Op={id:string;t:'text'|'delete'|'sign'|'replace'|'add';page?:number;rect?:number[];x?:number;y?:number;size?:number;track?:number;cover?:number[];fill?:string;color?:string;text?:string;png?:string;i?:number;after?:number;width?:number};
+type Op={id:string;t:'text'|'delete'|'sign'|'replace'|'add';page?:number;rect?:number[];x?:number;y?:number;size?:number;track?:number;bold?:boolean;italic?:boolean;fam?:string;cover?:number[];fill?:string;ref?:any;color?:string;text?:string;png?:string;i?:number;after?:number;width?:number};
 
 /* Look at the page picture itself to find exactly where a line of text is drawn, how big it is, how widely its letters are spaced, its colour and the colour of the paper behind it.
    This works whether the text is real text or part of a picture, so the replacement can match the original and the old text can be covered. */
@@ -55,58 +55,97 @@ const hex=(r:number,g:number,b:number)=>'#'+[r,g,b].map(v=>Math.max(0,Math.min(2
 const med=(a:number[])=>{if(!a.length)return 255;const b=[...a].sort((x,y)=>x-y);return b[b.length>>1]};
 async function analyse(pg:any,l:any){
   try{const img=await loadImg(pg.image);const s=img.naturalWidth/pg.w;const [x0,y0,x1,y1]=l.bbox as number[];const h=Math.max(6,y1-y0);
-    const wx0=Math.max(0,Math.floor((x0-3)*s)),wx1=Math.min(img.naturalWidth,Math.ceil((x1+3)*s)),wy0=Math.max(0,Math.floor((y0-2.2*h)*s)),wy1=Math.min(img.naturalHeight,Math.ceil((y1+2.2*h)*s));
+    const nch=[...String(l.text||'')].length,bw=Math.max(x1-x0,h*2,nch*h*1.6),wx0=Math.max(0,Math.floor((x0-3-bw)*s)),wx1=Math.min(img.naturalWidth,Math.ceil((x1+3+bw)*s)),wy0=Math.max(0,Math.floor((y0-2.2*h)*s)),wy1=Math.min(img.naturalHeight,Math.ceil((y1+2.2*h)*s));
     const W=wx1-wx0,H=wy1-wy0;if(W<4||H<4)return null;const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d',{willReadFrequently:true})!;g.drawImage(img,wx0,wy0,W,H,0,0,W,H);const d=g.getImageData(0,0,W,H).data;
-    const luma=(k:number)=>.299*d[k]+.587*d[k+1]+.114*d[k+2];const dark=(x:number,y:number)=>luma((y*W+x)*4)<120;
+    const luma=(k:number)=>.299*d[k]+.587*d[k+1]+.114*d[k+2];
+    const mk=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(luma((y*W+x)*4)<120)mk[y*W+x]=1;
+    /* form lines (the comb under the letters, boxes) are long straight runs of ink: take them out so only letter shapes are left */
+    const maxH=Math.max(10,Math.min(1.3*h*s,.35*W)),maxV=Math.max(9,1.6*h*s);
+    for(let y=0;y<H;y++){let x=0;while(x<W){if(mk[y*W+x]){let e=x;while(e<W&&mk[y*W+e])e++;if(e-x>maxH)for(let k=x;k<e;k++)mk[y*W+k]=2;x=e}else x++}}
+    for(let x=0;x<W;x++){let y=0;while(y<H){if(mk[y*W+x]===1){let e=y;while(e<H&&mk[e*W+x]===1)e++;let thin=true;for(let k=y;k<e&&thin;k++)if((x>0&&mk[k*W+x-1]===1)||(x<W-1&&mk[k*W+x+1]===1))thin=false;
+      const onRule=(y>0&&mk[(y-1)*W+x]===2)||(e<H&&mk[e*W+x]===2);   // a one-pixel mark hanging off a form line is a tick, not a letter
+      if(e-y>maxV||(thin&&onRule&&e-y>=3))for(let k=y;k<e;k++)mk[k*W+x]=2;y=e}else y++}}
+    const dark=(x:number,y:number)=>mk[y*W+x]===1;
     const rows=new Array(H).fill(0);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(dark(x,y))rows[y]++;
-    /* the band of rows with the most ink is the text; thin tick marks and neighbouring lines count for less */
-    let best:[number,number,number]|null=null;let y=0;while(y<H){if(rows[y]>0){let a=y,e=y,sum=0;while(e<H&&(rows[e]>0||(e+1<H&&rows[e+1]>0))){sum+=rows[e];e++}e--;const ht=e-a+1;if(ht>=.35*h*s&&ht<=3*h*s&&(!best||sum>best[2]))best=[a,e,sum];y=e+1}else y++}
-    if(!best)return null;const [ra,rb]=best;let ca=W,cb=-1;for(let x=0;x<W;x++)for(let yy=ra;yy<=rb;yy++)if(dark(x,yy)){if(x<ca)ca=x;if(x>cb)cb=x;break}
-    if(cb<ca)return null;
+    /* the text is the band of rows with the most ink that is about the height of a line of text */
+    let best:[number,number,number]|null=null;let y=0;while(y<H){if(rows[y]>0){let a=y,e=y,sum=0;while(e<H&&(rows[e]>0||(e+1<H&&rows[e+1]>0))){sum+=rows[e];e++}e--;
+      const ht=e-a+1;if(ht>=Math.max(5,.25*h*s)&&ht<=2.5*h*s&&(!best||sum>best[2]))best=[a,e,sum];y=Math.max(y,e)+1}else y++}
+    if(!best)return null;const [ra,rb]=best;
+    /* the letters of the line, as runs of ink columns; runs close together belong to one line of text, a bigger gap starts another field or word group */
+    const segs:[number,number][]=[];for(let x=0;x<W;x++){let has=false;for(let yy=ra;yy<=rb;yy++)if(dark(x,yy)){has=true;break}
+      if(has){const lst=segs[segs.length-1];if(lst&&x-lst[1]<=2)lst[1]=x;else segs.push([x,x])}}
+    if(!segs.length)return null;const capPx=rb-ra+1;const gaps=segs.slice(1).map((g,i)=>g[0]-segs[i][1]).sort((p,q)=>p-q);const mg=gaps.length?gaps[gaps.length>>1]:0;const GAP=Math.max(1.2*capPx,2.2*mg);
+    const groups:[number,number][]=[];for(const g of segs){const lst=groups[groups.length-1];if(lst&&g[0]-lst[1]<=GAP)lst[1]=g[1];else groups.push([g[0],g[1]])}
+    const bx0=(x0-wx0/s)*s,bx1=(x1-wx0/s)*s;let pick=groups[0],bestOv=-1;for(const g of groups){const ov=Math.min(g[1],bx1)-Math.max(g[0],bx0);if(ov>bestOv){bestOv=ov;pick=g}}
+    const ca=pick[0],cb=pick[1];
     const L=(wx0+ca)/s,R=(wx0+cb+1)/s,T=(wy0+ra)/s,B=(wy0+rb+1)/s;
     const ring:number[][]=[[],[],[]];const take=(x:number,yy:number)=>{if(x<0||yy<0||x>=W||yy>=H)return;const k=(yy*W+x)*4;if(luma(k)>150){ring[0].push(d[k]);ring[1].push(d[k+1]);ring[2].push(d[k+2])}};
     for(let x=ca-3;x<=cb+3;x++){take(x,ra-3);take(x,rb+3)}for(let yy=ra-3;yy<=rb+3;yy++){take(ca-3,yy);take(cb+3,yy)}
     const inkPx:number[][]=[];for(let yy=ra;yy<=rb;yy++)for(let x=ca;x<=cb;x++){const k=(yy*W+x)*4;if(luma(k)<120)inkPx.push([luma(k),d[k],d[k+1],d[k+2]])}
     inkPx.sort((p,q)=>p[0]-q[0]);const dk=inkPx.slice(0,Math.max(1,Math.floor(inkPx.length*.3)));
     const color=hex(med(dk.map(p=>p[1])),med(dk.map(p=>p[2])),med(dk.map(p=>p[3])));const fill=hex(med(ring[0]),med(ring[1]),med(ring[2]));
-    const txt:string=String(l.text||'');const desc=/[gjpqy,;()]/.test(txt);const ink=B-T;const size=Math.max(6,Math.min(72,ink/(desc?.93:.716)));const base=desc?B-.21*size:B;
+    const txt:string=String(l.text||'');const hasAsc=/[A-Z0-9bdfhklt]/.test(txt),hasDesc=/[gjpqy,;()]/.test(txt);const ink=B-T+1;const up=hasAsc?.73:.53,dn=hasDesc?.21:0;const size=Math.max(6,Math.min(40,ink/(up+dn)));const base=B-dn*size;
     const m=document.createElement('canvas').getContext('2d')!;m.font=`${size}px Helvetica, Arial, sans-serif`;const nat=m.measureText(txt).width;const n=[...txt].length;
     const track=n>1?Math.max(0,((R-L)-(nat-.12*size))/(n-1)):0;
     return {rect:[L-1.5,T-1.5,R+1.5,B+1.5] as number[],x:L-.07*size,base,size:Math.round(size*10)/10,track:track>.4?Math.round(track*100)/100:0,color,fill}
   }catch{return null}
 }
 
+const FONTS:Record<string,string>={Helvetica:'Helvetica, Arial, sans-serif',Times:'"Times New Roman", Times, serif',Courier:'"Courier New", Courier, monospace'};
+const txtStyle=(o:Op,f:number)=>({fontSize:o.size!*f,color:o.color,fontFamily:FONTS[o.fam||'Helvetica'],fontWeight:o.bold?700:400,fontStyle:o.italic?'italic':'normal',letterSpacing:(o.track||0)*f} as React.CSSProperties);
+
+/* The page, edited like a PDF editor: click any text to edit it where it is (same size, spacing and colour), click an empty spot to add text, drag a box to move it. */
 function PdfView({info,ops,setOps,tool,sig,size,color,locked}:{info:any;ops:Op[];setOps:(f:(o:Op[])=>Op[])=>void;tool:string;sig:Sig|null;size:number;color:string;locked:boolean}){
-  const [editing,setEditing]=useState<string|null>(null);
-  /* Drag text in any direction. A click without movement edits it. */
-  const dragText=(o:Op,f:number)=>(e:React.PointerEvent)=>{const grab=!!(e.target as HTMLElement).closest('.se-grab');if(locked||(editing===o.id&&!grab)||(e.target as HTMLElement).closest('button'))return;e.stopPropagation();if(grab)e.preventDefault();const sx=e.clientX,sy=e.clientY,x0=o.x!,y0=o.y!;let moved=false;
-    const mv=(ev:PointerEvent)=>{const dx=ev.clientX-sx,dy=ev.clientY-sy;if(!moved&&Math.hypot(dx,dy)<4)return;moved=true;setOps(all=>all.map(a=>a.id===o.id?{...a,x:Math.max(0,x0+dx/f),y:Math.max(0,y0+dy/f)}:a))};
-    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);if(!moved&&!grab)setEditing(o.id)};
+  const [sel,setSel]=useState<string|null>(null);const [draft,setDraft]=useState<{page:number;r:number[]}|null>(null);
+  const upd=(id:string,patch:Partial<Op>)=>setOps(a=>a.map(x=>x.id===id?{...x,...patch}:x));
+  /* Drag text in any direction. A click without movement puts the cursor in it. */
+  const dragText=(o:Op,f:number)=>(e:React.PointerEvent)=>{const t=e.target as HTMLElement,grab=!!t.closest('.se-grab');if(locked||t.tagName==='TEXTAREA'||(t.closest('.se-fmt')&&!grab)||t.closest('button'))return;e.stopPropagation();if(grab)e.preventDefault();const sx=e.clientX,sy=e.clientY,x0=o.x!,y0=o.y!;let moved=false;
+    const mv=(ev:PointerEvent)=>{const dx=ev.clientX-sx,dy=ev.clientY-sy;if(!moved&&Math.hypot(dx,dy)<4)return;moved=true;upd(o.id,{x:Math.max(0,x0+dx/f),y:Math.max(0,y0+dy/f)})};
+    const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);if(!moved&&!grab)setSel(o.id)};
     window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up)};
-  /* Finish typing: empty text is dropped; a changed line that was left as it was goes back to the original. */
-  const finishText=(o:Op)=>{setEditing(null);setOps(a=>{const pair=o.id.endsWith('r')?a.find(x=>x.id===o.id.slice(0,-1)&&x.t==='delete'):undefined;
-    if(!(o.text||'').trim())return a.filter(x=>x.id!==o.id);
-    if(pair&&pair.text===o.text&&pair.rect&&Math.abs((o.x||0)-pair.rect[0])<.5&&Math.abs((o.y||0)-pair.rect[1])<.5)return a.filter(x=>x.id!==o.id&&x.id!==pair.id);return a})};
+  /* Finish typing: empty text is dropped (a line that was changed stays blank); an untouched line goes back to the original. */
+  const finishText=(o:Op)=>{setSel(null);setOps(a=>{const cur=a.find(x=>x.id===o.id);if(!cur)return a;const pair=o.id.endsWith('r')?a.find(x=>x.id===o.id.slice(0,-1)&&x.t==='delete'):undefined;
+    if(!(cur.text||'').trim())return a.filter(x=>x.id!==o.id);
+    if(pair&&pair.text===cur.text&&pair.ref&&Math.abs((cur.x||0)-pair.ref.x)<.5&&Math.abs((cur.y||0)-pair.ref.y)<.5&&cur.size===pair.ref.size&&!!cur.bold===!!pair.ref.bold&&!!cur.italic===!!pair.ref.italic&&(cur.fam||'Helvetica')===(pair.ref.fam||'Helvetica')&&cur.color===pair.ref.color)return a.filter(x=>x.id!==o.id&&x.id!==pair.id);return a})};
+  const dup=(o:Op)=>{const id=uid();setOps(a=>[...a,{...o,id,x:o.x!+10,y:o.y!+o.size!*1.4}]);setSel(id)};
   return <div className="se-pages">{info.pages.map((pg:any,pi:number)=>{
-    const W=Math.min(760,pg.w*1.25),f=W/pg.w;const mine=ops.filter(o=>o.page===pi);
-    const clickPage=(e:React.MouseEvent<HTMLDivElement>)=>{if(locked||e.target!==e.currentTarget&&!(e.target as HTMLElement).classList.contains('se-img'))return;const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/f,y=(e.clientY-r.top)/f;
-      if(tool==='text'){const id=uid();setOps(o=>[...o,{id,t:'text',page:pi,x,y,size,color,text:''}]);setEditing(id)}
-      else if(tool==='sign'&&sig){const img=new Image();img.onload=()=>{const w=150,h=w*img.height/img.width;setOps(o=>[...o,{id:uid(),t:'sign',page:pi,rect:[x,y,x+w,y+h],png:sig.png}])};img.src=sig.png}};
-    const lineClick=async(l:any)=>{if(locked)return;
-      if(tool==='delete'){const had=ops.find(o=>o.t==='delete'&&o.page===pi&&o.rect![0]===l.bbox[0]&&o.rect![1]===l.bbox[1]);if(had){setOps(o=>o.filter(x=>x!==had));return}}
-      const a=await analyse(pg,l);const del:Op={id:uid(),t:'delete',page:pi,rect:l.bbox,text:l.text,...(a?{cover:a.rect,fill:a.fill}:{})};
-      if(tool==='delete')setOps(o=>[...o,del]);
-      else if(tool==='replace'){const size=a?a.size:l.size;setOps(o=>[...o,del,{id:del.id+'r',t:'text',page:pi,x:a?a.x:l.bbox[0],y:(a?a.base:(l.base??l.bbox[3]))-size*.9465,size,color:a?a.color:'#111827',text:l.text,track:a?a.track:(l.track||0)}]);setEditing(del.id+'r')}};
+    const W=Math.min(760,pg.w*1.25),f=W/pg.w;const mine=ops.filter(o=>o.page===pi);const at=(e:{clientX:number;clientY:number},el:HTMLElement)=>{const r=el.getBoundingClientRect();return [(e.clientX-r.left)/f,(e.clientY-r.top)/f]};
+    const clickPage=(e:React.MouseEvent<HTMLDivElement>)=>{if(locked||e.target!==e.currentTarget&&!(e.target as HTMLElement).classList.contains('se-img'))return;const [x,y]=at(e,e.currentTarget);
+      if(tool==='text'){const id=uid();setOps(o=>[...o,{id,t:'text',page:pi,x,y:y-size*.5,size,color,text:'',fam:'Helvetica'}]);setSel(id)}
+      else if((tool==='sign'||tool==='image')&&sig){const img=new Image();img.onload=()=>{const w=Math.min(tool==='image'?220:150,pg.w*.6),h=w*img.height/img.width;setOps(o=>[...o,{id:uid(),t:'sign',page:pi,rect:[x,y,x+w,y+h],png:sig.png}])};img.src=sig.png}};
+    /* whiteout: drag a rectangle over anything to hide it */
+    const startWhite=(e:React.PointerEvent<HTMLDivElement>)=>{if(locked||tool!=='whiteout'||(e.target!==e.currentTarget&&!(e.target as HTMLElement).classList.contains('se-img')))return;const el=e.currentTarget;el.setPointerCapture(e.pointerId);const [x0,y0]=at(e,el);setDraft({page:pi,r:[x0,y0,x0,y0]});
+      const mv=(ev:PointerEvent)=>{const [x,y]=at(ev,el);setDraft({page:pi,r:[Math.min(x0,x),Math.min(y0,y),Math.max(x0,x),Math.max(y0,y)]})};
+      const up=(ev:PointerEvent)=>{el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up);const [x,y]=at(ev,el);const r=[Math.min(x0,x),Math.min(y0,y),Math.max(x0,x),Math.max(y0,y)];setDraft(null);if(r[2]-r[0]>4&&r[3]-r[1]>4)setOps(o=>[...o,{id:uid(),t:'delete',page:pi,rect:r,cover:r,fill:'#ffffff',text:''}])};
+      el.addEventListener('pointermove',mv);el.addEventListener('pointerup',up)};
+    const lineClick=async(l:any)=>{if(locked)return;const a=await analyse(pg,l);const size=a?a.size:l.size;
+      const ref={x:a?a.x:l.bbox[0],y:(a?a.base:(l.base??l.bbox[3]))-size*.9465,size,track:a?a.track:(l.track||0),color:a?a.color:'#111827',fam:l.fam||'Helvetica',bold:!!l.bold,italic:!!l.italic};
+      const del:Op={id:uid(),t:'delete',page:pi,rect:l.bbox,text:l.text,ref,...(a?{cover:a.rect,fill:a.fill}:{})};
+      setOps(o=>[...o,del,{id:del.id+'r',t:'text',page:pi,...ref,text:l.text}]);setSel(del.id+'r')};
     const drag=(o:Op,mode:'move'|'size')=>(e:React.PointerEvent)=>{e.stopPropagation();e.preventDefault();const sx=e.clientX,sy=e.clientY,r0=[...o.rect!];const t=e.currentTarget as HTMLElement;t.setPointerCapture(e.pointerId);
       const mv=(ev:PointerEvent)=>{const dx=(ev.clientX-sx)/f,dy=(ev.clientY-sy)/f;setOps(all=>all.map(a=>{if(a.id!==o.id)return a;if(mode==='move')return {...a,rect:[r0[0]+dx,r0[1]+dy,r0[2]+dx,r0[3]+dy]};const nw=Math.max(30,r0[2]-r0[0]+dx),nh=(r0[3]-r0[1])*nw/(r0[2]-r0[0]);return {...a,rect:[r0[0],r0[1],r0[0]+nw,r0[1]+nh]}}))};
       const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up)};window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)};
+    const fmt=(o:Op,low:boolean)=><span className={`se-fmt${low?' low':''}`} role="toolbar" aria-label="Text formatting" onMouseDown={e=>{const n=(e.target as HTMLElement).tagName;if(n!=='SELECT'&&n!=='INPUT')e.preventDefault()}} onPointerDown={e=>{if(!(e.target as HTMLElement).closest('.se-grab'))e.stopPropagation()}}>
+      <button type="button" className={o.bold?'on':''} aria-pressed={!!o.bold} aria-label="Bold" title="Bold" onClick={()=>upd(o.id,{bold:!o.bold})}><b>B</b></button>
+      <button type="button" className={o.italic?'on':''} aria-pressed={!!o.italic} aria-label="Italic" title="Italic" onClick={()=>upd(o.id,{italic:!o.italic})}><i>I</i></button>
+      <button type="button" aria-label="Smaller text" title="Smaller" onClick={()=>upd(o.id,{size:Math.max(6,Math.round((o.size!-1)*10)/10)})}>A−</button><span className="se-fsz" title="Text size">{Math.round(o.size!)}</span><button type="button" aria-label="Larger text" title="Larger" onClick={()=>upd(o.id,{size:Math.min(72,Math.round((o.size!+1)*10)/10)})}>A+</button>
+      <select aria-label="Font" value={o.fam||'Helvetica'} onChange={e=>upd(o.id,{fam:e.target.value})}>{Object.keys(FONTS).map(k=><option key={k} value={k}>{k==='Helvetica'?'Sans (Arial)':k==='Times'?'Serif (Times)':'Mono (Courier)'}</option>)}</select>
+      <input type="color" aria-label="Text colour" title="Text colour" value={/^#[0-9a-f]{6}$/i.test(o.color||'')?o.color!:'#111827'} onChange={e=>upd(o.id,{color:e.target.value})}/>
+      <span className="se-grab inbar" title="Drag to move this text anywhere" aria-label="Move this text"><Move size={14}/></span>
+      <button type="button" aria-label="Duplicate" title="Duplicate" onClick={()=>dup(o)}><Copy size={14}/></button>
+      <button type="button" aria-label="Delete this text" title="Delete this text" onClick={()=>{setSel(null);setOps(a=>a.filter(x=>x.id!==o.id))}}><Trash2 size={14}/></button></span>;
     return <div key={pi} className="se-pagewrap"><small className="muted">Page {pi+1} of {info.pages.length}</small>
-      <div className={`se-page tool-${locked?'none':tool}`} style={{width:W,height:pg.h*f}} onClick={clickPage}><img className="se-img" src={pg.image} alt={`Page ${pi+1}`} draggable={false} style={{width:W,height:pg.h*f}}/>
-        {(tool==='delete'||tool==='replace')&&!locked&&pg.lines.length===0&&<div className="se-nolines" role="status">No text you can select was found on this page. It may be a scanned picture. Use Add text to write over it.</div>}
-        {(tool==='delete'||tool==='replace')&&!locked&&pg.lines.map((l:any,k:number)=><button key={k} type="button" className="se-line" title={tool==='delete'?'Delete this text':'Change this text'} aria-label={(tool==='delete'?'Delete: ':'Change: ')+l.text} style={{left:l.bbox[0]*f-2,top:l.bbox[1]*f-1,width:(l.bbox[2]-l.bbox[0])*f+4,height:(l.bbox[3]-l.bbox[1])*f+2}} onClick={()=>lineClick(l)}/>)}
-        {mine.map(o=>o.t==='delete'?<div key={o.id} className={`se-del${mine.some(x=>x.id===o.id+'r')||o.fill?' cover':''}`} title={mine.some(x=>x.id===o.id+'r')?'Being changed':'Will be deleted'} style={{left:(o.cover||o.rect!)[0]*f-2,top:(o.cover||o.rect!)[1]*f-1,width:((o.cover||o.rect!)[2]-(o.cover||o.rect!)[0])*f+4,height:((o.cover||o.rect!)[3]-(o.cover||o.rect!)[1])*f+2,...(o.fill?{background:o.fill}:{})}}><button type="button" className="se-x" aria-label="Keep this text" onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id&&x.id!==o.id+'r'))}}><X size={11}/></button></div>
-          :o.t==='text'?<div key={o.id} className={`se-text${editing===o.id?' editing':''}`} style={{left:o.x!*f,top:o.y!*f}} onPointerDown={dragText(o,f)}>{editing===o.id?<textarea autoFocus rows={1} value={o.text} style={{fontSize:o.size!*f,color:o.color,height:o.size!*f*1.3,letterSpacing:(o.track||0)*f,width:Math.max(60,(o.text||'').length*(o.size!*.62+(o.track||0))*f+12)}} aria-label="Text to add" onFocus={e=>{if(o.id.endsWith('r'))e.currentTarget.select()}} onChange={e=>setOps(a=>a.map(x=>x.id===o.id?{...x,text:e.target.value}:x))} onKeyDown={e=>{if(e.key==='Escape'||(e.key==='Enter'&&!e.shiftKey)){e.preventDefault();(e.target as HTMLElement).blur()}}} onBlur={()=>finishText(o)}/>:<span style={{fontSize:o.size!*f,color:o.color,letterSpacing:(o.track||0)*f}} title="Drag to move, click to edit">{o.text}</span>}<span className="se-grab" title="Drag to move this text anywhere" aria-label="Move this text"><Move size={11}/></span><button type="button" className="se-x" aria-label="Remove this text" onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button></div>
-          :<div key={o.id} className="se-sig" style={{left:o.rect![0]*f,top:o.rect![1]*f,width:(o.rect![2]-o.rect![0])*f,height:(o.rect![3]-o.rect![1])*f}} onPointerDown={drag(o,'move')} onClick={e=>e.stopPropagation()}><img src={o.png} alt="Signature" draggable={false}/><button type="button" className="se-x" aria-label="Remove this signature" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button><span className="se-grip" aria-label="Resize signature" onPointerDown={drag(o,'size')}/></div>)}
+      <div className={`se-page tool-${locked?'none':tool}`} style={{width:W,height:pg.h*f}} onClick={clickPage} onPointerDown={startWhite}><img className="se-img" src={pg.image} alt={`Page ${pi+1}`} draggable={false} style={{width:W,height:pg.h*f}}/>
+        {tool==='text'&&!locked&&pg.lines.length===0&&<div className="se-nolines" role="status">No text you can select was found on this page. It may be a scanned picture. Click anywhere to type over it.</div>}
+        {tool==='text'&&!locked&&pg.lines.map((l:any,k:number)=>{const done=mine.some(o=>o.t==='delete'&&o.rect![0]===l.bbox[0]&&o.rect![1]===l.bbox[1]);return done?null:<button key={k} type="button" className="se-line soft" title="Click to edit this text" aria-label={'Edit: '+l.text} style={{left:l.bbox[0]*f-2,top:l.bbox[1]*f-1,width:(l.bbox[2]-l.bbox[0])*f+4,height:(l.bbox[3]-l.bbox[1])*f+2}} onClick={()=>lineClick(l)}/>})}
+        {draft&&draft.page===pi&&<div className="se-draft" style={{left:draft.r[0]*f,top:draft.r[1]*f,width:(draft.r[2]-draft.r[0])*f,height:(draft.r[3]-draft.r[1])*f}}/>}
+        {mine.map(o=>{if(o.t==='delete'){const rc=(o.cover||o.rect!);const pair=mine.some(x=>x.id===o.id+'r');return <div key={o.id} className={`se-del${pair||o.fill?' cover':''}`} title={pair?'':!o.ref?'Whiteout':'Blank. Click to type here again'} onClick={e=>{e.stopPropagation();if(locked||tool!=='text'||!o.ref||pair)return;setOps(a=>[...a,{id:o.id+'r',t:'text',page:pi,...o.ref,text:''}]);setSel(o.id+'r')}} style={{left:rc[0]*f-(o.ref?2:0),top:rc[1]*f-(o.ref?1:0),width:(rc[2]-rc[0])*f+(o.ref?4:0),height:(rc[3]-rc[1])*f+(o.ref?2:0),...(o.fill?{background:o.fill}:{})}}><button type="button" className="se-x" aria-label={o.ref?'Put the original text back':'Remove whiteout'} title={o.ref?'Put the original text back':'Remove whiteout'} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id&&x.id!==o.id+'r'))}}><X size={11}/></button></div>}
+          if(o.t==='text'){const on=sel===o.id;return <div key={o.id} className={`se-text${on?' editing':''}`} style={{left:o.x!*f,top:o.y!*f}} onPointerDown={dragText(o,f)} onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))finishText(o)}}>
+            {on&&fmt(o,o.y!*f<46)}
+            {on?<textarea autoFocus rows={1} value={o.text} style={{...txtStyle(o,f),height:o.size!*f*1.3,width:Math.max(60,(o.text||'').length*(o.size!*.62+(o.track||0))*f+12)}} aria-label="Edit text" onFocus={e=>{if(o.id.endsWith('r')&&o.text)e.currentTarget.select()}} onChange={e=>upd(o.id,{text:e.target.value})} onKeyDown={e=>{if(e.key==='Escape'||(e.key==='Enter'&&!e.shiftKey)){e.preventDefault();(e.target as HTMLElement).blur()}}}/>
+              :<span style={txtStyle(o,f)} title="Click to edit, drag to move">{o.text}</span>}
+            <span className="se-grab" title="Drag to move this text anywhere" aria-label="Move this text"><Move size={11}/></span></div>}
+          return <div key={o.id} className="se-sig" style={{left:o.rect![0]*f,top:o.rect![1]*f,width:(o.rect![2]-o.rect![0])*f,height:(o.rect![3]-o.rect![1])*f}} onPointerDown={drag(o,'move')} onClick={e=>e.stopPropagation()}><img src={o.png} alt="Picture or signature" draggable={false}/><button type="button" className="se-x" aria-label="Remove this" onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setOps(a=>a.filter(x=>x.id!==o.id))}}><X size={11}/></button><span className="se-grip" aria-label="Resize" onPointerDown={drag(o,'size')}/></div>})}
       </div></div>})}</div>;
 }
 
@@ -158,13 +197,18 @@ function CertPanel({request,doc,onSigned,onClose,notify}:{request:any;doc:Doc;on
 }
 
 export function SignEdit({request,requestUp,notify,userId}:{request:any;requestUp?:any;notify:(m:string)=>void;userId?:string}){
-  const [cur,setCur]=useState<Doc|null>(null);const [ops,setOps]=useState<Op[]>([]);const [tool,setTool]=useState<'text'|'delete'|'replace'|'sign'>('text');
-  const [sig,setSig]=useState<Sig|null>(null);const [saved,setSaved]=useState<Sig[]>([]);const [busy,setBusy]=useState('');const [err,setErr]=useState('');const [size,setSize]=useState(12);const [color,setColor]=useState(COLORS[0]);const [applied,setApplied]=useState(0);const [pad,setPad]=useState(false);const [certOpen,setCertOpen]=useState(false);const [docId,setDocId]=useState('');const [up,setUp]=useState<{name:string;size:number;pct:number;label:string}|null>(null);const upTok=useRef(0);const [hist,setHist]=useState<Meta[]>([]);const uidk=String(userId||'');const [scope,setScope]=useState<'mine'|'with'|'by'>('mine');const [paneOff,setPaneOff]=useState(()=>{try{return localStorage.getItem('isift.pane.sign')==='1'}catch{return false}});const flipPane=()=>setPaneOff(v=>{try{localStorage.setItem('isift.pane.sign',v?'0':'1')}catch{}return !v});
+  const [cur,setCur]=useState<Doc|null>(null);const [ops,setOps]=useState<Op[]>([]);const [tool,setTool]=useState<'text'|'delete'|'replace'|'sign'|'whiteout'|'image'>('text');
+  const [sig,setSig]=useState<Sig|null>(null);const [img,setImg]=useState<Sig|null>(null);const [saved,setSaved]=useState<Sig[]>([]);const [busy,setBusy]=useState('');const [err,setErr]=useState('');const [size,setSize]=useState(12);const [color,setColor]=useState(COLORS[0]);const [applied,setApplied]=useState(0);const [pad,setPad]=useState(false);const [certOpen,setCertOpen]=useState(false);const [docId,setDocId]=useState('');const [up,setUp]=useState<{name:string;size:number;pct:number;label:string}|null>(null);const upTok=useRef(0);const [hist,setHist]=useState<Meta[]>([]);const uidk=String(userId||'');const [scope,setScope]=useState<'mine'|'with'|'by'>('mine');const [paneOff,setPaneOff]=useState(()=>{try{return localStorage.getItem('isift.pane.sign')==='1'}catch{return false}});const flipPane=()=>setPaneOff(v=>{try{localStorage.setItem('isift.pane.sign',v?'0':'1')}catch{}return !v});
   const loadSaved=useCallback(()=>request('/docedit/signatures').then((r:any)=>setSaved(r.items)).catch(()=>{}),[request]);
   useEffect(()=>{loadSaved()},[loadSaved]);
   const loadHist=useCallback(()=>histList(uidk).then(setHist),[uidk]);
   useEffect(()=>{loadHist()},[loadHist]);
   const keep=(id:string,d:Doc,n:number,blobs:{orig?:string;cur:string},up?:number)=>histSave(uidk,{id,name:d.name,kind:d.kind,applied:n,uploaded:up??hist.find(h=>h.id===id)?.uploaded??Date.now(),edited:Date.now(),size:Math.round(blobs.cur.length*.75)},blobs).then(loadHist);
+  /* A picture is turned into a PNG of sensible size, then placed on the page like a signature. */
+  const pickImage=(f?:File|null)=>{if(!f)return;if(!/^image\/(png|jpe?g|webp)$/i.test(f.type)){setErr('Choose a PNG, JPG or WebP picture.');return}setErr('');const url=URL.createObjectURL(f),im=new Image();
+    im.onload=()=>{const k=Math.min(1,700/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(im.width*k));c.height=Math.max(1,Math.round(im.height*k));c.getContext('2d')!.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(url);
+      let png=c.toDataURL('image/png');if(png.length>520000){const k2=Math.sqrt(520000/png.length)*.85,c2=document.createElement('canvas');c2.width=Math.max(1,Math.round(c.width*k2));c2.height=Math.max(1,Math.round(c.height*k2));c2.getContext('2d')!.drawImage(c,0,0,c2.width,c2.height);png=c2.toDataURL('image/png')}
+      setImg({png});setTool('image')};im.onerror=()=>{URL.revokeObjectURL(url);setErr('That picture could not be opened.')};im.src=url};
   const mb=(n:number)=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
   const cancelUp=()=>{upTok.current++;setUp(null);setBusy('')};
   const upload=async(f?:File|null)=>{if(!f)return;if(ops.length&&!window.confirm('You have changes that are not applied yet. Leave without applying them?'))return;setErr('');const tok=++upTok.current;
@@ -203,7 +247,7 @@ export function SignEdit({request,requestUp,notify,userId}:{request:any;requestU
       const d:Doc={name:m.name,kind:m.kind,b64:b.cur,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(m.applied);resetHist(d,e0,m.applied);setTool('text');setDocId(m.id)}catch(e:any){setErr(e.message)}setBusy('')};
   const getRec=async(m:Meta)=>{try{const b=await histBlobs(uidk,m.id);if(b)saveFile(b.cur,m.kind,m.name)}catch(e:any){setErr(e.message)}};
   const delRec=async(m:Meta)=>{if(!window.confirm('Remove "'+m.name+'" from your list? The copy kept in this browser is deleted.'))return false;await histDelete(uidk,m.id);loadHist();return true};
-  const pdf=cur?.kind==='pdf';const sigs:any[]=(cur?.info?.signatures)||[];const signed=sigs.length>0;const changed=ops.length>0;const note=pdf?'Click the page where the text should go.':'Use the buttons beside each paragraph.';
+  const pdf=cur?.kind==='pdf';const sigs:any[]=(cur?.info?.signatures)||[];const signed=sigs.length>0;const changed=ops.length>0;const note=pdf?'Click existing text to edit it in place, or click an empty spot to add new text. Drag the blue handle to move it.':'Use the buttons beside each paragraph.';
   const pane=<section className="panel ws-pane" aria-hidden={paneOff}><div className="panelhead"><h2><FileSignature size={18}/> Sign &amp; Edit PDF</h2><span className="ws-pane-btns"><label className="primary se-new" title="Upload a PDF or Word file"><Plus size={15}/> New<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Upload a new PDF or Word file" onChange={e=>{upload(e.target.files?.[0]);e.target.value=''}}/></label><button type="button" className="iconbtn" aria-label="Hide this panel" title="Hide this panel to give the work area more room" onClick={flipPane}><ChevronsLeft size={18}/></button></span></div>
     <div className="notes-scope" role="tablist" aria-label="Which files">{([['mine','My files'],['with','Shared with me'],['by','Shared by me']] as const).map(([v,l])=><button key={v} type="button" role="tab" aria-selected={scope===v} className={`wb-cat${scope===v?' on':''}`} onClick={()=>setScope(v)}>{l}</button>)}</div>
     {scope==='mine'&&up&&<div className="ws-ch shared-row on se-uprow"><div className="ws-main"><b>{up.name}</b><small className="muted">{up.label} {up.pct}%</small></div></div>}
@@ -224,15 +268,15 @@ export function SignEdit({request,requestUp,notify,userId}:{request:any;requestU
       {sigs.map((g,i)=><div key={i} className={`shared-banner se-signed${g.intact?'':' bad'}`} role={g.intact?'status':'alert'}><ShieldCheck size={15}/> {g.intact?<>Digitally signed{g.signer?` by ${g.signer}`:''}. The file has not changed since it was signed.{!g.trusted&&' The signer’s identity is not verified by a recognised authority.'}{g.certified&&' No further changes are allowed.'} Editing is switched off: press Undo to go back to the file before it was signed.</>:<>This PDF has a digital signature that is no longer valid: the file was changed after it was signed.</>}</div>)}
       {certOpen&&pdf&&!signed&&<CertPanel request={request} doc={cur} notify={notify} onClose={()=>setCertOpen(false)} onSigned={d=>{setCur(d);setApplied(n=>n+1);keep(docId,d,applied+1,{cur:d.b64});setCertOpen(false);setOps([])}}/>}
       <div className={`se-tools${signed?' off':''}`} role="toolbar" aria-label="Editing tools" aria-disabled={signed}>
-        <button type="button" className={`wb-cat${tool==='text'?' on':''}`} aria-pressed={tool==='text'} onClick={()=>setTool('text')}><Type size={14}/> Add text</button>
-        {pdf&&<><button type="button" className={`wb-cat${tool==='replace'?' on':''}`} aria-pressed={tool==='replace'} onClick={()=>setTool('replace')}><Pencil size={14}/> Change text</button><button type="button" className={`wb-cat${tool==='delete'?' on':''}`} aria-pressed={tool==='delete'} onClick={()=>setTool('delete')}><Trash2 size={14}/> Delete text</button></>}
+        <button type="button" className={`wb-cat${tool==='text'?' on':''}`} aria-pressed={tool==='text'} onClick={()=>setTool('text')}><Type size={14}/> {pdf?'Text':'Add text'}</button>
+        {pdf&&<><button type="button" className={`wb-cat${tool==='whiteout'?' on':''}`} aria-pressed={tool==='whiteout'} onClick={()=>setTool('whiteout')}><Whiteout size={14}/> Whiteout</button>
+        <label className={`wb-cat se-imgbtn${tool==='image'?' on':''}`}><ImagePlus size={14}/> Images<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="Add an image" onChange={e=>{pickImage(e.target.files?.[0]);e.target.value=''}}/></label></>}
         <button type="button" className={`wb-cat${tool==='sign'?' on':''}`} aria-pressed={tool==='sign'} onClick={()=>{setTool('sign');if(!sig&&!saved.length)setPad(true)}}><PenLine size={14}/> Sign</button>
-        {pdf&&tool==='text'&&<span className="se-opts"><label className="small muted">Size <select value={size} aria-label="Text size" onChange={e=>setSize(+e.target.value)}>{[9,10,11,12,14,16,18,24,32].map(n=><option key={n} value={n}>{n}</option>)}</select></label>{COLORS.map(c=><button key={c} type="button" className={`se-swatch${color===c?' on':''}`} style={{background:c}} aria-label={'Text colour '+c} onClick={()=>setColor(c)}/>)}</span>}
-        <span className="muted small se-hint">{tool==='delete'?'Click a line of text to delete it. Click the red box again to keep it.':tool==='replace'?'Click a line of text, then type the new words.':tool==='sign'?(sig?(pdf?'Click the page where the signature should go. Drag it to move; drag the corner to resize.':'Use "Sign below" beside a paragraph.'):'Draw a signature, or choose a saved one.'):note}</span></div>
+        <span className="muted small se-hint">{tool==='whiteout'?'Drag over anything on the page to hide it. Hover a white box and press x to remove it.':tool==='image'?(img?'Click the page where the picture should go. Drag it to move; drag the corner to resize.':'Choose a picture to add.'):tool==='sign'?(sig?(pdf?'Click the page where the signature should go. Drag it to move; drag the corner to resize.':'Use "Sign below" beside a paragraph.'):'Draw a signature, or choose a saved one.'):note}</span></div>
       {tool==='sign'&&!signed&&<div className="se-sigbar">{sig?<><img src={sig.png} alt="Signature in use" className="se-siguse"/><span className="small muted">Signature ready.</span></>:<span className="small muted">No signature chosen yet.</span>}<button type="button" className="secondary" onClick={()=>setPad(!pad)}>{pad?'Close signature box':sig?'Draw a new one or pick another':'Draw or pick a signature'}</button></div>}
       {tool==='sign'&&pad&&!signed&&<SignaturePad onDone={onSig} saved={saved} canSave onDelete={delSig} onUse={s=>{setSig(s);setPad(false)}}/>}
       {err&&<p className="error" role="alert">{err}</p>}{busy&&<p className="muted" role="status">{busy}</p>}
-      {pdf?<PdfView info={cur.info} ops={ops} setOps={setOps} tool={tool} sig={sig} size={size} color={color} locked={!!busy||signed}/>:<WordView info={cur.info} ops={ops} setOps={setOps} sig={sig} locked={!!busy}/>}
+      {pdf?<PdfView info={cur.info} ops={ops} setOps={setOps} tool={tool} sig={tool==='image'?img:sig} size={size} color={color} locked={!!busy||signed}/>:<WordView info={cur.info} ops={ops} setOps={setOps} sig={sig} locked={!!busy}/>}
       <p className="muted small">A drawn signature is a picture. For a sealed, tamper-evident signature on a PDF use Digital signature. {pdf?'Deleting text removes it from the PDF itself, not just from view.':'Word formatting that you do not touch stays as it was.'}</p></>}
     {!cur&&err&&<p className="error" role="alert">{err}</p>}{!cur&&busy&&<p className="muted" role="status">{busy}</p>}
   </section></div>;
