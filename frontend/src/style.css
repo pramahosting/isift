@@ -855,7 +855,7 @@ body{background:var(--canvas)}
 .legal-page .legal-footer{margin-top:auto}
 
 /* ---- boardroom table, discussion groups, active speaker ---- */
-.rm-tile.speaking{box-shadow:0 0 0 3px #34d399,0 0 18px #34d39966;transition:box-shadow .15s}
+.rm-tile.speaking{box-shadow:none}
 .rm-group,.rm-clock{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#2b3d56;color:#dbe7f5;font-size:12px;font-weight:600;white-space:nowrap}
 .rm-clock{background:#4a3a1a;color:#ffe3a3}
 .rm-banner{display:flex;align-items:center;gap:10px;margin:6px 12px 0;padding:9px 12px;border-radius:10px;background:#fff4d6;color:#4b3a0f;font-size:14px;border:1px solid #f0d58a}.rm-banner span{flex:1}.rm-banner .iconbtn{color:#4b3a0f}
@@ -1158,3 +1158,13 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .se-imgbtn{position:relative;display:inline-flex;gap:6px;align-items:center;cursor:pointer;overflow:hidden}.se-imgbtn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
 
 .se-del.cover{border-color:transparent!important}.se-del.cover:hover{border-color:rgba(220,38,38,.5)!important}
+
+/* Gallery like Zoom: tiles keep a 16:9 shape, stay centred and never fill the whole page */
+.rm-grid:not(.big){display:flex;flex-wrap:wrap;justify-content:center;align-content:center;align-items:center;gap:8px;padding:10px;overflow:hidden;--cols:3;--rows:3;--ah:calc(100vh - 190px)}
+.rm-grid:not(.big)>*{flex:0 0 auto;aspect-ratio:16/9;height:auto!important;min-height:0;width:min(calc((100% - 8px*(var(--cols) - 1) - 20px)/var(--cols)),calc((var(--ah) - 8px*(var(--rows) - 1))/var(--rows)*16/9))}
+.rm-grid:not(.big)>.rm-wrap>.rm-tile{width:100%;height:100%}
+.rm-grid.n1{--cols:1;--rows:1}.rm-grid.n2{--cols:2;--rows:1}.rm-grid.n3,.rm-grid.n4{--cols:2;--rows:2}.rm-grid.n5,.rm-grid.n6{--cols:3;--rows:2}
+.rm-grid.n1:not(.big)>*{width:min(70%,calc(var(--ah)*16/9))}
+@media(max-width:900px){.rm-grid:not(.big){--cols:1;--rows:var(--rows);--ah:calc(100vh - 230px)}.rm-grid.n2,.rm-grid.n3,.rm-grid.n4{--cols:1}.rm-grid.n2{--rows:2}.rm-grid.n3{--rows:3}.rm-grid.n4{--rows:4}}
+.rm-talk{position:absolute;right:8px;top:8px;z-index:3;width:26px;height:26px;border-radius:50%;background:#16a34a;color:#fff;display:grid;place-items:center;animation:rmtalk .9s ease-in-out infinite;pointer-events:none}
+@keyframes rmtalk{50%{opacity:.35;transform:scale(.88)}}

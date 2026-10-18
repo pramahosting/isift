@@ -24,6 +24,7 @@ function VideoTile({stream,name,muted,off,host,cohost,screen,self,speaking,plate
   useEffect(()=>{const v=ref.current;if(v&&v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>{})}},[stream]);
   return <div className={`rm-tile${self?' self':''}${speaking?' speaking':''}`} data-name={name} onDoubleClick={onDouble} title={onDouble?'Double-click to highlight':undefined}>
     <video ref={ref} autoPlay playsInline muted={muted} className={off?'hidden':''}/>
+    {speaking&&<span className="rm-talk" title="Speaking" aria-label="Speaking"><Mic size={14}/></span>}
     {off&&<div className="rm-avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>}
     {!plate&&<span className="rm-name">{name}{self?' (you)':''}{host?(cohost?' · co-host':' · host'):''}{screen?' · sharing':''}</span>}
   </div>;
@@ -142,7 +143,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
         send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false});
         if(m.moved)setNotice(m.group?(m.reason==='assigned'?`You are in ${m.group.name}`:`You were moved to ${m.group.name}`):m.reason==='time'?'Discussion time is over. Back in the main room.':'Back in the main room.');
         if(!m.group)setBanner(null)}
-      else if(m.type==='vroom'){setVrOn(!!m.on);setNotice(`${m.by||'The host'} switched the virtual room ${m.on?'on':'off'}.`)}
+      else if(m.type==='vroom'){setVrOn(!!m.on);if(m.on)setView('table');setNotice(`${m.by||'The host'} switched the virtual room ${m.on?'on':'off'}.`)}
       else if(m.type==='policy'){setPolicy({audio:!!m.audio,video:!!m.video});setNotice(`${m.by||'The host'} changed what participants may switch on.`)}
       else if(m.type==='force'){
         if(m.mic===false){if(local.current.audio)local.current.audio.enabled=false;setMic(false)}
@@ -388,7 +389,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <button className={`rm-btn${screen?' on':''}`} onClick={toggleScreen} aria-label="Share screen"><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button>
       <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({tiles})</span></button>
       <button className={`rm-btn${chatOpen?' on':''}`} onClick={()=>{setChatOpen(o=>!o);setPeopleOpen(false);if(!chatOpen)setUnread(u=>({...u,[chatKey]:0}))}} aria-label="Chat"><MessageSquare size={18}/><span>Chat</span>{Object.values(unread).reduce((a,b)=>a+b,0)>0&&<i className="rm-dot">{Object.values(unread).reduce((a,b)=>a+b,0)}</i>}</button>
-      {isHost&&vrAllowed&&<button className={`rm-btn${vrOn?' on':''}`} onClick={()=>{const v=!vrOn;setVrOn(v);send({type:'vroom',on:v})}} aria-pressed={vrOn} aria-label={vrOn?'Switch the virtual room off for everyone':'Switch the virtual room on for everyone'} title={vrOn?'Virtual room is on: everyone sees the boardroom table. Press to switch it off for everyone.':'Virtual room is off: everyone sees the gallery. Press to switch it on for everyone.'}><Armchair size={18}/><span>Virtual room: {vrOn?'On':'Off'}</span></button>}
+      {isHost&&vrAllowed&&<button className={`rm-btn${vrOn?' on':''}`} onClick={()=>{const v=!vrOn;setVrOn(v);if(v)setView('table');send({type:'vroom',on:v})}} aria-pressed={vrOn} aria-label={vrOn?'Switch the virtual room off for everyone':'Switch the virtual room on for everyone'} title={vrOn?'Virtual room is on: everyone sees the boardroom table. Press to switch it off for everyone.':'Virtual room is off: everyone sees the gallery. Press to switch it on for everyone.'}><Armchair size={18}/><span>Virtual room: {vrOn?'On':'Off'}</span></button>}
       <button className={`rm-btn${inviteOpen?' on':''}`} onClick={()=>inviteOpen?setInviteOpen(false):openInvite()} aria-label="Invite people"><Link2 size={18}/><span>Invite</span></button>
       {vrOn&&tiles>1&&tiles<=TABLE_MAX&&!sharing&&wide&&<button className={`rm-btn${mode==='table'?' on':''}`} onClick={()=>setView(mode==='table'?'gallery':'table')} aria-label={mode==='table'?'Switch to gallery view':'Switch to boardroom table view'} title={mode==='table'?'Switch to gallery view':'Switch to boardroom table view'}>{mode==='table'?<LayoutGrid size={18}/>:<Table2 size={18}/>}<span>{mode==='table'?'Gallery':'Table'}</span></button>}
       {mode==='table'&&tiles>2&&<button className="rm-btn" onClick={()=>setShape(shape==='rect'?'round':'rect')} aria-label={shape==='rect'?'Use a round table':'Use a rectangular table'} title={shape==='rect'?'Use a round table':'Use a rectangular table'}>{shape==='rect'?<Circle size={18}/>:<RectangleHorizontal size={18}/>}<span>{shape==='rect'?'Round':'Rectangle'}</span></button>}
