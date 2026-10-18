@@ -6,7 +6,6 @@ put a real address from Admin settings in its place wherever an address is shown
 from app.core.config import settings
 
 PLACEHOLDER_ADMIN = "admin@example.test"      # how the built-in administrator is stored; never shown
-ADMIN_DISPLAY = "admin@isift.au"
 FAKE_DOMAINS = {"example.test", "example.com", "example.org", "example.net", "localhost", "invalid"}
 
 def routable(addr: str) -> bool:
@@ -20,7 +19,7 @@ def shown_email(addr: str) -> str:
     if routable(addr): return addr
     for cand in (settings.smtp_from, settings.error_email_to, settings.smtp_user):
         if routable(cand): return cand.strip()
-    if (addr or "").strip().lower() == PLACEHOLDER_ADMIN: return ADMIN_DISPLAY     # nothing configured: show iSift's own admin address
+    if (addr or "").strip().lower() == PLACEHOLDER_ADMIN: return (settings.admin_display_email or "info@isift.au").strip()     # nothing configured: show iSift's own admin address
     return addr
 
 def reply_email(addr: str) -> str:

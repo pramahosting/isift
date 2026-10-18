@@ -1725,7 +1725,7 @@ def test_share_note_and_board_as_pdf(client, monkeypatch):
 def test_admin_shown_as_isift_address(client):
     from app.services.identity import shown_email
     from app.core.config import settings
-    assert shown_email("admin@example.test") == "admin@isift.au" and shown_email("bob@gmail.com") == "bob@gmail.com"
+    assert shown_email("admin@example.test") == "info@isift.au" and shown_email("bob@gmail.com") == "bob@gmail.com"
     h, _ = login(client); m = make(client, h, title="Org check", start_at="2031-05-01T10:00:00Z", duration_minutes=30)
     rows = client.get("/api/v1/meetings", headers=h).json()
     assert rows and all(r["organizer"] != "admin@example.test" for r in rows)
@@ -1843,3 +1843,34 @@ def test_sharing_all_file_types(client, monkeypatch):
     n = client.post("/api/v1/notes", json={"kind": "wp", "title": "Safe", "content": '<p onclick="x()">Hi<script>alert(1)</script><img src=x onerror=alert(2)><a href="javascript:alert(3)">l</a><a href="https://ok.example/">ok</a></p>'}, headers=h).json()
     c = client.get(f"/api/v1/notes/{n['id']}", headers=h).json()["content"]; assert "script" not in c and "onclick" not in c and "onerror" not in c and "javascript:" not in c and 'href="https://ok.example/"' in c and "<p>Hi" in c
     assert client.post("/api/v1/notes", json={"kind": "sheet", "title": "Bad", "content": "{}"}, headers=h).status_code == 400
+
+
+def test_delete_year_long_series_is_fast(client):
+    """Deleting 365 daily meetings must take a handful of database round trips, not thousands (on a remote database that was a 503 timeout)."""
+    from sqlalchemy import event
+    from app.core.db import engine
+    h, _ = login(client)
+    r = client.post("/api/v1/meetings", json={"base_url": "http://t/", "title": "Year of tests", "provider": "room", "start_at": "2032-01-01T10:00:00Z", "duration_minutes": 15, "recurrence": {"every": "day", "count": 365}}, headers=h); assert r.status_code == 200, r.text
+    rows = [m for m in client.get("/api/v1/meetings", headers=h).json() if m["title"] == "Year of tests"]; assert len(rows) >= 100
+    n = [0]
+    def count(*a, **k): n[0] += 1
+    event.listen(engine.sync_engine, "before_cursor_execute", count)
+    try: d = client.delete(f"/api/v1/meetings/{rows[0]['id']}?series=true", headers=h)
+    finally: event.remove(engine.sync_engine, "before_cursor_execute", count)
+    assert d.status_code == 200 and d.json()["removed"] == 365, d.text
+    assert n[0] < 40, n[0]
+    assert not [m for m in client.get("/api/v1/meetings", headers=h).json() if m["title"] == "Year of tests"]
+
+
+def test_dashboard_organizer_never_placeholder(client):
+    h, _ = login(client); make(client, h, title="Org on dashboard", start_at="2035-05-01T10:00:00Z", duration_minutes=30)
+    d = client.get("/api/v1/dashboard", headers=h).json() if client.get("/api/v1/dashboard", headers=h).status_code == 200 else None
+    assert d is not None
+    rows = d["meetings"] + d["today"].get("meetings", []) if isinstance(d.get("today"), dict) else d["meetings"]
+    assert rows and all(r["organizer"] != "admin@example.test" for r in rows), sorted({r["organizer"] for r in rows})
+
+
+def test_dashboard_organizer_is_not_the_placeholder(client):
+    h, _ = login(client); make(client, h, title="Dash org", start_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z"), duration_minutes=30)
+    d = client.get("/api/v1/dashboard", headers=h); assert d.status_code == 200, d.text
+    orgs = [m["organizer"] for m in d.json()["meetings"]]; assert orgs and all(o == "info@isift.au" for o in orgs), orgs

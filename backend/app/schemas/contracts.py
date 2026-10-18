@@ -23,6 +23,13 @@ class MeetingOut(BaseModel):
     minutes_status: str
     model_config = ConfigDict(from_attributes=True)
 
+    @field_validator("organizer")
+    @classmethod
+    def _real_organizer(cls, v: str) -> str:
+        # the built-in administrator is stored under a placeholder address; wherever a meeting is sent to the screen show a real one
+        from app.services.identity import shown_email
+        return shown_email(v) if v else v
+
     @field_validator("start_at","end_at")
     @classmethod
     def _utc(cls, v: datetime) -> datetime:

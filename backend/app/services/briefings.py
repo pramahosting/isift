@@ -118,7 +118,7 @@ async def build_preview(db: AsyncSession, user_id: str, include_meetings: bool=T
             if not settings.is_local_demo: raise
             demo_rows=(await db.execute(select(Meeting).where(Meeting.owner_id==user_id,Meeting.external_id.like("demo-%"),Meeting.start_at>=start.astimezone(timezone.utc),Meeting.start_at<end.astimezone(timezone.utc)))).scalars().all()
             if not demo_rows: raise
-            raw=[{"id":m.external_id,"subject":m.title,"sensitivity":m.sensitivity,"isCancelled":False,"isAllDay":False,"responseStatus":{"response":"accepted"},"start":{"dateTime":m.start_at.isoformat()},"end":{"dateTime":m.end_at.isoformat()},"organizer":{"emailAddress":{"address":m.organizer}}} for m in demo_rows]
+            raw=[{"id":m.external_id,"subject":m.title,"sensitivity":m.sensitivity,"isCancelled":False,"isAllDay":False,"responseStatus":{"response":"accepted"},"start":{"dateTime":m.start_at.isoformat()},"end":{"dateTime":m.end_at.isoformat()},"organizer":{"emailAddress":{"address":__import__("app.services.identity",fromlist=["x"]).shown_email(m.organizer or "")}}} for m in demo_rows]
         selected=[e for e in raw if eligible(e)]
         if not selected and raw is None: raise RuntimeError("Calendar retrieval not verified")
     else:

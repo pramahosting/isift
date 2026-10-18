@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     room_virtual_enabled: bool = True     # the virtual room (boardroom table view) is available at all
     graph_context_enabled: bool = False
     automation_user_email: str = "admin@example.test"
+    admin_display_email: str = "info@isift.au"        # shown instead of the built-in administrator's placeholder address
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
     groq_transcription_model: str = "whisper-large-v3-turbo"

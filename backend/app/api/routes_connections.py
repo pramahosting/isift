@@ -374,17 +374,26 @@ async def delete_meeting(meeting_id: str, series: bool = False, user: User = Dep
         stem = ext.split("#")[0] + "#"
         targets = list((await db.execute(select(Meeting).where(Meeting.owner_id == m.owner_id, Meeting.external_id.like(stem + "%")))).scalars().all())
     removed = kept = 0; note = ""
+    from sqlalchemy import update as sqlupdate, delete as sqldelete
+    from app.models import Booking
+    ids = [t.id for t in targets]; has: set[str] = set()
+    for i in range(0, len(ids), 400):                                       # one query per kind of record for a whole batch, not one per meeting (a 365-day series must not take 2,000 round trips)
+        chunk = ids[i:i + 400]
+        for model in (Transcript, Minutes, ActionItem): has |= set((await db.execute(select(model.meeting_id).where(model.meeting_id.in_(chunk)))).scalars().all())
+    gone = []
     for t in targets:
         imported = not (t.external_id or "").startswith(("room:", "local:", "zoom:", "teams:", "meet:"))
         if imported: note = " It was removed from iSift only; it stays in your calendar app and may return when you sync again."
-        elif t.status != "cancelled": note = await _cancel_effects(db, user, t) or note; t.status = "cancelled"
-        t.status = "cancelled"
-        has = False
-        for model in (Transcript, Minutes, ActionItem):
-            if (await db.execute(select(model.id).where(model.meeting_id == t.id).limit(1))).first(): has = True; break
-        if has: kept += 1; continue
-        for r in (await db.execute(select(Room).where(Room.meeting_id == t.id))).scalars().all(): r.meeting_id = None
-        await db.flush(); await db.delete(t); removed += 1
+        elif t.status != "cancelled": note = await _cancel_effects(db, user, t) or note
+        if t.id in has: t.status = "cancelled"; kept += 1
+        else: gone.append(t)
+    for i in range(0, len(gone), 400):
+        chunk = [t.id for t in gone[i:i + 400]]
+        await db.execute(sqlupdate(Room).where(Room.meeting_id.in_(chunk)).values(meeting_id=None))
+        await db.execute(sqlupdate(Booking).where(Booking.meeting_id.in_(chunk)).values(meeting_id=None))
+        for t in gone[i:i + 400]: db.expunge(t)
+        await db.execute(sqldelete(Meeting).where(Meeting.id.in_(chunk)))
+    removed = len(gone)
     await db.flush()
     from app.api.routes_rooms import end_room
     from app.models import Room as _Room
