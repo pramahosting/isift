@@ -1177,3 +1177,13 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .rm-room.round .rm-table{left:22%;right:22%;top:20%;bottom:20%;border-radius:50%;transform:rotateX(52deg)}
 .rm-cam{display:none}
 .rm-shape{display:flex;gap:6px}
+
+/* people sit just behind the far edge of the table (it hides the bottom of each picture); a name plate stands on the table in front of each */
+.rm-room .rm-table{z-index:50}
+.rm-seat{z-index:1}
+.rm-plate.onTable{position:absolute;z-index:60;transform:translateX(-50%);width:max-content;white-space:nowrap;padding:4px 12px;font-size:clamp(10px,1.25vw,14px);box-shadow:0 3px 6px #0009,inset 0 1px 0 #fffb;border:1px solid #c9bda6;letter-spacing:.01em}
+.rm-plate.onTable{display:grid;justify-items:center;gap:0;line-height:1.2;padding:3px 10px;text-align:center}
+.rm-plate.onTable .rm-plname{max-width:100%}.rm-plate.onTable em{font-size:.78em;line-height:1.1}
+.rm-plate.onTable .rm-plstate:empty{display:none}
+.rm-seat{cursor:grab;touch-action:none;user-select:none}.rm-seat.dragging{cursor:grabbing;transition:none}
+.rm-resetseats{position:absolute;right:10px;bottom:10px;z-index:70;background:#000a;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}

@@ -6,14 +6,17 @@ type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStrea
 const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
 
 // Seat positions (percent of the room) for n people around the table. Index 0 is "you", at the bottom, so everyone sees themselves nearest.
-export function seatPoints(n:number,_shape?:'rect'|'round'):{x:number;y:number}[]{
-  // Everyone sits on the far side of the table, looking at the viewer, with the table in front of them (one row up to 5 people, two rows above that).
+export const EDGE_Y=34;
+export const seatWidth=(n:number)=>n<=2?22:n<=4?19:n<=5?17:14;      // width of one person on the table view, in % of the room
+export function seatPoints(n:number,_shape?:'rect'|'round'):{x:number;y:number;py:number}[]{
+  // Everyone sits just behind the far edge of the table, looking at the viewer: the table hides the bottom of each picture and a name plate stands on the table in front of them.
   if(n<=0)return [];
-  const sw=n<=2?22:n<=4?19:n<=6?17:14;
+  const sw=seatWidth(n),h=sw*4/3,EDGE=34;                                  // h: picture height in % of the room height; EDGE: far edge of the table
   const back=n<=5?0:Math.floor(n/2),front=n-back;
-  const row=(k:number,y:number)=>{const step=k<2?0:Math.min(sw+2,76/(k-1));return Array.from({length:k},(_,i)=>({x:50+(i-(k-1)/2)*step,y}))};
-  const byCentre=(r:{x:number;y:number}[])=>[...r].sort((a,b)=>Math.abs(a.x-50)-Math.abs(b.x-50)||b.x-a.x);   // the middle seat first, then right, left, right...
-  return [...byCentre(row(front,back?33:28)),...byCentre(row(back,14))];
+  const fy=EDGE+2-h/2,by=fy-0.8*h;
+  const row=(k:number,y:number,py:number)=>{const step=k<2?0:Math.min(sw+2,76/(k-1));return Array.from({length:k},(_,i)=>({x:50+(i-(k-1)/2)*step,y,py}))};
+  const byCentre=(r:{x:number;y:number;py:number}[])=>[...r].sort((a,b)=>Math.abs(a.x-50)-Math.abs(b.x-50)||b.x-a.x);   // the middle seat first, then right, left, right...
+  return [...byCentre(row(front,fy,EDGE+(back?13:4))),...byCentre(row(back,by,EDGE+4))];
 }
 // The boardroom table is for rooms of 10 or fewer people (the main meeting or a discussion group); bigger rooms use the gallery.
 export const TABLE_MAX=10;
@@ -49,6 +52,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const [group,setGroup]=useState<{id:string;name:string}|null>(null);const [groupEnds,setGroupEnds]=useState<string|null>(null);const [roster,setRoster]=useState<any>(null);const [groupsOpen,setGroupsOpen]=useState(false);const [banner,setBanner]=useState<{name:string;text:string}|null>(null);
   const groupRef=useRef<{id:string;name:string}|null>(null);groupRef.current=group;
   const [view,setViewState]=useState<'table'|'gallery'>(()=>{try{return localStorage.getItem('isift.view')==='gallery'?'gallery':'table'}catch{return 'table'}});
+  const [moved,setMoved]=useState<Record<string,{x:number;y:number}>>({});const dragSeat=useRef<{id:string;sx:number;sy:number;ox:number;oy:number;on:boolean}|null>(null);
   const [shape,setShapeState]=useState<'rect'|'round'>(()=>{try{return localStorage.getItem('isift.shape')==='round'?'round':'rect'}catch{return 'rect'}});
   const setView=(v:'table'|'gallery')=>{setViewState(v);try{localStorage.setItem('isift.view',v)}catch{}};
   const setShape=(v:'rect'|'round')=>{setShapeState(v);try{localStorage.setItem('isift.shape',v)}catch{}};
@@ -304,7 +308,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const tableOk=vrOn&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
   {const here=new Set(list.map(p=>p.id));seatIds.current=seatIds.current.filter(id=>here.has(id));list.forEach(p=>{if(!seatIds.current.includes(p.id))seatIds.current.push(p.id)})}
   const seatRows:Row[]=[ordered.find(r=>r.self)!,...seatIds.current.map(id=>ordered.find(r=>r.id===id)).filter(Boolean) as Row[]];
-  const seats=seatPoints(seatRows.length,shape);const seatW=tiles<=2?22:tiles<=4?19:tiles<=6?17:14;
+  const seats=seatPoints(seatRows.length,shape);const seatW=seatWidth(tiles);
   const secsLeft=groupEnds?Math.max(0,Math.round((new Date(groupEnds).getTime()-Date.now())/1000)):null;
   const clock=secsLeft===null?'':`${Math.floor(secsLeft/60)}:${String(secsLeft%60).padStart(2,'0')}`;
   const hostRow=ordered.find(r=>rankOf(r.host,r.cohost)===2);const hostName=hostRow?(hostRow.self?'you':hostRow.name):(info.host||'');
@@ -355,9 +359,11 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
     <div className="rm-main">{pinnedRow?<div className="rm-spot"><div className="rm-spot-main">{spotTile(pinnedRow)}<div className="rm-spot-tag"><b>Highlighted: {pinnedRow.name}{pinnedRow.self?' (you)':''}</b><button type="button" onClick={()=>setPin('')}>Back to everyone</button></div></div><div className="rm-spot-strip">{ordered.filter(r=>r.id!==pin).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div></div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
       <div className="rm-table" aria-hidden="true"/>
-      {seatRows.map((r,i)=>{const pt=seats[i];return <div key={r.id} className={`rm-seat top${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:Math.round(pt.y),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*12).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
+      {seatRows.map((r,i)=>{const b=seats[i],mv=moved[r.id]||{x:0,y:0},pt={x:b.x+mv.x,y:b.y+mv.y,py:b.py+mv.y};return <div key={r.id} onPointerDown={e=>{if((e.target as HTMLElement).closest('button'))return;dragSeat.current={id:r.id,sx:e.clientX,sy:e.clientY,ox:mv.x,oy:mv.y,on:false};try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}catch{}}} onPointerMove={e=>{const d=dragSeat.current,box=gridRef.current?.getBoundingClientRect();if(!d||d.id!==r.id||!box)return;const dx=e.clientX-d.sx,dy=e.clientY-d.sy;if(!d.on&&Math.hypot(dx,dy)<5)return;d.on=true;const nx=Math.max(4-b.x,Math.min(96-b.x,d.ox+dx/box.width*100)),ny=Math.max(8-b.y,Math.min(92-b.y,d.oy+dy/box.height*100));setMoved(m=>({...m,[r.id]:{x:nx,y:ny}}))}} onPointerUp={()=>{dragSeat.current=null}} onPointerCancel={()=>{dragSeat.current=null}} className={`rm-seat top${dragSeat.current?.id===r.id&&dragSeat.current.on?' dragging':''}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:pt.y>EDGE_Y?55:Math.max(1,Math.min(40,Math.round(pt.y))),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*12).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
         <VideoTile stream={r.self?localStream:r.stream} name={r.name} muted={r.self} off={r.self?(!cam&&!screen):(!r.cam&&!r.screen)} self={r.self} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===(r.self?'__me':r.id)} plate onDouble={()=>togglePin(r.id)}/>
-        <div className="rm-plate" title={r.name}><span className="rm-plname">{r.name}{r.self?' (you)':''}</span>{r.host&&<em>{r.cohost?'co-host':'host'}</em>}{r.screen&&<em>sharing</em>}<span className="rm-plstate">{(r.self?mic:r.mic)?null:<MicOff size={12} className="off" aria-label="Muted"/>}{(r.self?cam:r.cam)?null:<VideoOff size={12} className="off" aria-label="Camera off"/>}</span></div></div>})}
+</div>})}
+      {seatRows.map((r,i)=>{const b=seats[i],mv=moved[r.id]||{x:0,y:0},pt={x:b.x+mv.x,y:b.y+mv.y,py:b.py+mv.y};return <div key={'pl'+r.id} className="rm-plate onTable" style={{left:`${pt.x}%`,top:`${pt.py}%`,maxWidth:`${seatW+4}%`}} title={r.name}><span className="rm-plname">{r.name}{r.self?' (you)':''}</span>{r.host&&<em>{r.cohost?'co-host':'host'}</em>}{r.screen&&<em>sharing</em>}<span className="rm-plstate">{(r.self?mic:r.mic)?null:<MicOff size={12} className="off" aria-label="Muted"/>}{(r.self?cam:r.cam)?null:<VideoOff size={12} className="off" aria-label="Camera off"/>}</span></div>})}
+      {Object.keys(moved).length>0&&<button type="button" className="rm-resetseats" onClick={()=>setMoved({})}>Reset seats</button>}
     </div></div>:<div ref={gridRef} className={`rm-grid n${Math.min(tiles,9)}${tiles>TABLE_MAX?' big':''}`}>
       {ordered.map(r=>r.self?<VideoTile key="__me" stream={localStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen} speaking={speaking==='__me'} onDouble={()=>togglePin('__me')}/>:<div key={r.id} className="rm-wrap">
         <VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===r.id} onDouble={()=>togglePin(r.id)}/>
