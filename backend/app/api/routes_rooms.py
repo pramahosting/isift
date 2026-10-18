@@ -357,6 +357,14 @@ async def room_socket(ws: WebSocket, code: str):
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
         state = HUB.setdefault(code, {"peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
+        client = str(first.get("client") or "")[:40]
+        if client:                                         # the same browser tab joining again (refresh, network drop): drop its old, dead connection first
+            for old_id, old in list(state["peers"].items()):
+                if old.get("client") == client:
+                    state["peers"].pop(old_id, None)
+                    await _to_view(state, old.get("group"), {"type": "peer-left", "id": old_id})
+                    try: await old["ws"].close()
+                    except Exception: pass
         pid = uuid.uuid4().hex[:10]
         if is_host and any(_rank(p) == 2 for p in state["peers"].values()): is_host, cohost_join = False, True      # the host role was handed to someone else: come back as co-host
         else: cohost_join = False
@@ -366,6 +374,7 @@ async def room_socket(ws: WebSocket, code: str):
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)
         elif not await _admit(code, state, pid, ws, name, is_host, room_options, user.id if user else None, cohost_join):
             pid = None; await ws.close(); return
+        if pid in state["peers"]: state["peers"][pid]["client"] = client
         while True:
             msg = json.loads(await ws.receive_text()); t = msg.get("type")
             if pid not in state["peers"]:

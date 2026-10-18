@@ -2000,3 +2000,14 @@ def test_virtual_room_switch_unavailable_when_host_account_has_it_off(client):
     hs, hw = join(client, r["code"], name="Host", token=tok); wel = hw.receive_json()
     try: assert wel["vroom_allowed"] is False and wel["options"]["virtual_room"] is False
     finally: hs.__exit__(None, None, None)
+
+def test_same_tab_rejoin_keeps_host_and_does_not_double_count(client):
+    """A refreshed tab (same client id) replaces its old connection, so the host stays host and nobody is counted twice; a different tab is still a separate co-host."""
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    s1, w1 = join(client, r["code"], name="Host", token=tok, client="tab-a"); a = w1.receive_json()
+    assert a["host"] is True and a["cohost"] is False
+    s2, w2 = join(client, r["code"], name="Host", token=tok, client="tab-a"); b = w2.receive_json()      # refresh of the same tab
+    assert b["host"] is True and b["cohost"] is False and b["peers"] == []
+    s3, w3 = join(client, r["code"], name="Host", token=tok, client="tab-b"); c = w3.receive_json()      # another window
+    assert c["cohost"] is True and len(c["peers"]) == 1
+    for x in (s3, s2, s1): x.__exit__(None, None, None)
