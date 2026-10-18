@@ -151,6 +151,32 @@ def _strip_text(rd, pg, rects: list) -> int:
         keep.append((operands, op))
     cs.operations = keep; pg.replace_contents(cs); return gone, hits
 
+def _still_visible(before: bytes, after: bytes, i: int, rect: list):
+    """Draws the page before and after the text was stripped. If the letters in the area are still on the page (they are part of a picture, or drawn in a way
+    that could not be edited), returns the colour of the paper around them so the area can be covered; otherwise None."""
+    try:
+        import pypdfium2 as pdfium
+        sc = 2.0; box = [int(rect[0] * sc), int(rect[1] * sc), int(rect[2] * sc) + 1, int(rect[3] * sc) + 1]
+        def shot(b):
+            d = pdfium.PdfDocument(b)
+            try: return d[i].render(scale=sc).to_pil().convert("RGB")
+            finally: d.close()
+        im0, im1 = shot(before), shot(after)
+        ink = lambda im: sum(1 for v in im.crop(box).convert("L").getdata() if v < 120)
+        a, c = ink(im0), ink(im1)
+        if a < 6 or c < 0.6 * a: return None
+        W, H = im1.size; px = im1.load(); ring = []
+        for x in range(max(0, box[0] - 3), min(W, box[2] + 3)):
+            for y in (box[1] - 3, box[3] + 3):
+                if 0 <= y < H: ring.append(px[x, y])
+        for y in range(max(0, box[1] - 3), min(H, box[3] + 3)):
+            for x in (box[0] - 3, box[2] + 3):
+                if 0 <= x < W: ring.append(px[x, y])
+        ring = [p for p in ring if sum(p) / 3 > 150] or [(255, 255, 255)]
+        med = lambda k: sorted(p[k] for p in ring)[len(ring) // 2] / 255
+        return (med(0), med(1), med(2))
+    except Exception: return None
+
 def pdf_apply(raw: bytes, ops: list):
     """Returns (edited PDF bytes, warnings)."""
     from pypdf import PdfWriter, Transformation
@@ -194,6 +220,12 @@ def pdf_apply(raw: bytes, ops: list):
             if any(ln["bbox"][0] < x1 and ln["bbox"][2] > x0 and ln["bbox"][1] < y1 - 1 and ln["bbox"][3] > y0 + 1 and ln["text"].strip() for ln in left[i]):
                 if not o.get("cover"): covers.setdefault(i, []).append([x0, y0, x1, y1])
                 warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
+    for o in dels:     # text that is still showing after it was stripped is part of the page picture: cover it in the paper colour
+        i = page_of(o)
+        if o.get("cover"): continue
+        x0, y0, x1, y1 = rect_of(o, i)
+        col = _still_visible(raw, mid.getvalue(), i, [x0, y0, x1, y1])
+        if col: covers.setdefault(i, []).append([x0, y0, x1, y1, col])
     layers: dict = {}
     for o in ops:
         if o.get("t") in ("text", "sign"): layers.setdefault(page_of(o), []).append(o)
