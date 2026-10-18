@@ -1132,3 +1132,6 @@ label.se-upload,.se-upload{background:#e3e8f1!important;color:#172033!important;
 .se-histrow{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f7;flex-wrap:wrap}.se-histname{flex:1 1 240px;display:flex;flex-direction:column;min-width:0}.se-histname b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .se-undo{display:inline-flex;gap:4px}.se-undo .iconbtn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0}.se-undo .iconbtn:disabled{opacity:.4}
+.se-grab{position:absolute;left:-19px;top:-9px;width:18px;height:18px;border-radius:50%;background:#2f64f0;color:#fff;display:flex;align-items:center;justify-content:center;cursor:move;opacity:0;pointer-events:none;touch-action:none}.se-text:hover .se-grab,.se-text:focus-within .se-grab,.se-text.editing .se-grab{opacity:1;pointer-events:auto}
+.se-new{padding:6px 12px}.ws-editor.se{padding:16px}.se-start h2{margin:0}
+.ws-ch:disabled{opacity:.6}
