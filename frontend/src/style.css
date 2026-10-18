@@ -1141,3 +1141,6 @@ label.se-upload,.se-upload{background:#e3e8f1!important;color:#172033!important;
 .se-bar.wait i{background:repeating-linear-gradient(45deg,#2f64f0 0 10px,#6b8df5 10px 20px);background-size:28px 28px;animation:se-stripe 1s linear infinite}@keyframes se-stripe{to{background-position:28px 0}}
 .se-uprow{cursor:default}
 .se-new{position:relative;display:inline-flex;gap:6px;align-items:center;cursor:pointer;overflow:hidden}.se-new input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+
+.se-del.cover{border:1px dashed rgba(220,38,38,.35)}.se-del.cover .se-x{display:flex;opacity:0;pointer-events:none}.se-del.cover:hover .se-x,.se-del.cover:focus-within .se-x{opacity:1;pointer-events:auto}
+label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;border:0;box-shadow:none;display:inline-flex!important;flex-direction:row!important;align-items:center;gap:6px;padding:8px 14px;border-radius:10px;font-weight:650;white-space:nowrap}label.se-new:hover{filter:brightness(.92)}label.se-new svg{color:#fff}
