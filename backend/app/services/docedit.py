@@ -271,7 +271,23 @@ def make_certificate(name: str, email: str, password: str, years: int = 3) -> by
     cert = b.sign(key, hashes.SHA256())
     return pkcs12.serialize_key_and_certificates(name.encode(), key, cert, None, serialization.BestAvailableEncryption(password.encode()))
 
-def pdf_certify(raw: bytes, p12: bytes, password: str, reason: str = "", location: str = "", contact: str = "", visible: bool = True, page: int = 0, lock: bool = True) -> bytes:
+def _clean_for_signing(raw: bytes) -> bytes:
+    """Some forms (for example bank forms saved by Adobe) carry usage-rights signatures, XFA data or odd cross-reference tables that stop a new
+    signature being added. This rewrites the file cleanly, keeping pages and form fields, and drops only those extras."""
+    from pypdf import PdfWriter
+    from pypdf.generic import NameObject
+    w = PdfWriter(clone_from=_reader(raw)); root = w._root_object
+    for k in ("/Perms", "/Extensions"):
+        if k in root: del root[k]
+    af = root.get("/AcroForm")
+    if af is not None:
+        af = af.get_object()
+        for k in ("/XFA", "/SigFlags"):
+            if k in af: del af[k]
+        if "/NeedsRendering" in root: del root["/NeedsRendering"]
+    out = io.BytesIO(); w.write(out); return out.getvalue()
+
+def _certify_once(raw: bytes, p12: bytes, password: str, reason: str = "", location: str = "", contact: str = "", visible: bool = True, page: int = 0, lock: bool = True) -> bytes:
     from pyhanko.sign import signers, fields
     from pyhanko.sign.fields import SigFieldSpec
     from pyhanko.stamp import TextStampStyle
@@ -297,6 +313,14 @@ def pdf_certify(raw: bytes, p12: bytes, password: str, reason: str = "", locatio
         out = io.BytesIO(); pdfs.sign_pdf(w, output=out); return out.getvalue()
     except EditError: raise
     except Exception as e: raise EditError("The file could not be signed: " + str(e)[:160])
+
+def pdf_certify(raw: bytes, p12: bytes, password: str, reason: str = "", location: str = "", contact: str = "", visible: bool = True, page: int = 0, lock: bool = True) -> bytes:
+    try: return _certify_once(raw, p12, password, reason, location, contact, visible, page, lock)
+    except EditError as e:
+        if "certificate could not be opened" in str(e) or "password protected" in str(e) or "pages" in str(e): raise
+        try: cleaned = _clean_for_signing(raw)
+        except Exception: raise e
+        return _certify_once(cleaned, p12, password, reason, location, contact, visible, page, lock)
 
 def pdf_signatures(raw: bytes) -> list:
     """Digital signatures already in a PDF: who signed, whether the file is unchanged since, and whether it locks the document."""
