@@ -1106,3 +1106,29 @@ body{background:var(--canvas)}
 .ws-subbar .wb-top .wb-view{margin:0}.se-shapesbtn{display:inline-flex;align-items:center;gap:4px;font-weight:600}.se-shapesbtn.on{background:#e6edff;border-radius:8px}
 .ws-subbar{gap:2px 12px}.wb-top .ws-tools,.wb-top .wb-view{padding:0;margin:0;gap:6px;min-height:0;align-items:center}.wb-top .wb-view .wb-boardsz,.wb-top .wb-boardsz{display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0}.wb-top .wb-boardsz select,.wb-top .ws-tools select{padding:4px 8px;font-size:14px;height:auto}
 .wb-lib .wb-items{align-items:start}.wb-lib .wb-item{align-self:start;height:auto}
+
+/* Phones and tablets: the slide-out menu uses the same light look as the desktop menu, so every module name can be read */
+@media(max-width:900px){
+ .sidebar{background:#fff!important;color:var(--ink,#172033)!important}
+ .sidebar .brand b{color:var(--ink,#172033)!important}.sidebar .brand small{color:#5b6577!important}
+ .sidebar nav button{color:#27324a!important;font-weight:600}.sidebar nav button svg{color:#5b6577}
+ .sidebar nav button:hover{background:#eef2fa!important}
+ .sidebar nav button.active{background:#e6edff!important;color:#1d4ed8!important;box-shadow:none!important}.sidebar nav button.active svg{color:#1d4ed8}
+ .drawer-close{color:#27324a!important}.sidebar .sidefoot{border-top:1px solid #e3e8f1}.sidebar .sidefoot .who b{color:#172033}.sidebar .sidefoot .who small{color:#5b6577}.sidebar .signout{color:#27324a!important}
+ .sidebar{box-shadow:none}.sidebar.open{box-shadow:0 0 40px #0006}
+}
+/* Upload buttons: grey with dark text so they can always be read */
+label.se-upload,.se-upload{background:#e3e8f1!important;color:#172033!important;border:1px solid #b9c4d6!important;font-weight:600}.se-upload:hover{background:#d5dcea!important}.se-upload svg{color:#172033}
+@media(max-width:700px){.cb-tabs{flex-wrap:wrap!important;gap:4px 6px!important;overflow:visible}.cb-tabs h1{flex:1 1 100%;margin:0 0 2px}.cb-tabs button{flex:0 1 auto;padding:8px 12px;font-size:15px}.se-actions{margin-left:0}.se-head{align-items:flex-start}.se-pages{padding:8px}.ws-subbar{gap:6px 10px}}
+
+/* Sign & Edit PDF: text sits on the page as plain text. Controls show only on hover or focus. */
+.se-text{cursor:move;touch-action:none}.se-text span{outline:none!important;cursor:move;display:inline-block;padding:0}.se-text:hover span,.se-text:focus-within span{outline:1px dashed rgba(47,100,240,.6)!important}
+.se-text .se-x{opacity:0;pointer-events:none}.se-text:hover .se-x,.se-text:focus-within .se-x{opacity:1;pointer-events:auto}
+.se-text.editing textarea{border:1px dashed #2f64f0;background:#fff;resize:none;overflow:hidden;white-space:pre}
+.se-del.cover{background:#fff;border-color:transparent}.se-del.cover .se-x{display:none}
+.se-line{border-color:rgba(47,100,240,.35);border-style:dashed}
+.se-nolines{position:absolute;left:12px;right:12px;top:12px;z-index:2;background:#fff7e0;border:1px solid #f0c24a;border-radius:8px;padding:8px 10px;font-size:13px;color:#5b4300}
+.se-hist{width:100%;max-width:860px;margin-top:14px;border-top:1px solid var(--line,#dde3ee);padding-top:12px}.se-hist h3{display:flex;gap:8px;align-items:center;margin:0 0 8px;font-size:16px}
+.se-histrow{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f7;flex-wrap:wrap}.se-histname{flex:1 1 240px;display:flex;flex-direction:column;min-width:0}.se-histname b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.se-undo{display:inline-flex;gap:4px}.se-undo .iconbtn{width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;padding:0}.se-undo .iconbtn:disabled{opacity:.4}

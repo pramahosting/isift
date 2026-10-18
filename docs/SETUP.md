@@ -261,8 +261,8 @@ Notes, Whiteboards, WordPerfect documents, SpreadTable workbooks and PowerPresen
 - **Documents** are cleaned on the server to a short list of safe tags before saving, so a shared document cannot run script. Workbooks and decks are checked to be well-formed JSON of the right shape. PDF copies by email are text PDFs (workbooks as tab-separated text); files with letters outside Western alphabets can be shared by link instead.
 - **Not included:** importing Word, Excel or PowerPoint files (documents open .txt and .html, workbooks open .csv), charts and images in workbooks and slides, restricting downloads, public links.
 
-## Sign & Edit (PDF and Word)
-Docs > Sign & Edit opens a PDF or a Word (.docx) file, lets the person add text, delete text and place a signature they draw, and returns an edited copy.
+## Sign & Edit PDF (PDF and Word)
+Docs > Sign & Edit PDF opens a PDF or a Word (.docx) file, lets the person add text, delete text and place a signature they draw, and returns an edited copy.
 
 - Nothing is stored: the file travels with each request (limit 12 MB; PDFs up to 30 pages) and the edited copy comes straight back. Old `.doc` files and password-protected PDFs are refused with a clear message.
 - Steps in the page: upload, make changes (they are staged), **Apply changes**, then **Download**. **Revert changes** returns to the file exactly as uploaded.
@@ -280,3 +280,6 @@ The whiteboard shape library (flowchart, ER, UML, BPMN, containers, cloud and AI
 - WordPerfect: a shape is inserted at the cursor as a small PNG stored in the document (the server keeps only `data:image/png` pictures and removes every other image). Click a shape in the page to make it Smaller or Larger.
 - PowerPresentation: a shape is placed in the middle of the current slide. Drag it to move it, drag the corner to resize it, edit its text in the box under the slide, or press Remove shape (Delete also works). Shapes show in thumbnails, in the presentation and when printing. Slides store only the library id, text, position and size.
 - SpreadTable does not have shapes. Connector lines are whiteboard-only.
+
+## Phones and tablets
+Below 900 px wide the menu slides in from the left (three-line button at the top left). It uses the same light look as the desktop menu so every module name is readable; the Docs tabs wrap onto two lines on a phone; upload buttons are grey with dark text.
