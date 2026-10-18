@@ -1056,3 +1056,10 @@ body{background:var(--canvas)}
 .notes-scope{display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 8px}.shared-row small{display:block}
 .share-body label:not(.check){display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted,#5b6577)}.share-body input:not([type=checkbox]),.share-body select,.share-body textarea{font:inherit;font-size:14px;color:#172033;padding:7px 9px;border:1px solid var(--line,#cfd6e4);border-radius:8px;background:#fff;width:100%;box-sizing:border-box}
 .share-tbl input[type=date],.share-tbl select{width:auto;padding:4px 6px}.share-body .share-row>button{flex:none}
+.docs-desc{margin:0 0 10px}
+.ws-pane-btns{display:flex;gap:6px;align-items:center}.ws-pane-open{margin-bottom:8px}
+.ws-two.notes.pane-off{grid-template-columns:minmax(0,1fr)}.ws-two.notes.pane-off>.ws-pane{display:none}
+.side-collapse{margin-left:auto;color:#c9d8e1}.side-expand{display:none}
+@media(min-width:901px){.shell.side-off .sidebar{display:none!important}.shell.side-off .main{margin-left:0!important}.shell.side-off .side-expand{display:inline-flex}}
+@media(max-width:900px){.side-collapse,.side-expand{display:none!important}}
+.comments{margin:0 0 10px;border-top:0;padding-top:0}
