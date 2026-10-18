@@ -341,7 +341,7 @@ async def room_socket(ws: WebSocket, code: str):
             if room:
                 host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
                 from app.services import virtual_room as vr
-                vr_meeting = (room_options or {}).get("virtual_room", True) is not False                          # the tick box in the meeting setup
+                vr_meeting = (room_options or {}).get("virtual_room", False) is True                          # the tick box in the meeting setup
                 vr_allowed = await vr.effective(db, await db.get(User, host_id), {})                                # the service and the host's account allow it
                 room_options["virtual_room"] = vr_allowed and vr_meeting
                 if room_options.get("open_room"): access, waiting_room = "open", False                  # open room: anyone joins at any time, nobody is admitted

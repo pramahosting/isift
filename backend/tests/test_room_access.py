@@ -1472,8 +1472,8 @@ def test_virtual_room_switches(client, monkeypatch):
     h, _ = login(client)
     mk = lambda **o: client.post("/api/v1/rooms", json={"title": "T", "base_url": "http://x/", "options": o}, headers=h).json()["code"]
     vr = lambda code: client.get(f"/api/v1/rooms/{code}", headers=h).json()["options"]["virtual_room"]
-    a, b = mk(), mk(virtual_room=False)
-    assert vr(a) is True and vr(b) is False                                       # the meeting checkbox
+    a, b, d = mk(virtual_room=True), mk(virtual_room=False), mk()
+    assert vr(a) is True and vr(b) is False and vr(d) is False                    # the meeting checkbox; gallery is the default
     assert client.patch("/api/v1/account", json={"virtual_room": False}, headers=h).json()["profile"]["virtual_room"] is False
     assert vr(a) is False                                                         # the customer switched it off for the account
     me = next(u for u in client.get("/api/v1/admin/users", headers=h).json() if u["email"] == "admin@example.test")

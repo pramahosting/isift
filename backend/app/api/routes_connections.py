@@ -474,7 +474,7 @@ def _details(m: Meeting, room) -> dict:
             "duration_minutes": max(5, int((_aware(m.end_at) - _aware(m.start_at)).total_seconds() // 60)), "status": m.status, "kind": kind, "join_url": m.join_url,
             "meeting_id": room.code if room else zid, "passcode": room.passcode if room else None, "access": room.access if room else None,
             "waiting_room": room.waiting_room if room else None, "ended": bool(room and room.ended_at),
-            "options": {k: bool(opts.get(k)) for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off")} | {"virtual_room": opts.get("virtual_room", True) is not False}, "invitees": opts.get("invitees", []),
+            "options": {k: bool(opts.get(k)) for k in ("mute_on_entry", "video_off_on_entry", "auto_record", "host_video_off")} | {"virtual_room": opts.get("virtual_room", False) is True}, "invitees": opts.get("invitees", []),
             "series": "#" in (m.external_id or ""), "pmi": bool(opts.get("pmi")),
             "editable": kind in ("room", "zoom", "teams", "meet", "local") and m.status != "cancelled", "organizer": __import__("app.services.identity", fromlist=["x"]).shown_email(m.organizer or "")}
 

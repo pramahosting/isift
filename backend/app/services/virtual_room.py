@@ -11,7 +11,7 @@ async def account_on(db, email: str) -> bool:
 
 async def effective(db, host, options: dict | None) -> bool:
     if not settings.room_virtual_enabled: return False
-    if (options or {}).get("virtual_room", True) is False: return False
+    if (options or {}).get("virtual_room", False) is not True: return False
     return await account_on(db, host.email) if host else True
 
 async def set_account(db, email: str, on: bool, commit: bool = False) -> None:
