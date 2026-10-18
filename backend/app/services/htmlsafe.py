@@ -3,8 +3,9 @@ import re
 from html import escape
 from html.parser import HTMLParser
 
-OK = {"p", "br", "h1", "h2", "h3", "ul", "ol", "li", "b", "strong", "i", "em", "u", "s", "strike", "a", "blockquote", "table", "thead", "tbody", "tr", "td", "th", "div", "span", "hr", "code", "pre", "sub", "sup"}
-VOID = {"br", "hr"}
+OK = {"p", "br", "h1", "h2", "h3", "ul", "ol", "li", "b", "strong", "i", "em", "u", "s", "strike", "a", "blockquote", "table", "thead", "tbody", "tr", "td", "th", "div", "span", "hr", "code", "pre", "sub", "sup", "img"}
+VOID = {"br", "hr", "img"}
+PNG_SRC = re.compile(r"^data:image/png;base64,[A-Za-z0-9+/=]{16,400000}$")   # shapes from the shape library are the only pictures kept: small PNGs stored in the file itself
 DROP_WITH_CONTENT = {"script", "style", "iframe", "object", "embed", "svg", "math", "template", "noscript", "textarea", "select", "form"}
 ALIGN = re.compile(r"text-align\s*:\s*(left|right|center|justify)", re.I)
 
@@ -20,6 +21,13 @@ class _S(HTMLParser):
             if re.match(r"^(https?://|mailto:)", h, re.I): a = f' href="{escape(h, quote=True)}" target="_blank" rel="noopener noreferrer"'
         m = ALIGN.search(d.get("style") or "")
         if m and tag in ("p", "div", "h1", "h2", "h3", "li", "td", "th", "blockquote"): a += f' style="text-align:{m.group(1).lower()}"'
+        if tag == "img":
+            src = (d.get("src") or "").strip()
+            if not PNG_SRC.match(src): return
+            a = f' src="{src}"'
+            for k in ("width", "height"):
+                if (d.get(k) or "").isdigit() and 0 < int(d[k]) <= 2000: a += f' {k}="{int(d[k])}"'
+            a += f' alt="{escape((d.get("alt") or "Shape")[:80], quote=True)}"'
         if tag in ("td", "th"):
             for k in ("colspan", "rowspan"):
                 if (d.get(k) or "").isdigit() and int(d[k]) < 50: a += f' {k}="{int(d[k])}"'

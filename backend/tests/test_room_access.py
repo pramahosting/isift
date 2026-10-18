@@ -1874,3 +1874,99 @@ def test_dashboard_organizer_is_not_the_placeholder(client):
     h, _ = login(client); make(client, h, title="Dash org", start_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z"), duration_minutes=30)
     d = client.get("/api/v1/dashboard", headers=h); assert d.status_code == 200, d.text
     orgs = [m["organizer"] for m in d.json()["meetings"]]; assert orgs and all(o == "info@isift.au" for o in orgs), orgs
+
+def _b64(b): import base64; return base64.b64encode(b).decode()
+
+def _sample_pdf():
+    import io
+    from reportlab.pdfgen import canvas
+    b = io.BytesIO(); c = canvas.Canvas(b, pagesize=(595, 842)); c.setFont("Helvetica", 14); c.drawString(72, 842 - 100, "Secret salary 90000"); c.drawString(72, 842 - 140, "Keep this line"); c.save()
+    return b.getvalue()
+
+def _pdf_text(raw):
+    import io
+    from pypdf import PdfReader
+    return " ".join(p.extract_text() for p in PdfReader(io.BytesIO(raw)).pages)
+
+def _sample_png():
+    import io
+    from PIL import Image
+    b = io.BytesIO(); Image.new("RGBA", (40, 20), (10, 10, 10, 255)).save(b, "PNG"); return b.getvalue()
+
+def test_edit_pdf_delete_add_sign(client):
+    """Deleting PDF text really removes it, added text and a signature appear, bad files and bad edits are refused."""
+    import base64
+    h, _ = login(client); src = _sample_pdf(); png = "data:image/png;base64," + _b64(_sample_png())
+    r = client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.pdf", "data": _b64(src)}); assert r.status_code == 200, r.text
+    j = r.json(); assert j["kind"] == "pdf" and len(j["pages"]) == 1 and j["pages"][0]["image"].startswith("data:image/jpeg")
+    line = next(l for l in j["pages"][0]["lines"] if "Secret" in l["text"])
+    ops = [{"t": "delete", "page": 0, "rect": line["bbox"]}, {"t": "text", "page": 0, "x": 72, "y": 90, "size": 14, "text": "Salary withheld"},
+           {"t": "sign", "page": 0, "rect": [300, 400, 400, 450], "png": png}]
+    r = client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.pdf", "data": _b64(src), "ops": ops}); assert r.status_code == 200, r.text
+    outb = base64.b64decode(r.json()["data"]); txt = _pdf_text(outb); assert r.json()["warnings"] == []
+    from pypdf import PdfReader; import io
+    assert "Secret" not in txt and "90000" not in txt and "Keep this line" in txt and "Salary withheld" in txt and len(PdfReader(io.BytesIO(outb)).pages[0].images) == 1
+    assert b"Secret salary" not in outb and b"90000" not in outb
+    assert client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.pdf", "data": _b64(src), "ops": [{"t": "text", "page": 0, "x": 1, "y": 1, "text": "中文"}]}).status_code == 400
+    assert client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.pdf", "data": _b64(src), "ops": [{"t": "text", "page": 9, "x": 1, "y": 1, "text": "x"}]}).status_code == 400
+    assert client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.pdf", "data": _b64(src), "ops": []}).status_code == 400
+    assert client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.pdf", "data": _b64(b"not a pdf")}).status_code == 400
+    assert client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.exe", "data": _b64(src)}).status_code == 400
+    assert client.post("/api/v1/docedit/inspect", json={"name": "a.pdf", "data": _b64(src)}).status_code == 401
+
+def test_edit_word_replace_delete_add_sign(client):
+    import base64, io
+    from docx import Document
+    h, _ = login(client); d = Document(); d.add_paragraph("First paragraph"); d.add_paragraph("Second paragraph"); d.add_paragraph("Third paragraph")
+    buf = io.BytesIO(); d.save(buf); src = buf.getvalue(); png = "data:image/png;base64," + _b64(_sample_png())
+    r = client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.docx", "data": _b64(src)}); assert r.status_code == 200, r.text
+    assert [p["text"] for p in r.json()["paragraphs"]] == ["First paragraph", "Second paragraph", "Third paragraph"]
+    ops = [{"t": "replace", "i": 0, "text": "Changed first"}, {"t": "delete", "i": 1}, {"t": "add", "after": 2, "text": "Added at the end"}, {"t": "sign", "after": -1, "png": png, "width": 1.5}]
+    r = client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.docx", "data": _b64(src), "ops": ops}); assert r.status_code == 200, r.text
+    out = Document(io.BytesIO(base64.b64decode(r.json()["data"])))
+    assert [p.text for p in out.paragraphs if p.text] == ["Changed first", "Third paragraph", "Added at the end"] and len(out.inline_shapes) == 1
+    assert client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.docx", "data": _b64(src), "ops": [{"t": "delete", "i": 99}]}).status_code == 400
+
+def test_saved_signatures_are_private(client, monkeypatch):
+    h, _ = login(client); png = "data:image/png;base64," + _b64(_sample_png())
+    r = client.post("/api/v1/docedit/signatures", headers=h, json={"name": "Mine", "png": png}); assert r.status_code == 200, r.text; sid = r.json()["id"]
+    assert [s["name"] for s in client.get("/api/v1/docedit/signatures", headers=h).json()["items"]] == ["Mine"]
+    assert client.post("/api/v1/docedit/signatures", headers=h, json={"name": "Bad", "png": "data:image/png;base64," + _b64(b"junk")}).status_code == 400
+    t = signed_up(client, monkeypatch, "sigother@example.com", "Sig", "Other"); h2 = {"Authorization": "Bearer " + t["access_token"]}
+    assert client.get("/api/v1/docedit/signatures", headers=h2).json()["items"] == []
+    assert client.delete(f"/api/v1/docedit/signatures/{sid}", headers=h2).status_code == 404
+    assert client.delete(f"/api/v1/docedit/signatures/{sid}", headers=h).status_code == 200
+    assert client.get("/api/v1/docedit/signatures", headers=h).json()["items"] == []
+
+def test_certified_digital_signature_pdf(client):
+    """Make a certificate, sign a PDF with it, see the signature is valid and locks the file, and that edits, wrong passwords and Word files are refused."""
+    import base64
+    h, _ = login(client); src = _sample_pdf()
+    assert client.post("/api/v1/docedit/certificate", headers=h, json={"name": "Ann Signer", "password": "short"}).status_code == 400
+    r = client.post("/api/v1/docedit/certificate", headers=h, json={"name": "Ann Signer", "email": "ann@example.com", "password": "longenough1"}); assert r.status_code == 200, r.text
+    p12 = r.json()["data"]; body = {"name": "a.pdf", "data": _b64(src), "p12": p12, "password": "longenough1", "reason": "I agree", "location": "Sydney"}
+    assert client.post("/api/v1/docedit/certify", headers=h, json={**body, "password": "wrong-pass"}).status_code == 400
+    r = client.post("/api/v1/docedit/certify", headers=h, json=body); assert r.status_code == 200, r.text
+    sigs = r.json()["signatures"]; assert len(sigs) == 1 and sigs[0]["signer"] == "Ann Signer" and sigs[0]["intact"] and sigs[0]["certified"] and not sigs[0]["trusted"]
+    signed = r.json()["data"]
+    j = client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.pdf", "data": signed}).json(); assert j["signatures"][0]["intact"]
+    assert client.post("/api/v1/docedit/apply", headers=h, json={"name": "a.pdf", "data": signed, "ops": [{"t": "text", "page": 0, "x": 1, "y": 1, "text": "x"}]}).status_code == 400
+    assert client.post("/api/v1/docedit/certify", headers=h, json={**body, "data": signed}).status_code == 400
+    tampered = base64.b64decode(signed).replace(b"ReportLab Generated", b"ReportLab Tampered!!"); assert tampered != base64.b64decode(signed)
+    j = client.post("/api/v1/docedit/inspect", headers=h, json={"name": "a.pdf", "data": _b64(tampered)}).json(); assert j["signatures"][0]["intact"] is False
+    from docx import Document; import io
+    b = io.BytesIO(); Document().save(b)
+    assert client.post("/api/v1/docedit/certify", headers=h, json={**body, "name": "a.docx", "data": _b64(b.getvalue())}).status_code == 400
+    assert client.post("/api/v1/docedit/certify", json=body).status_code == 401
+
+def test_shapes_in_documents_and_slides(client):
+    """WordPerfect keeps small PNG shape pictures and nothing else; slides keep their shape list."""
+    import json
+    h, _ = login(client); png = "data:image/png;base64," + _b64(_sample_png())
+    html = f'<p>Hi</p><img src="{png}" width="40" height="20" alt="Shape" onerror="x()"><img src="http://evil.test/a.png"><img src="javascript:alert(1)"><img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">'
+    n = client.post("/api/v1/notes", headers=h, json={"kind": "wp", "title": "Shapes", "content": html}).json()
+    got = client.get(f"/api/v1/notes/{n['id']}", headers=h).json()["content"]
+    assert got.count("<img") == 1 and png in got and "onerror" not in got and "evil" not in got and "javascript" not in got and "svg" not in got
+    deck = {"v": 1, "theme": "light", "slides": [{"layout": "title", "title": "T", "body": [], "notes": "", "shapes": [{"id": "a1", "lib": "rect", "text": "Hello", "x": 100, "y": 80, "w": 200}]}]}
+    d = client.post("/api/v1/notes", headers=h, json={"kind": "deck", "title": "Deck", "content": json.dumps(deck)}).json()
+    assert json.loads(client.get(f"/api/v1/notes/{d['id']}", headers=h).json()["content"])["slides"][0]["shapes"][0]["lib"] == "rect"

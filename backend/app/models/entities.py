@@ -295,3 +295,13 @@ class NoteComment(Base):
     author: Mapped[str] = mapped_column(String(200), default="")
     text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class SavedSignature(Base):
+    """A signature the person drew and chose to keep. Private to the owner."""
+    __tablename__ = "saved_signatures"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="")
+    png: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
