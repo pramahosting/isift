@@ -2011,3 +2011,14 @@ def test_same_tab_rejoin_keeps_host_and_does_not_double_count(client):
     s3, w3 = join(client, r["code"], name="Host", token=tok, client="tab-b"); c = w3.receive_json()      # another window
     assert c["cohost"] is True and len(c["peers"]) == 1
     for x in (s3, s2, s1): x.__exit__(None, None, None)
+
+def test_default_meeting_starts_in_gallery_but_host_can_switch_virtual_room_on(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    hs, hw = join(client, r["code"], name="Host", token=tok); wel = hw.receive_json()
+    assert wel["options"]["virtual_room"] is False and wel["vroom_allowed"] is True
+    hw.send_json({"type": "vroom", "on": True})
+    while True:
+        m = hw.receive_json()
+        if m["type"] == "vroom": break
+    assert m["on"] is True
+    hs.__exit__(None, None, None)

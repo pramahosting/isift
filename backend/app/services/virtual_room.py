@@ -9,10 +9,14 @@ from app.services import store
 async def account_on(db, email: str) -> bool:
     return (await store.get(db, store.hkey("profile", email), {})).get("virtual_room", True) is not False
 
-async def effective(db, host, options: dict | None) -> bool:
+async def allowed(db, host) -> bool:
+    """The service and the host's account permit a virtual room (the meeting's own tick box is separate: the host can switch it on in the meeting)."""
     if not settings.room_virtual_enabled: return False
-    if (options or {}).get("virtual_room", False) is not True: return False
     return await account_on(db, host.email) if host else True
+
+async def effective(db, host, options: dict | None) -> bool:
+    if (options or {}).get("virtual_room", False) is not True: return False
+    return await allowed(db, host)
 
 async def set_account(db, email: str, on: bool, commit: bool = False) -> None:
     p = await store.get(db, store.hkey("profile", email), {}); p["virtual_room"] = bool(on)
