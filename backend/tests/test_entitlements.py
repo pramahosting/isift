@@ -103,3 +103,15 @@ def test_paid_and_admin_have_no_limits(client, monkeypatch):
             u = (await db.execute(select(User).where(User.email == "admin@example.test"))).scalar_one()
             return await ent.limits(db, u)
     L = asyncio.run(go()); assert L["recording"] and L["open_room"] and L["meeting_minutes"] == 0 and L["docs_per_day"] == 0
+
+def test_old_personal_room_name_follows_the_host(client):
+    import asyncio
+    ah, _ = login(client); code = client.get("/api/v1/me/pmi", headers=ah).json()["code"]
+    from app.core.db import SessionLocal
+    from app.models import Room
+    from sqlalchemy import select
+    async def old():
+        async with SessionLocal() as db:
+            r = (await db.execute(select(Room).where(Room.code == code))).scalar_one(); r.title = "Administrator's Personal Meeting Room"; await db.commit()
+    asyncio.run(old())
+    assert client.get(f"/api/v1/rooms/{code}").json()["title"] == "Pramod Singh's Personal Meeting Room"

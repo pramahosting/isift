@@ -39,6 +39,10 @@ async def run() -> None:
         try: await apply_overrides(db)
         except Exception: pass
         admin = await _admin(db)
+        from app.models import Room
+        from app.api.routes_rooms import refresh_pmi_title
+        for r in (await db.execute(select(Room))).scalars().all(): refresh_pmi_title(r, await db.get(User, r.host_id))
+        await db.commit()
         # 1. mock data from the CSV files
         if settings.mock_data_enabled and settings.load_mock_on_start:
             done = await db.get(IntegrationSetting, DONE_KEY)

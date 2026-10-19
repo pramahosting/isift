@@ -105,11 +105,20 @@ async def rooms_recent(user: User = Depends(principal), db: AsyncSession = Depen
     out.sort(key=lambda x: x["at"] or "", reverse=True)
     return {"rooms": out[:15]}
 
+OLD_PMI_TITLES = {f"{n}'s Personal Meeting Room" for n in ("Administrator", "Local Demo Administrator")}
+
+def refresh_pmi_title(room: Room, host) -> bool:
+    """A personal room still carrying an old default name takes its host's current name (a name the host typed is never touched)."""
+    if host and host.display_name and (room.options or {}).get("pmi") and room.title in OLD_PMI_TITLES:
+        room.title = f"{host.display_name}'s Personal Meeting Room"; return True
+    return False
+
 @router.get("/rooms/{code}")
 async def room_info(code: str, authorization: str | None = Header(None), db: AsyncSession = Depends(get_db)):
     room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
     if not room: raise HTTPException(404, "This meeting link is not valid.")
     host = await db.get(User, room.host_id)
+    if refresh_pmi_title(room, host): await db.commit()
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
     return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
