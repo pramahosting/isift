@@ -54,7 +54,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
    {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Plan limits for this person ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
-    <p className="muted small">Basic accounts start with: no open room, no recording, 60-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
+    <p className="muted small">Basic accounts start with: no open room, no recording, 90-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
     <div className="lim-box">
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.open_room} onChange={e=>setForm({...form,lim:{...form.lim,open_room:e.target.checked}})}/> Allow open room</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.recording} onChange={e=>setForm({...form,lim:{...form.lim,recording:e.target.checked}})}/> Allow meeting recording</label>
