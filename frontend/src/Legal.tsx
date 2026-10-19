@@ -124,7 +124,7 @@ export function LegalFooter(_p:{tagline?:boolean}={}){
     <div className="sf-base">
       <span className="sf-copy">Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span>
       <button type="button" className="sf-top-link" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})} aria-label="iSift · Back to top"><span className="sf-up"><ArrowUp size={20}/></span><span className="sf-uptxt">iSift · Back to top</span></button>
-      <span className="sf-tag">Private by design · Human-reviewed outcomes</span>
+      <span className="sf-tag">Private by design · AI-empowered and Human-reviewed</span>
     </div>
     {form&&<FooterForm kind={form} onClose={()=>setForm(null)}/>}
   </footer>;

@@ -21,7 +21,7 @@ export function OutcomeSection(){
 const WHY=[
  {i:Layers,t:'One workspace, not six tabs',d:'Video meetings, a Calendly-style booking page, mail, calendar and contacts, notes, whiteboard and PDF signing, all signed in once and all linked to the meeting they belong to.'},
  {i:ListChecks,t:'Follow-through, not just a summary',d:'Most tools stop at a recap. iSift turns the conversation into minutes, owned action items and a briefing before your next meeting.'},
- {i:ShieldCheck,t:'AI that a person signs off',d:'Draft minutes and actions are marked for review. Nothing is sent as final until someone checks it, which matters for clients, boards and regulated work.'},
+ {i:ShieldCheck,t:'AI-empowered, human-approved',d:'Draft minutes and actions are marked for review. Nothing is sent as final until someone checks it, which matters for clients, boards and regulated work.'},
  {i:CalendarClock,t:'Booking pages built in',d:'Share a link and let people pick a free time. Each booking lands in your calendar with a meeting room attached. No second subscription.'},
  {i:FileSignature,t:'Edit and sign PDFs in the browser',d:'Change text, add shapes, draw a signature, sign with your own certificate. The file is not stored on our servers.'},
  {i:Armchair,t:'Meeting rooms people enjoy',d:'A virtual boardroom with a wooden table, name plates, windows and your own background, or a simple gallery view. Switch with one button.'},
@@ -32,7 +32,7 @@ const WHY=[
 export function WhySection(){
   return <section className="landing-section" id="why-isift"><p className="eyebrow">WHY ISIFT</p><h2>Everything around the meeting, in one calm place.</h2>
     <p className="why-lead">iSift is built for people whose work happens in meetings: advisers, consultants, small teams and anyone who is tired of stitching tools together.</p>
-    <div className="why-grid">{WHY.map(w=><article key={w.t} className="why-card"><span className="why-ic"><w.i size={20}/></span><h3>{w.t}</h3><p>{w.d}</p></article>)}</div></section>;
+    <div className="why-grid">{WHY.map(w=><article key={w.t} className="why-card"><span className="why-ic"><w.i size={20}/></span><h3>{w.t}{/AI/.test(w.t)&&<i className="ai-tag">AI</i>}</h3><p>{w.d}</p></article>)}</div></section>;
 }
 
 type Cell=string|true|false|null;
@@ -43,7 +43,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Video meetings in the browser',cells:[Y,Y,'Uses other tools',Y,Y,Y,N]},
  {label:'Free plan: group meeting length',cells:['70 minutes','40 minutes',null,null,'60 minutes','60 minutes',null]},
  {label:'Booking pages, like Calendly',cells:[Y,Y,Y,Y,'Paid plans (Bookings)','Via Google Calendar',N]},
- {label:'AI minutes and action items',cells:['Yes, reviewed by a person','Yes (paid plans)','Recaps and actions','Credits on paid plans','Needs Copilot add-on','Gemini, paid plans',null]},
+ {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)','Recaps and actions','Credits on paid plans','Needs Copilot add-on','Gemini, paid plans',null]},
  {label:'PDF edit and sign inside the product',cells:[Y,'Separate app',N,N,'Separate app','Separate app',Y]},
  {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','No','No','Outlook, separate','Gmail, separate',N]},
  {label:'Whiteboard and documents',cells:[Y,Y,N,N,'Paid plans','Separate app',N]},
