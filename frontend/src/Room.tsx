@@ -183,7 +183,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const dropPeer=(id:string)=>{pcs.current[id]?.close();delete pcs.current[id];delete peerStreams.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
 
   const authH:any={'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})};
-  const loadHostInfo=()=>fetch(`${api}/rooms/${code}/host`,{headers:authH}).then(r=>r.ok?r.json():null).then(j=>j&&setHostInfo(j)).catch(()=>{});
+  const loadHostInfo=()=>!token?Promise.resolve():fetch(`${api}/rooms/${code}/host`,{headers:authH}).then(r=>r.ok?r.json():null).then(j=>j&&setHostInfo(j)).catch(()=>{});
   const changeSecurity=async(patch:any)=>{const r=await fetch(`${api}/rooms/${code}`,{method:'PATCH',headers:authH,body:JSON.stringify(patch)});if(r.ok)setHostInfo({...hostInfo,...(await r.json())});else setNotice('Could not change the meeting settings.')};
   useEffect(()=>{if(info?.you_are_host)loadHostInfo()},[info]);
   const [copied,setCopied]=useState('');
@@ -311,7 +311,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const autoRec=useRef<null|(()=>void)>(null);const screenRef=useRef<null|(()=>void)>(null);
   const startRecording=async(auto?:boolean)=>{
     if(!isHost||rec.current)return;
-    if(!canRec){setNotice('Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you.');return}
+    if(!canRec){if(auto!==true)setNotice('Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you.');return}
     if(auto!==true&&!window.confirm('Start recording? Everyone in the meeting is told it is being recorded. Keep this tab open while recording (it may stay in the background).'))return;
     const ctx=new AudioContext();const dest=ctx.createMediaStreamDestination();const r:any={ctx,dest,sources:new Map(),audioChunks:[],videoChunks:[]};rec.current=r;
     await ctx.resume().catch(()=>{});
@@ -547,7 +547,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       {mode==='table'&&isHost&&<button className="rm-btn" onClick={()=>{const v=shape==='rect'?'round':'rect';setShapeState(v);send({type:'tshape',shape:v})}} aria-label={shape==='rect'?'Change to a round table for everyone':'Change to a rectangular table for everyone'} title={shape==='rect'?'Change to a round table (everyone sees it)':'Change to a rectangular table (everyone sees it)'}>{shape==='rect'?<Circle size={18}/>:<RectangleHorizontal size={18}/>}<span>{shape==='rect'?'Round table':'Rect table'}</span></button>}
       {isHost&&<button className={`rm-btn${groupsOpen||roster?.groups?' on':''}`} onClick={()=>setGroupsOpen(o=>!o)} aria-label="Discussion groups" aria-expanded={groupsOpen}><Group size={18}/><span>Groups</span></button>}
       {primary&&<button className={`rm-btn${secOpen?' on':''}`} onClick={()=>{loadHostInfo();setSecOpen(o=>!o)}} aria-label="Meeting security"><ShieldCheck size={18}/><span>Security</span></button>}
-      {(primary||(isHost&&!!info?.options?.open_room))&&(recording?<button className="rm-btn rec" disabled={recBusy} onClick={()=>stopRecording()} aria-label="Stop recording"><Square size={18}/><span>{recBusy?'Saving…':'Stop rec'}</span></button>:<button className="rm-btn" onClick={startRecording} aria-label="Start recording"><Circle size={18}/><span>Record</span></button>)}
+      {canRec&&(primary||(isHost&&!!info?.options?.open_room))&&(recording?<button className="rm-btn rec" disabled={recBusy} onClick={()=>stopRecording()} aria-label="Stop recording"><Square size={18}/><span>{recBusy?'Saving…':'Stop rec'}</span></button>:<button className="rm-btn" onClick={startRecording} aria-label="Start recording"><Circle size={18}/><span>Record</span></button>)}
       <button className="rm-btn leave" onClick={leave} aria-label="Leave meeting"><PhoneOff size={18}/><span>Leave</span></button>
       {primary&&<button className="rm-btn leave" onClick={endAll} aria-label="End meeting for everyone"><X size={18}/><span>End all</span></button>}
     </footer>}
