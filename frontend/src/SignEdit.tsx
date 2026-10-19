@@ -253,7 +253,7 @@ export function SignEdit({request,requestUp,notify,userId}:{request:any;requestU
     if(bad){setErr(bad);setUp(null);return}
     setBusy('Opening your file…');
     try{const b64=await toB64(f,p=>{if(tok===upTok.current)setUp(u=>u&&{...u,pct:Math.round(p*20),label:'Reading the file…'})});
-      const body=JSON.stringify({name:f.name,data:b64});const send=requestUp||(async(path:string,b:string)=>request(path,{method:'POST',body:b}));
+      const body=JSON.stringify({name:f.name,data:b64,count:true});const send=requestUp||(async(path:string,b:string)=>request(path,{method:'POST',body:b}));
       const info=await send('/docedit/inspect',body,(sent:number,total:number,phase:string)=>{if(tok!==upTok.current)return;setUp(u=>u&&(phase==='wait'?{...u,pct:90,label:'Processing the pages…'}:{...u,pct:20+Math.round(sent/total*68),label:'Uploading…'}))});
       if(tok!==upTok.current)return;setUp(u=>u&&{...u,pct:100,label:'Done'});
       const d:Doc={name:f.name,kind:info.kind,b64,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(0);resetHist(d,e0,0);setTool('text');const id=uid()+uid();setDocId(id);keep(id,d,0,{orig:b64,cur:b64},Date.now())}

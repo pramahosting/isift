@@ -20,7 +20,7 @@ export function useLivePlans(){
   return {currency:d?.currency||'AUD',prices,onSale,loaded:!!d};
 }
 const PLANS:{id:PlanId;name:string;tag:string;cta:string;popular?:boolean;features:string[]}[]=[
- {id:'basic',name:'Basic',tag:'For individuals getting started',cta:'Start for free',features:['Video meetings in the browser with chat and screen sharing','Shared notes and a whiteboard','Commbox: mail, calendar and contacts','Transcripts and action items','Community support']},
+ {id:'basic',name:'Basic',tag:'For individuals getting started',cta:'Start for free',features:['Video meetings in the browser with chat and screen sharing','Meetings of up to 60 minutes (a reminder appears 10 minutes before the end)','5 new Docs files or whiteboards a day, PDFs of up to 5 pages','Commbox: mail, calendar and contacts','Transcripts and action items','Community support']},
  {id:'individual',name:'Individual',tag:'For people who meet every day',cta:'Choose Individual',popular:true,features:['Everything in Basic','AI minutes, action items and morning briefings','Booking pages you share by email, like Calendly','Meeting recording and a host’s full controls: co-hosts, mute, remove, who can unmute','Schedule Zoom, Teams and Google Meet from one place','Email support']},
  {id:'business',name:'Business',tag:'For teams and companies',cta:'Choose Business',features:['Everything in Individual','A company account with all your people under one plan and one card','Microsoft Entra single sign-on','Switch whole modules on and off for everyone','Audit log, data retention and review rules','Priority support']}];
 

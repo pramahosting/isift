@@ -54,7 +54,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
   const [signedIn,setSignedIn]=useState(initial?.access==='signed_in');
   const [pcode,setPcode]=useState(initial?.access==='passcode'?(initial.passcode||''):'');
   const [waiting,setWaiting]=useState(initial?!!initial.waiting_room:true);
-  const [openRoom,setOpenRoom]=useState(!!initial?.options?.open_room);
+  const [openRoom,setOpenRoom]=useState(!!initial?.options?.open_room);const [canOpen,setCanOpen]=useState(true);useEffect(()=>{request('/me/limits').then((l:any)=>setCanOpen(!!l.open_room)).catch(()=>{})},[]);
   const [mute,setMute]=useState(!!initial?.options?.mute_on_entry);
   const [vidOff,setVidOff]=useState(!!initial?.options?.video_off_on_entry);
   const [autoRec,setAutoRec]=useState(!!initial?.options?.auto_record);
@@ -100,7 +100,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
     {!edit&&isRoom&&<fieldset className="span2 mf-set"><legend>Meeting ID</legend><label className="check"><input type="radio" name="idm" checked={idMode==='auto'} onChange={()=>setIdMode('auto')}/> Generate automatically</label><label className="check"><input type="radio" name="idm" checked={idMode==='personal'} onChange={()=>setIdMode('personal')}/> Personal Meeting ID (same link every time)</label></fieldset>}
     {!edit&&kind==='link'&&<label className="span2">Meeting link<input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://…" required/></label>}
     {pmi&&<p className="muted small span2">A Personal Meeting ID uses its own passcode and waiting room, shown on the meeting page after you save.</p>}
-    {isRoom&&<fieldset className="span2 mf-set"><legend>Open room</legend><label className="check"><input type="checkbox" checked={openRoom} onChange={e=>{setOpenRoom(e.target.checked);if(e.target.checked){setNeedPc(false);setSignedIn(false);setWaiting(false)}}}/> Open room: anyone with the link can start or join at any time. No passcode, nobody is admitted, and the room never closes for good{pmi?' (applies to your Personal Meeting ID)':''}.</label></fieldset>}
+    {isRoom&&<fieldset className="span2 mf-set"><legend>Open room</legend><label className="check"><input type="checkbox" checked={openRoom} disabled={!canOpen&&!openRoom} onChange={e=>{setOpenRoom(e.target.checked);if(e.target.checked){setNeedPc(false);setSignedIn(false);setWaiting(false)}}}/> Open room: anyone with the link can start or join at any time. No passcode, nobody is admitted, and the room never closes for good{pmi?' (applies to your Personal Meeting ID)':''}.{!canOpen&&<small className="muted"> Only the administrator and paid plans can use an open room.</small>}</label></fieldset>}
     {isRoom&&!pmi&&!openRoom&&<fieldset className="span2 mf-set"><legend>Security</legend>
       <label className="check"><input type="checkbox" checked={needPc} onChange={e=>{setNeedPc(e.target.checked);if(e.target.checked)setSignedIn(false)}}/> Require a passcode {needPc&&<input className="mf-pc" value={pcode} onChange={e=>setPcode(e.target.value)} maxLength={12} placeholder="Leave blank to make one" aria-label="Passcode"/>}</label>
       <label className="check"><input type="checkbox" checked={signedIn} onChange={e=>{setSignedIn(e.target.checked);if(e.target.checked)setNeedPc(false)}}/> Only signed-in people can join</label>

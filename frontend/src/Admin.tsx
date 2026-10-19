@@ -11,7 +11,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
  useEffect(()=>{refresh()},[refresh]);
  useEffect(()=>{const t=setTimeout(()=>refresh(q.trim()),250);return()=>clearTimeout(t)},[q,refresh]);
  const openCreate=()=>{setForm({mode:'create',email:'',display_name:'',password:'',role:'user',is_active:true});setFormErr('');setMsg('')};
- const openEdit=u=>{setForm({mode:'edit',id:u.id,email:u.email,display_name:u.display_name,role:u.role,is_active:u.is_active,password:'',orig:u,builtin:u.builtin,hasPassword:u.has_password,virtual_room:u.virtual_room!==false});setFormErr('');setMsg('')};
+ const openEdit=u=>{setForm({mode:'edit',id:u.id,email:u.email,display_name:u.display_name,role:u.role,is_active:u.is_active,password:'',orig:u,builtin:u.builtin,hasPassword:u.has_password,virtual_room:u.virtual_room!==false,lim:{...(u.limits||{})}});setFormErr('');setMsg('')};
  const save=async e=>{e.preventDefault();setFormErr('');setSaving(true);
   try{
    if(form.mode==='create'){
@@ -24,6 +24,11 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     if(form.role!==o.role)body.role=form.role;
     if(form.is_active!==o.is_active)body.is_active=form.is_active;
     if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
+    const L=form.lim||{},oL=o.limits||{},lim:any={};
+    for(const k of ['open_room','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
+    for(const k of ['meeting_minutes','docs_per_day','pdf_pages']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
+    if(form.resetLim){for(const k of ['open_room','recording','meeting_minutes','docs_per_day','pdf_pages'])lim[k]=null}
+    if(Object.keys(lim).length)body.limits=lim;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
     await request(`/admin/users/${form.id}`,{method:'PATCH',body:JSON.stringify(body)});setMsg(`Saved changes to ${form.email}.`);
@@ -48,6 +53,17 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     {form.mode==="edit"&&<label className="checklabel"><input type="checkbox" checked={form.virtual_room!==false} onChange={e=>setForm({...form,virtual_room:e.target.checked})}/> Virtual room (boardroom table view) on for this account</label>}
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
+   {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Plan limits for this person ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
+    <p className="muted small">Basic accounts start with: no open room, no recording, 60-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
+    <div className="lim-box">
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.open_room} onChange={e=>setForm({...form,lim:{...form.lim,open_room:e.target.checked}})}/> Allow open room</label>
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.recording} onChange={e=>setForm({...form,lim:{...form.lim,recording:e.target.checked}})}/> Allow meeting recording</label>
+     <label>Meeting length (minutes)<input type="number" min={0} max={100000} value={form.lim.meeting_minutes??0} onChange={e=>setForm({...form,lim:{...form.lim,meeting_minutes:e.target.value}})}/><small>0 = no limit</small></label>
+     <label>Docs and whiteboards a day<input type="number" min={0} max={100000} value={form.lim.docs_per_day??0} onChange={e=>setForm({...form,lim:{...form.lim,docs_per_day:e.target.value}})}/><small>0 = no limit. Used today: {form.orig?.limits?.docs_used_today??0}</small></label>
+     <label>Largest PDF (pages)<input type="number" min={0} max={100000} value={form.lim.pdf_pages??0} onChange={e=>setForm({...form,lim:{...form.lim,pdf_pages:e.target.value}})}/><small>0 = no limit</small></label>
+    </div>
+    <label className="checklabel"><input type="checkbox" checked={!!form.resetLim} onChange={e=>setForm({...form,resetLim:e.target.checked})}/> Put this person back on their plan's standard limits</label>
+   </fieldset>}
    {form.builtin&&<p className="muted">The built-in administrator can only be renamed.</p>}
    {formErr&&<div className="alert" role="alert">{formErr}</div>}
    <div className="actions"><button className="primary" disabled={saving}>{saving?'Saving…':form.mode==='create'?'Create user':'Save changes'}</button><button type="button" className="secondary" onClick={()=>setForm(null)}>Cancel</button></div>

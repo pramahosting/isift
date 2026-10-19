@@ -44,10 +44,10 @@ export function TestAV({onClose}:{onClose:()=>void}){
 
 /** Personal Meeting ID card. */
 export function PmiCard({request}:{request:any}){
-  const [p,setP]=useState<any>(null);const [done,setDone]=useState('');
-  useEffect(()=>{request('/me/pmi').then(setP).catch(()=>{})},[]);
+  const [p,setP]=useState<any>(null);const [done,setDone]=useState('');const [lim,setLim]=useState<any>(null);const [perr,setPerr]=useState('');
+  useEffect(()=>{request('/me/pmi').then(setP).catch(()=>{});request('/me/limits').then(setLim).catch(()=>{})},[]);
   if(!p)return null;const flash=(k:string)=>{setDone(k);setTimeout(()=>setDone(''),1800)};
-  return <div className="pmi"><div><span className="muted small">Personal Meeting ID</span><b className="pmi-id">{p.pretty}</b><small className="muted">{p.open_room?'Open room: anyone can start or join, no passcode':`Passcode ${p.passcode||'none'}`} · always the same link</small><label className="check"><input type="checkbox" checked={!!p.open_room} onChange={async e=>setP(await request('/me/pmi',{method:'PATCH',body:JSON.stringify({open_room:e.target.checked})}))}/> Open room: no admitting, anyone can start or join any time</label></div>
+  return <div className="pmi"><div><span className="muted small">Personal Meeting ID</span><b className="pmi-id">{p.pretty}</b><small className="muted">{p.open_room?'Open room: anyone can start or join, no passcode':`Passcode ${p.passcode||'none'}`} · always the same link</small><label className="check"><input type="checkbox" checked={!!p.open_room} disabled={lim&&!lim.open_room&&!p.open_room} onChange={async e=>{setPerr('');try{setP(await request('/me/pmi',{method:'PATCH',body:JSON.stringify({open_room:e.target.checked})}))}catch(x:any){setPerr(x.message||'Not allowed')}}}/> Open room: no admitting, anyone can start or join any time{lim&&!lim.open_room&&<small className="muted"> (administrator and paid plans only)</small>}</label>{perr&&<small className="alert" role="alert">{perr}</small>}</div>
     <div className="pmi-actions"><button className="secondary" onClick={()=>{copyText(p.pretty.replace(/ /g,''));flash('id')}}><Copy size={14}/> {done==='id'?'Copied':'Copy ID'}</button><button className="secondary" onClick={()=>{copyText(`Join my iSift meeting: ${roomLink(p.code)}\nMeeting ID: ${p.pretty}${p.passcode?`\nPasscode: ${p.passcode}`:''}`);flash('inv')}}><Copy size={14}/> {done==='inv'?'Copied':'Copy invitation'}</button><button className="primary" onClick={()=>{location.hash='#/room/'+p.code}}><Video size={14}/> Start</button></div></div>;
 }
 
@@ -164,7 +164,7 @@ export function NotesPage({request,kind,focus,onFocused}:{request:any;kind:'doc'
   useEffect(()=>{loadList(scope)},[scope]);
   const pick=async(id:string)=>{await flush();pend.current={};const n=await request(`/notes/${id}`);openId.current=id;base.current=n.updated_at;setOpen(n);setTitle(n.title);setContent(n.content||'');setState('')};
   useEffect(()=>{if(!focus)return;(async()=>{try{await pick(focus.id)}catch{}onFocused?.()})()},[focus?.id]);
-  const create=async()=>{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:meta.fresh,content:''})});setScope('mine');await request(url('mine')).then(setList);pick(n.id)};
+  const create=async()=>{try{const n=await request('/notes',{method:'POST',body:JSON.stringify({kind,title:meta.fresh,content:''})});setScope('mine');await request(url('mine')).then(setList);pick(n.id)}catch(e:any){window.alert(e.message||'Could not create the file.')}};
   const remove=async()=>{if(!open||!window.confirm(`Delete "${title}"? Everyone it is shared with loses access.`))return;await request(`/notes/${open.id}`,{method:'DELETE'});setOpen(null);openId.current='';pend.current={};loadList()};
   const reload=async()=>{if(open){pend.current={};setState('');await pick(open.id)}};
   const row=(n:any)=>scope==='mine'?<small className="muted">Edited {new Date(n.updated_at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'})}</small>
