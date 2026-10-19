@@ -1201,8 +1201,8 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .rm-room .rm-table{box-shadow:0 12px 0 #35241a,0 30px 40px #0007,inset 0 2px 0 #ffffff30}
 
 /* table size and name plates can be adjusted by hand */
-.rm-room.rect .rm-table{left:9%;right:9%;top:34%;bottom:22%;transform-origin:50% 0;transform:rotateX(52deg) scale(var(--tw,1),var(--td,1))}
-.rm-room.round .rm-table{left:22%;right:22%;top:32%;bottom:16%;transform-origin:50% 0;transform:rotateX(52deg) scale(var(--tw,1),var(--td,1))}
+.rm-room.rect .rm-table{left:9%;right:9%;top:42%;bottom:14%;transform-origin:50% 0;transform:rotateX(52deg) scale(var(--tw,1),var(--td,1))}
+.rm-room.round .rm-table{left:22%;right:22%;top:42%;bottom:10%;transform-origin:50% 0;transform:rotateX(52deg) scale(var(--tw,1),var(--td,1))}
 .rm-plate.onTable{font-size:calc(clamp(10px,1.25vw,14px) * var(--ps,1));padding:.28em .8em}
 .rm-tunebtn{position:absolute;left:10px;bottom:10px;z-index:70;display:inline-flex;align-items:center;gap:6px;background:#000a;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
 .rm-tune{position:absolute;left:10px;bottom:44px;z-index:80;width:230px;display:grid;gap:8px;padding:12px;border-radius:12px;background:#fffffff2;color:#26333f;box-shadow:0 10px 30px #0006;font-size:12px}
@@ -1214,3 +1214,19 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .rm-spot-strip .rm-wrap{flex:0 0 auto;width:150px;height:100%}
 .rm-spot-strip .rm-tile{min-height:0;height:100%}
 .rm-spot-strip .rm-name{font-size:10px;padding:2px 6px;left:4px;bottom:4px;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-floatnote{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;max-width:min(90vw,640px);box-shadow:0 8px 24px #0003}
+
+/* the table stands on legs, with a shadow on the floor */
+.rm-leg{position:absolute;z-index:45;border-radius:3px 3px 5px 5px;background:linear-gradient(90deg,#2d1d14,#5b3e2a 45%,#2a1a11);box-shadow:inset 0 -6px 8px #0006,2px 0 6px #0004;pointer-events:none}
+.rm-leg.ped{border-radius:8px 8px 4px 4px;background:linear-gradient(90deg,#2a1a11,#6a4a33 50%,#2a1a11)}
+.rm-foot{position:absolute;z-index:45;height:12px;border-radius:50%;background:radial-gradient(#4a3222,#27190f);box-shadow:0 4px 8px #0006;pointer-events:none}
+.rm-floorshadow{position:absolute;z-index:44;border-radius:50%;background:radial-gradient(ellipse at center,#0000005c 0,#0000002a 55%,transparent 72%);pointer-events:none;filter:blur(2px)}
+.rm-grip{position:absolute;z-index:75;width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid #2f64f0;box-shadow:0 2px 6px #0005;opacity:.35;transition:opacity .15s;touch-action:none}
+.rm-room:hover .rm-grip,.rm-grip:active{opacity:1}.rm-grip.h{cursor:ew-resize}.rm-grip.v{cursor:ns-resize}
+.rm-plate.onTable{font-size:calc(clamp(10px,1.25vw,14px) * var(--pf,1));transform:translateX(-50%) scale(var(--ps,1));transform-origin:50% 0}
+
+/* decoration: windows with curtains, a framed picture and a wall clock */
+.rm-decor{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+/* people sit on a chair in front of the wall, not on it: a chair back behind each person and a shadow cast on the wall */
+.rm-seat::before{content:"";position:absolute;left:-6%;right:-6%;top:-6%;bottom:-34%;z-index:-1;border-radius:20px 20px 8px 8px;background:linear-gradient(#444a58,#272b34);box-shadow:inset 0 2px 0 #ffffff26,0 10px 22px #00000066,14px 8px 26px #0000004d}
+.rm-seat .rm-tile{box-shadow:0 10px 18px #0007,0 0 0 3px #1c212b}

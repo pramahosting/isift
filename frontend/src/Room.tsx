@@ -1,4 +1,4 @@
-import React,{useCallback,useEffect,useRef,useState} from 'react';
+import React,{useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {rememberRoom} from './Connections';
 import {SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer} from 'lucide-react';
 
@@ -6,12 +6,55 @@ type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStrea
 const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
 
 // Seat positions (percent of the room) for n people around the table. Index 0 is "you", at the bottom, so everyone sees themselves nearest.
-export const EDGE_Y=34;
+/* The wall clock shows the real time on this computer. */
+function WallClock(){
+  const [t,setT]=useState(()=>new Date());
+  useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id)},[]);
+  const sec=t.getSeconds(),min=t.getMinutes()+sec/60,hr=(t.getHours()%12)+min/60;
+  return <g transform="translate(76,13.2) scale(1,1.7778) scale(.68)" style={{filter:'drop-shadow(0 .4px .5px rgba(0,0,0,.45))'}}>
+    <circle r="5.6" fill="#5b3d27"/><circle r="5.1" fill="#fffdf8" stroke="#d9cfbd" strokeWidth=".15"/>
+    {Array.from({length:60},(_,i)=>{const a=i*6*Math.PI/180,l=i%5===0?.75:.3;return <line key={i} x1={Math.sin(a)*(4.6-l)} y1={-Math.cos(a)*(4.6-l)} x2={Math.sin(a)*4.6} y2={-Math.cos(a)*4.6} stroke="#3b2f25" strokeWidth={i%5===0?.22:.08}/>})}
+    {[[12,0,-3.5],[3,3.5,0],[6,0,3.5],[9,-3.5,0]].map(([n,x,y])=><text key={n} x={x} y={y+.55} fontSize="1.35" fontWeight="700" textAnchor="middle" fill="#3b2f25" fontFamily="Georgia,serif">{n}</text>)}
+    <line x1="0" y1=".7" x2="0" y2="-2.6" stroke="#26180f" strokeWidth=".42" strokeLinecap="round" transform={`rotate(${hr*30})`}/>
+    <line x1="0" y1=".9" x2="0" y2="-3.9" stroke="#26180f" strokeWidth=".28" strokeLinecap="round" transform={`rotate(${min*6})`}/>
+    <line x1="0" y1="1" x2="0" y2="-4.2" stroke="#c0392b" strokeWidth=".1" transform={`rotate(${sec*6})`}/>
+    <circle r=".38" fill="#c0392b"/>
+  </g>;
+}
+/* Window with curtains on a side wall (drawn for the left wall, mirrored for the right). */
+function SideWindow(){
+  return <g>
+    <clipPath id="vw-glass"><polygon points="3.2,10.7 12.8,11.7 12.8,31.6 3.2,36.0"/></clipPath>
+    <linearGradient id="vw-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#9fd2f5"/><stop offset="1" stopColor="#e7f5ff"/></linearGradient>
+    <linearGradient id="vw-cur" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#8e2f35"/><stop offset=".5" stopColor="#b8494f"/><stop offset="1" stopColor="#8a2c32"/></linearGradient>
+    <polygon points="2.8,9.9 13.2,11.0 13.2,32.4 2.8,36.9" fill="#f6f3ec" stroke="#cdc6b6" strokeWidth=".15"/>
+    <g clipPath="url(#vw-glass)"><rect x="0" y="0" width="20" height="50" fill="url(#vw-sky)"/><circle cx="10" cy="16" r="1.6" fill="#fff3b0"/><path d="M0 30 Q5 22 9 28 T20 24 L20 40 L0 40Z" fill="#6fae6a"/><path d="M0 34 Q6 29 12 33 T20 31 L20 40 L0 40Z" fill="#4f9456"/></g>
+    <polygon points="7.9,10.9 8.3,11.2 8.3,33.9 7.9,34.1" fill="#f6f3ec" opacity=".9"/><polygon points="3.2,23.4 12.8,21.7 12.8,22.4 3.2,24.0" fill="#f6f3ec" opacity=".9"/>
+    <line x1="2" y1="8.7" x2="14" y2="10.2" stroke="#4a3426" strokeWidth=".35" strokeLinecap="round"/><circle cx="2" cy="8.7" r=".45" fill="#8c6a3f"/><circle cx="14" cy="10.2" r=".45" fill="#8c6a3f"/>
+    <polygon points="2.4,9.0 5.6,9.4 5.6,44.6 2.4,47.0" fill="url(#vw-cur)"/><polygon points="10.6,9.9 13.8,10.3 13.8,38.2 10.6,40.6" fill="url(#vw-cur)"/>
+    {[3.2,4.0,4.8].map(x=><line key={x} x1={x} y1={9.1+ (x-2.4)*.12} x2={x} y2={46.6-(x-2.4)*.9} stroke="#00000022" strokeWidth=".15"/>)}
+    {[11.4,12.2,13.0].map(x=><line key={x} x1={x} y1={10+(x-10.6)*.12} x2={x} y2={40.2-(x-10.6)*.8} stroke="#00000022" strokeWidth=".15"/>)}
+  </g>;
+}
+function RoomDecor(){
+  return <svg className="rm-decor" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <SideWindow/><g transform="translate(100,0) scale(-1,1)"><SideWindow/></g>
+    <g transform="translate(20,9.6) scale(.7917,.8082) translate(-19,-10.2)" style={{filter:'drop-shadow(0 .5px .7px rgba(0,0,0,.4))'}}>
+      <polyline points="21.5,10.2 25,6.2 28.5,10.2" fill="none" stroke="#7a6a58" strokeWidth=".18"/><circle cx="25" cy="6.1" r=".35" fill="#7a6a58"/>
+      <rect x="19" y="10.2" width="12" height="14.6" rx=".3" fill="#a9792f"/><rect x="19.5" y="10.8" width="11" height="13.4" fill="#d8b26a"/><rect x="20.1" y="11.5" width="9.8" height="12" fill="#fbf8f0"/>
+      <clipPath id="vw-pic"><rect x="20.9" y="12.2" width="8.2" height="10.6"/></clipPath>
+      <g clipPath="url(#vw-pic)"><rect x="20.9" y="12.2" width="8.2" height="10.6" fill="#a7d3f2"/><circle cx="27.2" cy="14.4" r=".9" fill="#ffe9a1"/><polygon points="20.9,19 23.6,15.2 25.8,18 27.4,16.2 29.1,19.4 29.1,22.8 20.9,22.8" fill="#6f7f8f"/><polygon points="23.6,15.2 24.4,16.3 23.2,16.1" fill="#fff"/><rect x="20.9" y="19.6" width="8.2" height="3.2" fill="#5b9bc4"/><polygon points="20.9,22.8 20.9,19.8 22.2,18.3 23.4,19.8 23.4,22.8" fill="#3f7d4a"/><polygon points="26.6,22.8 27.7,19.2 28.9,22.8" fill="#2f6a3d"/></g>
+    </g>
+    <WallClock/>
+  </svg>;
+}
+
+export const EDGE_Y=42;
 export const seatWidth=(n:number)=>n<=2?22:n<=4?19:n<=5?17:14;      // width of one person on the table view, in % of the room
 export function seatPoints(n:number,_shape?:'rect'|'round'):{x:number;y:number;py:number}[]{
   // Everyone sits just behind the far edge of the table, looking at the viewer: the table hides the bottom of each picture and a name plate stands on the table in front of them.
   if(n<=0)return [];
-  const sw=seatWidth(n),h=sw*4/3,EDGE=34;                                  // h: picture height in % of the room height; EDGE: far edge of the table
+  const sw=seatWidth(n),h=sw*4/3,EDGE=42;                                  // h: picture height in % of the room height; EDGE: far edge of the table
   const back=n<=5?0:Math.floor(n/2),front=n-back;
   const fy=EDGE+2-h/2,by=fy-0.8*h;
   const row=(k:number,y:number,py:number)=>{const step=k<2?0:Math.min(sw+2,76/(k-1));return Array.from({length:k},(_,i)=>({x:50+(i-(k-1)/2)*step,y,py}))};
@@ -52,7 +95,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const [group,setGroup]=useState<{id:string;name:string}|null>(null);const [groupEnds,setGroupEnds]=useState<string|null>(null);const [roster,setRoster]=useState<any>(null);const [groupsOpen,setGroupsOpen]=useState(false);const [banner,setBanner]=useState<{name:string;text:string}|null>(null);
   const groupRef=useRef<{id:string;name:string}|null>(null);groupRef.current=group;
   const [view,setViewState]=useState<'table'|'gallery'>(()=>{try{return localStorage.getItem('isift.view')==='gallery'?'gallery':'table'}catch{return 'table'}});
-  const TUNE0={tw:1,td:1,ps:1,pd:0};const [tune,setTuneState]=useState<typeof TUNE0>(()=>{try{return {...TUNE0,...JSON.parse(localStorage.getItem('isift.roomtune')||'{}')}}catch{return TUNE0}});const [tuneOpen,setTuneOpen]=useState(false);
+  const TUNE0={tw:1,td:1,ps:1,pd:0,pf:1};const [tb,setTb]=useState<{x0:number;y0:number;x1:number;y1:number;rw:number;rh:number}|null>(null);const gripDrag=useRef<any>(null);const [tune,setTuneState]=useState<typeof TUNE0>(()=>{try{return {...TUNE0,...JSON.parse(localStorage.getItem('isift.roomtune')||'{}')}}catch{return TUNE0}});const [tuneOpen,setTuneOpen]=useState(false);
   const setTune=(t:Partial<typeof TUNE0>)=>setTuneState(o=>{const n={...o,...t};try{localStorage.setItem('isift.roomtune',JSON.stringify(n))}catch{}return n});
   const [moved,setMoved]=useState<Record<string,{x:number;y:number}>>({});const dragSeat=useRef<{id:string;sx:number;sy:number;ox:number;oy:number;on:boolean}|null>(null);
   const [shape,setShapeState]=useState<'rect'|'round'>(()=>{try{return localStorage.getItem('isift.shape')==='round'?'round':'rect'}catch{return 'rect'}});
@@ -194,6 +237,10 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
 
   // ---- recording (host only): audio mix for the transcript + composite video for the archive ----
   const gridRef=useRef<HTMLDivElement>(null);
+  /* where the table top really is on screen (it is drawn in perspective), so the legs, the shadow and the resize grips can be placed against it */
+  useLayoutEffect(()=>{const room=gridRef.current,t=room?.querySelector('.rm-table') as HTMLElement|null;if(!room||!t||!room.classList.contains('rm-room')){setTb(null);return}
+    const m=()=>{const a=room.getBoundingClientRect(),b=t.getBoundingClientRect();const n={x0:b.left-a.left,y0:b.top-a.top,x1:b.right-a.left,y1:b.bottom-a.top,rw:a.width,rh:a.height};setTb(o=>o&&Math.abs(o.x0-n.x0)<.5&&Math.abs(o.y0-n.y0)<.5&&Math.abs(o.x1-n.x1)<.5&&Math.abs(o.y1-n.y1)<.5&&Math.abs(o.rw-n.rw)<.5&&Math.abs(o.rh-n.rh)<.5?o:n)};
+    m();const ro=new ResizeObserver(m);ro.observe(room);return()=>ro.disconnect()});
   const infoRef=useRef<any>({peers:[],local:null,name:'',cam:false,mic:false,screen:false,speaking:''});
   infoRef.current={peers:Object.values(peers),local:localStream,name,cam,mic,screen,speaking,vtrack:local.current.video};
   const recorderRefresh=()=>{const r=rec.current;if(!r)return;const have=new Set<string>(r.sources.keys());
@@ -307,6 +354,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const curG=group?.id||'main';const sharing=ordered.some(r=>r.screen);
   const pinnedRow=pin?ordered.find(r=>r.id===pin):undefined;const togglePin=(id:string)=>setPin(p=>p===id?'':id);
   const spotTile=(r:Row)=>r.self?<VideoTile stream={localStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen} speaking={speaking==='__me'} onDouble={()=>togglePin('__me')}/>:<VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===r.id} onDouble={()=>togglePin(r.id)}/>;
+  const autoT=tiles<=1?.5:tiles===2?.58:tiles===3?.68:tiles===4?.76:tiles===5?.84:tiles<=7?.92:1;                  // the table grows with the number of people
   const tableOk=vrOn&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
   {const here=new Set(list.map(p=>p.id));seatIds.current=seatIds.current.filter(id=>here.has(id));list.forEach(p=>{if(!seatIds.current.includes(p.id))seatIds.current.push(p.id)})}
   const seatRows:Row[]=[ordered.find(r=>r.self)!,...seatIds.current.map(id=>ordered.find(r=>r.id===id)).filter(Boolean) as Row[]];
@@ -359,17 +407,21 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <label><input type="radio" name="acc" checked={hostInfo.access==='signed_in'} onChange={()=>changeSecurity({access:'signed_in'})}/> Signed-in people only</label>
       <label><input type="checkbox" checked={!!hostInfo.waiting_room} onChange={e=>changeSecurity({waiting_room:e.target.checked})}/> Waiting room</label>
       <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
-    <div className="rm-main">{pinnedRow?<div className="rm-spot"><div className="rm-spot-main">{spotTile(pinnedRow)}<div className="rm-spot-tag"><b>Highlighted: {pinnedRow.name}{pinnedRow.self?' (you)':''}</b><button type="button" onClick={()=>setPin('')}>Back to everyone</button></div></div><div className="rm-spot-strip">{ordered.filter(r=>r.id!==pin).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div></div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} style={{['--tw' as any]:tune.tw,['--td' as any]:tune.td,['--ps' as any]:tune.ps}} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
-      <div className="rm-walls" aria-hidden="true"><i className="w-ceil"/><i className="w-back"/><i className="w-left"/><i className="w-right"/><i className="w-floor"/><i className="w-skirt"/></div><div className="rm-table" aria-hidden="true"/>
+    <div className="rm-main">{pinnedRow?<div className="rm-spot"><div className="rm-spot-main">{spotTile(pinnedRow)}<div className="rm-spot-tag"><b>Highlighted: {pinnedRow.name}{pinnedRow.self?' (you)':''}</b><button type="button" onClick={()=>setPin('')}>Back to everyone</button></div></div><div className="rm-spot-strip">{ordered.filter(r=>r.id!==pin).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div></div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} style={{['--tw' as any]:+(autoT*tune.tw).toFixed(3),['--td' as any]:+((0.7+0.3*autoT)*tune.td).toFixed(3),['--ps' as any]:tune.ps,['--pf' as any]:tune.pf}} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
+      <div className="rm-walls" aria-hidden="true"><i className="w-ceil"/><i className="w-back"/><i className="w-left"/><i className="w-right"/><i className="w-floor"/><i className="w-skirt"/></div>{tb&&(()=>{const w=tb.x1-tb.x0,legH=Math.max(10,Math.min(tb.rh*.15,tb.rh-tb.y1-4)),lw=Math.max(8,tb.rw*.02);return <><div className="rm-floorshadow" style={{left:tb.x0+w*.04,width:w*.92,top:tb.y1+legH*.55,height:Math.max(10,tb.rh*.06)}}/>{shape==="round"?<><div className="rm-leg ped" style={{left:(tb.x0+tb.x1)/2-lw*1.6,width:lw*3.2,top:tb.y1-6,height:legH+6}}/><div className="rm-foot" style={{left:(tb.x0+tb.x1)/2-w*.16,width:w*.32,top:tb.y1+legH-6}}/></>:<><div className="rm-leg" style={{left:tb.x0+w*.09,width:lw,top:tb.y1-6,height:legH+6}}/><div className="rm-leg" style={{left:tb.x1-w*.09-lw,width:lw,top:tb.y1-6,height:legH+6}}/></>}</>})()}<RoomDecor/><div className="rm-table" aria-hidden="true"/>
       {seatRows.map((r,i)=>{const b=seats[i],mv=moved[r.id]||{x:0,y:0},pt={x:b.x+mv.x,y:b.y+mv.y,py:b.py+mv.y};return <div key={r.id} onPointerDown={e=>{if((e.target as HTMLElement).closest('button'))return;dragSeat.current={id:r.id,sx:e.clientX,sy:e.clientY,ox:mv.x,oy:mv.y,on:false};try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}catch{}}} onPointerMove={e=>{const d=dragSeat.current,box=gridRef.current?.getBoundingClientRect();if(!d||d.id!==r.id||!box)return;const dx=e.clientX-d.sx,dy=e.clientY-d.sy;if(!d.on&&Math.hypot(dx,dy)<5)return;d.on=true;const nx=Math.max(4-b.x,Math.min(96-b.x,d.ox+dx/box.width*100)),ny=Math.max(8-b.y,Math.min(92-b.y,d.oy+dy/box.height*100));setMoved(m=>({...m,[r.id]:{x:nx,y:ny}}))}} onPointerUp={()=>{dragSeat.current=null}} onPointerCancel={()=>{dragSeat.current=null}} className={`rm-seat top${dragSeat.current?.id===r.id&&dragSeat.current.on?' dragging':''}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW}%`,zIndex:pt.y>EDGE_Y?55:Math.max(1,Math.min(40,Math.round(pt.y))),['--ry' as any]:`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*12).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
         <VideoTile stream={r.self?localStream:r.stream} name={r.name} muted={r.self} off={r.self?(!cam&&!screen):(!r.cam&&!r.screen)} self={r.self} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===(r.self?'__me':r.id)} plate onDouble={()=>togglePin(r.id)}/>
 </div>})}
       {seatRows.map((r,i)=>{const b=seats[i],mv=moved[r.id]||{x:0,y:0},pt={x:b.x+mv.x,y:b.y+mv.y,py:b.py+mv.y};return <div key={'pl'+r.id} className="rm-plate onTable" style={{left:`${pt.x}%`,top:`${pt.py+tune.pd}%`,maxWidth:`${seatW+4}%`}} title={r.name}><span className="rm-plname">{r.name}{r.self?' (you)':''}</span>{r.host&&<em>{r.cohost?'co-host':'host'}</em>}{r.screen&&<em>sharing</em>}<span className="rm-plstate">{(r.self?mic:r.mic)?null:<MicOff size={12} className="off" aria-label="Muted"/>}{(r.self?cam:r.cam)?null:<VideoOff size={12} className="off" aria-label="Camera off"/>}</span></div>})}
+      {tb&&<>
+        <span className="rm-grip h" title="Drag to make the table wider or narrower" style={{left:tb.x1-9,top:(tb.y0+tb.y1)/2-9}} onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);gripDrag.current={k:'h',s:e.clientX,v:tune.tw,w:tb.x1-tb.x0}}} onPointerMove={e=>{const g=gripDrag.current;if(!g||g.k!=='h')return;setTune({tw:Math.max(.4,Math.min(1.6,g.v*(g.w+2*(e.clientX-g.s))/g.w))})}} onPointerUp={()=>{gripDrag.current=null}}/>
+        <span className="rm-grip v" title="Drag to make the table deeper or shallower" style={{left:(tb.x0+tb.x1)/2-9,top:tb.y1+4}} onPointerDown={e=>{e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);gripDrag.current={k:'v',s:e.clientY,v:tune.td,h:tb.y1-tb.y0}}} onPointerMove={e=>{const g=gripDrag.current;if(!g||g.k!=='v')return;setTune({td:Math.max(.4,Math.min(1.6,g.v*(g.h+(e.clientY-g.s))/g.h))})}} onPointerUp={()=>{gripDrag.current=null}}/></>}
       <button type="button" className="rm-tunebtn" onClick={()=>setTuneOpen(o=>!o)} aria-expanded={tuneOpen} title="Adjust table size and name plates"><SlidersHorizontal size={14}/> Adjust</button>
       {tuneOpen&&<div className="rm-tune" role="group" aria-label="Adjust the room">
-        <label>Table width<input type="range" min="0.5" max="1.15" step="0.01" value={tune.tw} onChange={e=>setTune({tw:+e.target.value})}/></label>
-        <label>Table depth<input type="range" min="0.5" max="1.4" step="0.01" value={tune.td} onChange={e=>setTune({td:+e.target.value})}/></label>
-        <label>Name plate size<input type="range" min="0.6" max="1.4" step="0.01" value={tune.ps} onChange={e=>setTune({ps:+e.target.value})}/></label>
+        <label>Table width<input type="range" min="0.4" max="1.6" step="0.01" value={tune.tw} onChange={e=>setTune({tw:+e.target.value})}/></label>
+        <label>Table depth<input type="range" min="0.4" max="1.6" step="0.01" value={tune.td} onChange={e=>setTune({td:+e.target.value})}/></label>
+        <label>Name plate size<input type="range" min="0.5" max="1.8" step="0.01" value={tune.ps} onChange={e=>setTune({ps:+e.target.value})}/></label>
+        <label>Name letters: smaller / larger<input type="range" min="0.5" max="1.8" step="0.01" value={tune.pf} onChange={e=>setTune({pf:+e.target.value})}/></label>
         <label>Name plate: closer / further<input type="range" min="-6" max="14" step="0.5" value={tune.pd} onChange={e=>setTune({pd:+e.target.value})}/></label>
         <button type="button" className="secondary" onClick={()=>setTune(TUNE0)}>Reset</button></div>}
       {Object.keys(moved).length>0&&<button type="button" className="rm-resetseats" onClick={()=>setMoved({})}>Reset seats</button>}
@@ -416,7 +468,6 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       {isHost&&<button className={`rm-btn${groupsOpen||roster?.groups?' on':''}`} onClick={()=>setGroupsOpen(o=>!o)} aria-label="Discussion groups" aria-expanded={groupsOpen}><Group size={18}/><span>Groups</span></button>}
       {primary&&<button className={`rm-btn${secOpen?' on':''}`} onClick={()=>{loadHostInfo();setSecOpen(o=>!o)}} aria-label="Meeting security"><ShieldCheck size={18}/><span>Security</span></button>}
       {(primary||(isHost&&!!info?.options?.open_room))&&(recording?<button className="rm-btn rec" disabled={recBusy} onClick={()=>stopRecording()} aria-label="Stop recording"><Square size={18}/><span>{recBusy?'Saving…':'Stop rec'}</span></button>:<button className="rm-btn" onClick={startRecording} aria-label="Start recording"><Circle size={18}/><span>Record</span></button>)}
-      {primary&&<label className="rm-cloud" title={recPlan==='basic'?'On the Basic plan a cloud copy is kept for 2 days. Your own computer always gets a copy.':'Your own computer always gets a copy. Tick to also keep one in the cloud.'}><input type="checkbox" checked={cloud} disabled={recBusy} onChange={e=>setCloud(e.target.checked)}/> Also store in cloud{recPlan==='basic'?' (2 days)':''}</label>}
       <button className="rm-btn leave" onClick={leave} aria-label="Leave meeting"><PhoneOff size={18}/><span>Leave</span></button>
       {primary&&<button className="rm-btn leave" onClick={endAll} aria-label="End meeting for everyone"><X size={18}/><span>End all</span></button>}
     </footer>
