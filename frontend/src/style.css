@@ -1303,3 +1303,18 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .se-zv{border:0;background:transparent;cursor:pointer;border-radius:6px;height:30px}.se-zv:hover{background:#eef2fa}
 .se-work .se-pages{overflow:visible;padding:14px 10px}
 .se-style select{min-width:68px;padding:0 6px}
+.rm-pick{cursor:pointer}.rm-pick:hover{filter:brightness(1.07)}
+
+.rm-seat{transform:translate(-50%,-50%) rotateY(var(--ry,0deg)) rotateX(var(--rx,0deg)) scale(var(--sc,1)) rotate(var(--rz,0deg))}
+.rm-seat .rm-tile{aspect-ratio:var(--ta,1.3333)}
+.rm-seat.sel .rm-tile{outline:2px solid #4d8dff;outline-offset:2px}
+.rm-seatbar input[type=range]{width:90px}
+.rm-chat,.rm-people{position:relative}
+.rm-rsz-l{position:absolute;left:-4px;top:0;bottom:0;width:9px;cursor:ew-resize;z-index:5;touch-action:none}.rm-rsz-l:hover,.rm-rsz-l:active{background:#4d8dff55}
+.rm-rsz-b{position:absolute;left:0;right:0;bottom:-4px;height:9px;cursor:ns-resize;z-index:5;touch-action:none}.rm-rsz-b:hover,.rm-rsz-b:active{background:#4d8dff55}
+
+.rm-editname{background:none;border:0;color:#9fb0cf;cursor:pointer;margin-left:8px;padding:2px;vertical-align:middle}.rm-editname:hover{color:#fff}
+.rm-rename{display:flex;gap:6px;align-items:center}.rm-rename input{min-width:220px;padding:6px 10px;border-radius:8px;border:1px solid #3a4866;background:#1a2133;color:#fff;font-size:15px}
+
+/* participants / chat window: two-thirds of the old width, from the very top of the window */
+@media(min-width:901px){.rm-chat{position:fixed!important;top:0;right:0;height:100vh;width:213px;z-index:80;box-shadow:-6px 0 24px #0005}.rm-shell.sideopen{padding-right:var(--sidew,213px)}}
