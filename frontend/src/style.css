@@ -1339,3 +1339,10 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .lim-box label{display:flex;flex-direction:column;gap:3px;font-size:13px}
 .lim-box small{color:var(--muted,#6b7280)}
 .lim-box label.checklabel{flex-direction:row;align-items:center;gap:8px}
+
+.plantable-wrap{overflow-x:auto}
+.plantable{border-collapse:collapse;width:100%;min-width:1100px;font-size:13px}
+.plantable th{text-align:left;color:#788992;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:6px 10px;white-space:nowrap}
+.plantable td{padding:10px;border-top:1px solid #edf1f2;vertical-align:top}
+.plantable td small{display:block;color:#788992}
+.badge.amber{background:#fff3d6;color:#7a4b00}

@@ -103,7 +103,7 @@ Upgrade note: this release adds an `account` column to meetings and contacts (mi
 - **Groq says the key was not accepted:** (the *Connection tests* button in Admin settings now checks the saved Groq key and the model name)  create a new key at console.groq.com (API Keys), paste it in *Admin settings > AI for sharing booking links* with no spaces or quotes, save, and press *Write again*. The window shows Groq's own message. Sharing still works without Groq, using a standard message.
 
 ### Who gets the host's copy of a booking notice
-The built-in local administrator has the placeholder address `admin@example.test`, which no mail server accepts. iSift therefore sends the host copy (and sets Reply-To) to the first real address it finds: *Admin settings > Send failures to*, then the app email login, then the From address. If none is real, only the guest is emailed. A bounce from `example.test` no longer happens.
+The built-in local administrator has the placeholder address `admin@isift.au`, which no mail server accepts. iSift therefore sends the host copy (and sets Reply-To) to the first real address it finds: *Admin settings > Send failures to*, then the app email login, then the From address. If none is real, only the guest is emailed. A bounce from `example.test` no longer happens.
 
 
 ## Choosing which parts of the app are on (Modules)
@@ -285,6 +285,6 @@ The whiteboard shape library (flowchart, ER, UML, BPMN, containers, cloud and AI
 Below 900 px wide the menu slides in from the left (three-line button at the top left). It uses the same light look as the desktop menu so every module name is readable; the Docs tabs wrap onto two lines on a phone; upload buttons are grey with dark text.
 
 ### Plan limits (Basic, paid, administrator)
-- **Basic:** meetings of up to **90 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
+- **Basic:** meetings of up to **70 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
 - **Individual / Business:** open room, recording, any meeting length, no daily document limit. **Administrators** are never limited.
 - **Per person:** Admin > Users > Edit > *Plan limits for this person* changes any of these for one account (0 = no limit). The code is `backend/app/services/entitlements.py`.

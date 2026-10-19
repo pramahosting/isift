@@ -16,7 +16,7 @@ Existing rows are never overwritten: rows that already exist are skipped and cou
 Mock meeting ids start with "demo-"; "Reload (replace)" removes those first and loads fresh copies.
 
 Who gets what
-  Admin       loads every file. Rows owned by admin@example.test go to the signed-in admin; other owners must exist
+  Admin       loads every file. Rows owned by admin@isift.au go to the signed-in admin; other owners must exist
               (users.csv creates them, password for all sample users: Passw0rd!). ben.carter is created disabled.
   Member      loads only the rows owned by sample.user@example.com, copied into their own account.
 Admin-only tables: users, workflow_runs, jobs, audit_logs.

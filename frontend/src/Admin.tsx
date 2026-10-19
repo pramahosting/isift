@@ -25,9 +25,9 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     if(form.is_active!==o.is_active)body.is_active=form.is_active;
     if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
     const L=form.lim||{},oL=o.limits||{},lim:any={};
-    for(const k of ['open_room','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
+    for(const k of ['commbox','open_room','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
     for(const k of ['meeting_minutes','docs_per_day','pdf_pages']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
-    if(form.resetLim){for(const k of ['open_room','recording','meeting_minutes','docs_per_day','pdf_pages'])lim[k]=null}
+    if(form.resetLim){for(const k of ['commbox','open_room','recording','meeting_minutes','docs_per_day','pdf_pages'])lim[k]=null}
     if(Object.keys(lim).length)body.limits=lim;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
@@ -53,9 +53,10 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     {form.mode==="edit"&&<label className="checklabel"><input type="checkbox" checked={form.virtual_room!==false} onChange={e=>setForm({...form,virtual_room:e.target.checked})}/> Virtual room (boardroom table view) on for this account</label>}
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
-   {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Plan limits for this person ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
-    <p className="muted small">Basic accounts start with: no open room, no recording, 90-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
+   {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Special permissions for this person. They override the plan's normal permissions ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
+    <p className="muted small">Basic accounts start with: no Commbox, no open room, no recording, 70-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
     <div className="lim-box">
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.commbox} onChange={e=>setForm({...form,lim:{...form.lim,commbox:e.target.checked}})}/> Allow Commbox (mail, calendar, contacts)</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.open_room} onChange={e=>setForm({...form,lim:{...form.lim,open_room:e.target.checked}})}/> Allow open room</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.recording} onChange={e=>setForm({...form,lim:{...form.lim,recording:e.target.checked}})}/> Allow meeting recording</label>
      <label>Meeting length (minutes)<input type="number" min={0} max={100000} value={form.lim.meeting_minutes??0} onChange={e=>setForm({...form,lim:{...form.lim,meeting_minutes:e.target.value}})}/><small>0 = no limit</small></label>
@@ -68,6 +69,19 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    {formErr&&<div className="alert" role="alert">{formErr}</div>}
    <div className="actions"><button className="primary" disabled={saving}>{saving?'Saving…':form.mode==='create'?'Create user':'Save changes'}</button><button type="button" className="secondary" onClick={()=>setForm(null)}>Cancel</button></div>
   </form>}
+  {users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
+   <div className="plantable-wrap"><table className="plantable"><thead><tr><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
+   {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={commbox:'Commbox',open_room:'Open room',recording:'Recording',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
+    return <tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
+     <td><span className={`badge ${p.plan&&p.plan!=='basic'?'green':''}`}>{adm?'Administrator':p.plan_name||'Basic'}</span></td>
+     <td>{p.plan==='basic'||adm?'\u2013':day(p.start)}</td><td>{p.plan==='basic'||adm?'\u2013':day(p.end)}</td>
+     <td>{adm?'\u2013':p.plan==='basic'?'Free':p.paid?'Yes':'No'}</td><td>{adm||p.plan==='basic'?'\u2013':day(p.paid_on)}</td>
+     <td>{adm||p.plan==='basic'?'\u2013':`${p.currency||''} ${Number(p.amount||0).toFixed(2)}`}</td>
+     <td>{adm||!L.meeting_minutes?'No limit':`${L.meeting_minutes} min`}</td><td>{L.recording?'Allowed':'Not allowed'}</td>
+     <td>{adm||!L.docs_per_day?'No limit':`${L.docs_per_day} (used ${L.docs_used_today??0} today)`}</td><td>{L.commbox?'Allowed':'Not allowed'}</td>
+     <td>{adm?'\u2013':ks.length?<span className="badge amber" title={ks.map(k=>`${lab[k]||k}: ${typeof cu[k]==='boolean'?(cu[k]?'allowed':'not allowed'):cu[k]===0?'no limit':cu[k]}`).join(', ')}>Yes: {ks.map(k=>lab[k]||k).join(', ')}</span>:'None'}</td>
+     <td>{!adm&&<button className="textbtn" onClick={()=>openEdit(u)} aria-label={`Edit permissions of ${u.email}`}><Pencil size={14}/> Edit</button>}</td></tr>})}
+   </tbody></table></div></section>}
   <section className="panel">
    <div className="searchbar"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by name or email" aria-label="Search users"/></div>
    {users===null?<div className="empty">Loading users…</div>:!users.length?<div className="empty">No users match.</div>:
