@@ -1,12 +1,12 @@
 """What each person may do, by plan, with the administrator's per-person changes on top.
 
-Basic: no open room, meetings of up to 60 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
+Basic: no open room, meetings of up to 90 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
 Individual / Business: everything on. Administrators: everything on, no limits.
 The administrator can raise or lower any of these for a single person (Admin > Users > Limits). A count of 0 means "no limit"."""
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"open_room": False, "recording": False, "meeting_minutes": 60, "docs_per_day": 5, "pdf_pages": 5}
+BASIC = {"open_room": False, "recording": False, "meeting_minutes": 90, "docs_per_day": 5, "pdf_pages": 5}
 OPEN = {"open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0}
 WARN_MINUTES = 10
 FIELDS = {"open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int}
