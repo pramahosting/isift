@@ -1318,3 +1318,11 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 
 /* participants / chat window: two-thirds of the old width, from the very top of the window */
 @media(min-width:901px){.rm-chat{position:fixed!important;top:0;right:0;height:100vh;width:213px;z-index:80;box-shadow:-6px 0 24px #0005}.rm-shell.sideopen{padding-right:var(--sidew,213px)}}
+
+.rm-hres,.rm-hrot{position:absolute;z-index:90;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #2f64f0;box-shadow:0 1px 4px #0008;touch-action:none}
+.rm-hres{right:-8px;bottom:-8px;cursor:nwse-resize}
+.rm-hrot{left:calc(50% - 7px);top:-30px;cursor:grab}.rm-hrot::after{content:"";position:absolute;left:50%;top:100%;width:2px;height:16px;margin-left:-1px;background:#2f64f0}
+.rm-editname.dark{color:#3b6fe0;font-size:14px;display:inline-flex;gap:4px;align-items:center}.rm-editname.dark:hover{color:#1d4ed8}
+.rm-editname{display:inline-flex;gap:4px;align-items:center}
+.rm-seatbar{transform:translate(-50%,calc(-100% - 46px))}
+.rm-hres{right:-8px;bottom:auto;top:-8px;cursor:nesw-resize}
