@@ -397,6 +397,12 @@ async def room_socket(ws: WebSocket, code: str):
                         for i in [pid] + ids: await _send(state["peers"][i]["ws"], out)
                     else:
                         await _to_view(state, state["peers"][pid].get("group"), out)        # to everyone in the same group (or the main room)
+            elif t == "rename":     # a person changes the name others see
+                new = " ".join(str(msg.get("name") or "").split())[:60]
+                if new:
+                    name = new; state["peers"][pid]["name"] = new
+                    for _i, _p in list(state["peers"].items()): await _send(_p["ws"], {"type": "renamed", "id": pid, "name": new})
+                    await _roster_to_hosts(state)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam"))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
