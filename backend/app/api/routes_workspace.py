@@ -241,6 +241,7 @@ async def new_note(payload: dict, user: User = Depends(principal), db: AsyncSess
     kind = payload.get("kind") if payload.get("kind") in KINDS else "doc"
     from app.services import entitlements as ent
     await ent.use_document(db, user)                    # Basic: 5 new files (Docs modules and whiteboards together) a day
+    await ent.check_storage(db, user, len(str(payload.get("content") or "")))
     n = Note(owner_id=user.id, kind=kind, title=(str(payload.get("title") or "").strip() or "Untitled")[:200], content=_check_content(kind, payload.get("content"))); db.add(n); await db.commit()
     return _note_out(n)
 
@@ -272,7 +273,12 @@ async def save_note(nid: str, payload: dict, user: User = Depends(principal), db
     base = payload.get("base")
     if base and base != _utc(n.updated_at): raise HTTPException(409, "Someone else saved changes to this file after you opened it. Reload to see their changes.")
     if "title" in payload: n.title = (str(payload["title"] or "").strip() or "Untitled")[:200]
-    if "content" in payload: n.content = _check_content(n.kind, payload["content"])
+    if "content" in payload:
+        new = _check_content(n.kind, payload["content"])
+        from app.services import entitlements as ent
+        from app.models import User as _U
+        await ent.check_storage(db, await db.get(_U, n.owner_id), len(new) - len(n.content or ""))     # the owner's storage pays for edits by others
+        n.content = new
     n.updated_at = datetime.now(timezone.utc); await db.commit(); return _note_out(n, False, sh.NAMES[lvl])
 
 @router.delete("/notes/{nid}")

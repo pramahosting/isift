@@ -275,3 +275,56 @@ def test_team_booking_page_round_robin(client):
     # a teammate who is removed from the page stops getting bookings
     assert client.patch(f"/api/v1/booking-types/{r.json()['id']}", json={"team_members": []}, headers=ah).json()["team_members"] == []
     assert client.get(f"/api/v1/public/book/{slug}").json()["team"] is False
+
+def test_storage_and_meeting_hours_limits(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch)
+    L = client.get("/api/v1/me/limits", headers=bh).json()
+    assert L["storage_mb"] == 100 and L["meeting_hours_per_month"] == 20 and L["storage_used_mb"] == 0
+    uid = user_id(client, ah, client.email)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"storage_mb": 1}}, headers=ah)
+    big = "x" * 600_000
+    n = client.post("/api/v1/notes", json={"kind": "doc", "content": big}, headers=bh); assert n.status_code in (200, 413), n.text
+    if n.status_code == 200:
+        r = client.post("/api/v1/notes", json={"kind": "doc", "content": big}, headers=bh); assert r.status_code == 403 and "storage is full" in r.text
+        small = client.post("/api/v1/notes", json={"kind": "doc", "content": "hi"}, headers=bh); assert small.status_code == 200      # small ones still fit
+        client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"storage_mb": 0}}, headers=ah)                                      # 0 = no limit
+        assert client.post("/api/v1/notes", json={"kind": "doc", "content": big}, headers=bh).status_code == 200
+    # meeting hours: counted per host, a host with none left cannot start
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.services import entitlements as ent
+    from app.models import User
+    from sqlalchemy import select
+    async def use(mins):
+        async with SessionLocal() as db:
+            u = (await db.execute(select(User).where(User.email == client.email))).scalar_one()
+            await ent.add_meeting_minutes(db, u.email, mins); return await ent.minutes_left(db, u)
+    assert asyncio.run(use(60)) == 20 * 60 - 60
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"meeting_hours_per_month": 1}}, headers=ah)
+    assert asyncio.run(use(0)) == 0
+    assert client.get("/api/v1/me/limits", headers=bh).json()["hours_used_month"] == 1.0
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"meeting_hours_per_month": 0}}, headers=ah)
+    assert asyncio.run(use(0)) is None
+    assert client.get("/api/v1/me/limits", headers=ah).json()["storage_mb"] == 0       # administrators are never limited
+
+def test_host_without_hours_left_cannot_start_and_hours_are_counted(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch); tok = bh["Authorization"].split()[1]
+    code = make(client, bh)["code"]
+    ws, w = join(client, code, name="Ben", token=tok)
+    try: assert w.receive_json()["type"] == "welcome"
+    finally: ws.__exit__(None, None, None)
+    import time; time.sleep(0.3)
+    assert client.get("/api/v1/me/limits", headers=bh).json()["hours_used_month"] >= 0           # counted when the room emptied
+    uid = user_id(client, ah, client.email)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"meeting_hours_per_month": 1}}, headers=ah)
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.services import entitlements as ent
+    async def burn():
+        async with SessionLocal() as db: await ent.add_meeting_minutes(db, client.email, 61)
+    asyncio.run(burn())
+    code2 = make(client, bh)["code"]
+    ws, w = join(client, code2, name="Ben", token=tok)
+    try:
+        m = w.receive_json(); assert m["type"] == "error" and "meeting hours" in m["message"]
+    finally: ws.__exit__(None, None, None)

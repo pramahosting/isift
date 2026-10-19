@@ -371,7 +371,11 @@ async def room_socket(ws: WebSocket, code: str):
             ok, why = _passcode_ok(code, first.get("passcode"), passcode)
             if not ok: await _send(ws, {"type": "error", "code": "passcode", "message": why}); await ws.close(); return
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
-        state = HUB.setdefault(code, {"started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
+        left = await ent.minutes_left(db, host_user) if code not in HUB else None
+        if left is not None and left <= 0:
+            await _send(ws, {"type": "error", "message": "The host has used all of this month's meeting hours. Ask them to upgrade their plan or contact an administrator."}); await ws.close(); return
+        if left is not None: host_lim = {**host_lim, "meeting_minutes": min(host_lim["meeting_minutes"] or left, left)}     # the meeting cannot run past the hours left this month
+        state = HUB.setdefault(code, {"host_email": host_user.email, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         client = str(first.get("client") or "")[:40]
@@ -523,6 +527,11 @@ async def room_socket(ws: WebSocket, code: str):
                 if task: task.cancel()
                 if state.get("timer") and not state.get("ending"): state["timer"].cancel()
                 HUB.pop(code, None)
+                if state.get("host_email"):
+                    try:
+                        from app.services import entitlements as _ent
+                        async with SessionLocal() as _db: await _ent.add_meeting_minutes(_db, state["host_email"], (time.time() - state["started"]) / 60)     # counts towards the host's monthly hours
+                    except Exception: log.exception("Could not count meeting minutes")
 
 async def _meeting_clock(code: str, state: dict) -> None:
     """Basic hosts get meetings of a limited length: everyone is told 10 minutes before the end (like Zoom), and the meeting then closes."""
@@ -631,6 +640,9 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
         else:
             shutil.copyfile(audio_path, keep); has_video = False          # audio-only meeting: keep a copy for download
         from app.services import storage, billing
+        try: await ent.check_storage(db, user, size)
+        except HTTPException:
+            audio_path.unlink(missing_ok=True); keep.unlink(missing_ok=True); raise
         try: placed = await storage.store_file(keep, user, rid, has_video)
         except Exception as exc:
             log.exception("Could not store recording")
