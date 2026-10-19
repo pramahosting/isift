@@ -1282,3 +1282,24 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .rm-leg{background:linear-gradient(90deg,#3b2112,#8a5732 40%,#a06a3e 52%,#5a361d 80%,#33190b)!important;clip-path:polygon(0 0,100% 0,82% 100%,18% 100%);border-radius:0!important;box-shadow:none!important}
 .rm-leg.ped{clip-path:polygon(22% 0,78% 0,100% 100%,0 100%)}
 .rm-foot{background:radial-gradient(ellipse at 50% 35%,#8a5732,#33190b)!important;box-shadow:0 5px 10px #0008!important}
+
+/* editor toolbar and layout, closer to a desktop PDF editor */
+.se-tools{position:sticky;top:0;z-index:40;background:#fff;border:1px solid #dbe1ec;border-radius:12px;padding:6px 8px;gap:4px 10px;box-shadow:0 4px 14px #1b25401a;align-items:center}
+.se-tgroup{display:flex;gap:2px;align-items:center;padding-right:10px;border-right:1px solid #e3e8f1}.se-tgroup:last-of-type{border-right:0}
+.se-tool{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:58px;height:50px;padding:4px 8px;border:0;border-radius:9px;background:transparent;color:#243049;font-size:11.5px;font-weight:600;cursor:pointer;position:relative}
+.se-tool:hover{background:#eef2fa}.se-tool.on{background:#e3ecff;color:#1d4ed8;box-shadow:inset 0 0 0 1.5px #7aa2ff}.se-tool.sm{min-width:36px;height:36px}
+.se-style select{height:30px;border:1px solid #d5dcea;border-radius:6px;margin-left:6px}.se-zoom{margin-left:auto;border-right:0}.se-zv{min-width:44px;text-align:center;font-size:12.5px;font-weight:700;color:#243049}
+.se-hint{flex:1 1 100%;order:9}
+.se-work{display:flex;gap:0;align-items:flex-start;background:#e8ecf4;border-radius:12px;overflow:hidden}
+.se-thumbs{width:104px;flex:none;position:sticky;top:78px;align-self:flex-start;max-height:calc(100vh - 100px);overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px 8px;background:#dfe4ee;border-right:1px solid #cdd5e4}
+.se-thumb{border:2px solid transparent;border-radius:6px;padding:0;background:#fff;cursor:pointer;position:relative;display:block}.se-thumb img{display:block;width:100%;border-radius:4px}.se-thumb span{position:absolute;left:0;right:0;bottom:-18px;text-align:center;font-size:11px;color:#46506a}.se-thumb{margin-bottom:16px}.se-thumb.on{border-color:#2f64f0}
+.se-work .se-pages{flex:1;min-width:0;background:transparent;border-radius:0}
+.se-shape .se-grip{opacity:0}.se-shape:hover .se-grip{opacity:1}.se-shape{outline:1px dashed transparent}.se-shape:hover{outline-color:#2f64f0}
+.se-page.tool-highlight,.se-page.tool-rect,.se-page.tool-ellipse,.se-page.tool-line,.se-page.tool-arrow{cursor:crosshair}.se-page.tool-check,.se-page.tool-cross{cursor:copy}
+@media(max-width:720px){.se-thumbs{display:none}.se-tool{min-width:48px}}
+
+.se-work{overflow:clip}.se-thumbs{position:static;max-height:none;overflow:visible;align-self:stretch;padding:0;display:block}
+.se-thumbs-in{position:sticky;top:84px;display:flex;flex-direction:column;gap:10px;padding:12px 8px;max-height:calc(100vh - 100px);overflow:auto}
+.se-zv{border:0;background:transparent;cursor:pointer;border-radius:6px;height:30px}.se-zv:hover{background:#eef2fa}
+.se-work .se-pages{overflow:visible;padding:14px 10px}
+.se-style select{min-width:68px;padding:0 6px}
