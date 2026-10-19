@@ -262,12 +262,36 @@ async def update_action(action_id:str,data:ActionUpdate,user:User=Depends(princi
     for key,value in data.model_dump(exclude_unset=True).items(): setattr(row,key,value)
     await db.commit(); return row
 
+async def _team_items(db,user,action_id=None):
+    from app.services import team
+    emails=await team.need_team(db,user); ids=[u.id for u in (await team.users_by_email(db,emails)).values()]
+    q=select(ActionItem,Meeting).join(Meeting).where(Meeting.owner_id.in_(ids),Meeting.sensitivity=="normal")
+    if action_id: q=q.where(ActionItem.id==action_id)
+    return (await db.execute(q.order_by(ActionItem.due_date))).all()
+
+@api.get("/team/action-items")
+async def team_action_items(user:User=Depends(principal),db:AsyncSession=Depends(get_db)):
+    """Action items from teammates' normal (not sensitive) meetings, for everyone on a Business company account."""
+    rows=await _team_items(db,user); owners={u.id:u.email for u in (await db.execute(select(User).where(User.id.in_({m.owner_id for _,m in rows})))).scalars().all()} if rows else {}
+    return [{"id":a.id,"description":a.description,"owner":a.owner,"due_date":a.due_date,"priority":a.priority,"status":a.status,"meeting_id":m.id,"meeting_title":m.title,"meeting_owner":owners.get(m.owner_id,""),"mine":m.owner_id==user.id} for a,m in rows]
+
+@api.patch("/team/action-items/{action_id}")
+async def team_update_action(action_id:str,data:ActionUpdate,user:User=Depends(principal),db:AsyncSession=Depends(get_db)):
+    rows=await _team_items(db,user,action_id)
+    if not rows: raise HTTPException(404,"Action item not found")
+    row=rows[0][0]
+    for key,value in data.model_dump(exclude_unset=True).items(): setattr(row,key,value)
+    db.add(AuditLog(actor=user.email,action="team.action.update",resource_type="action_item",resource_id=row.id,safe_metadata={})); await db.commit()
+    return {"id":row.id,"status":row.status,"owner":row.owner,"due_date":row.due_date,"priority":row.priority}
+
 @api.post("/meetings/{meeting_id}/minutes/generate")
 async def enqueue_minutes(meeting_id:str,user:User=Depends(principal),db:AsyncSession=Depends(get_db)):
     m=(await db.execute(select(Meeting).where(Meeting.id==meeting_id,Meeting.owner_id==user.id))).scalar_one_or_none()
     if not m: raise HTTPException(404,"Meeting not found")
     t=(await db.execute(select(Transcript).where(Transcript.meeting_id==meeting_id,Transcript.status=="ready").order_by(Transcript.created_at.desc()).limit(1))).scalar_one_or_none()
     if not t: raise HTTPException(409,"A transcript must be available before minutes can be generated")
+    from app.services import entitlements as ent
+    await ent.use_ai(db,user)                  # Basic: 3 AI summaries a month
     correlation_id=str(uuid.uuid4())
     run=WorkflowRun(correlation_id=correlation_id,workflow_name="generate_minutes",status="queued"); db.add(run); await db.flush()
     job=Job(kind="generate_minutes",payload={"meeting_id":m.id,"transcript_id":t.id,"workflow_run_id":run.id})

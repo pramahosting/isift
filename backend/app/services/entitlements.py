@@ -1,15 +1,15 @@
 """What each person may do, by plan, with the administrator's per-person changes on top.
 
-Basic: no Commbox (mail, calendar, contacts), no open room, meetings of up to 70 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
+Basic: 3 AI minutes summaries a month, 1 booking page, no calls, no Commbox (mail, calendar, contacts), no open room, meetings of up to 70 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
 Individual / Business: everything on. Administrators: everything on, no limits.
 The administrator can raise or lower any of these for a single person (Admin > Users > Limits). A count of 0 means "no limit"."""
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5}
-OPEN = {"commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0}
+BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5}
+OPEN = {"calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0}
 WARN_MINUTES = 10
-FIELDS = {"commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int}
+FIELDS = {"calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int}
 
 def _key(email: str) -> str: return store.hkey("profile", email)
 
@@ -34,7 +34,7 @@ async def limits(db, user) -> dict:
     if user.role == "admin": return {**OPEN, "plan": "admin", "custom": {}}
     plan = await billing.plan_of(db, user)
     base = dict(BASIC if plan == "basic" else {**OPEN, "pdf_pages": 0})
-    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"
+    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"; base["calls"] = plan != "basic"
     custom = await overrides(db, user.email)
     base.update({k: v for k, v in custom.items() if k in FIELDS})
     return {**base, "plan": plan, "custom": custom}
@@ -54,10 +54,32 @@ async def use_document(db, user) -> None:
         raise HTTPException(403, f"You have used your {lim} documents for today. The Basic plan includes {lim} new Docs files, whiteboards or PDF/Word edits a day. Upgrade your plan, or ask an administrator for more.")
     await store.put(db, store.hkey("docs-usage", user.email), {"day": date.today().isoformat(), "n": n + 1})
 
+# ---- AI minutes a month and booking pages ----
+async def ai_used(db, user) -> int:
+    d = await store.get(db, store.hkey("ai-usage", user.email), {})
+    return int(d.get("n", 0)) if d.get("month") == date.today().strftime("%Y-%m") else 0
+
+async def use_ai(db, user) -> None:
+    from fastapi import HTTPException
+    lim = (await limits(db, user))["ai_per_month"]; n = await ai_used(db, user)
+    if lim and n >= lim:
+        raise HTTPException(403, f"You have used your {lim} AI minutes summaries for this month. The Basic plan includes {lim} a month. Upgrade your plan, or ask an administrator for more.")
+    await store.put(db, store.hkey("ai-usage", user.email), {"month": date.today().strftime("%Y-%m"), "n": n + 1})
+
+async def check_booking_pages(db, user, have: int) -> None:
+    from fastapi import HTTPException
+    lim = (await limits(db, user))["booking_pages"]
+    if lim and have >= lim:
+        raise HTTPException(403, f"The Basic plan includes {lim} booking page{'s' if lim != 1 else ''}. Upgrade your plan, or ask an administrator to allow more.")
+
+async def need_calls(user, db) -> None:
+    from fastapi import HTTPException
+    if not (await limits(db, user))["calls"]: raise HTTPException(403, "Calling other people is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow it for you. You can still receive calls.")
+
 async def need_commbox(user, db) -> None:
     from fastapi import HTTPException
     if not (await limits(db, user))["commbox"]: raise HTTPException(403, "Commbox (mail, calendar and contacts) is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow it for you.")
 
 async def summary(db, user) -> dict:
     L = await limits(db, user)
-    return {**L, "docs_used_today": await docs_used(db, user), "warn_minutes": WARN_MINUTES}
+    return {**L, "docs_used_today": await docs_used(db, user), "ai_used_month": await ai_used(db, user), "warn_minutes": WARN_MINUTES}

@@ -70,7 +70,15 @@ async def _unique_slug(db: AsyncSession, want: str, skip_id: str = "") -> str:
 @router.get("/booking-types")
 async def list_types(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(select(BookingType).where(BookingType.owner_id == user.id).order_by(BookingType.created_at))).scalars().all()
-    return [_type_out(r) for r in rows]
+    return [_type_out(r) | {"team_members": await _members_of(db, r)} for r in rows]
+
+async def _members_of(db: AsyncSession, bt: BookingType) -> list[str]:
+    from app.services import team
+    return await team.page_members(db, bt.id)
+
+async def team_need(db: AsyncSession, user: User) -> None:
+    from app.services import team
+    await team.need_team(db, user)
 
 def _apply(bt: BookingType, payload: dict, creating: bool = False) -> None:
     if creating or "title" in payload:
@@ -89,17 +97,46 @@ def _apply(bt: BookingType, payload: dict, creating: bool = False) -> None:
     if "availability" in payload: bt.availability = _clean_hours(payload["availability"])
     if "active" in payload: bt.active = bool(payload["active"])
 
+@router.get("/team/booking-pages")
+async def team_pages(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Shared booking pages made by anyone on my team (the Business plan), so everyone can copy the link."""
+    from app.services import team
+    emails = await team.need_team(db, user); users = await team.users_by_email(db, emails); out = []
+    rows = (await db.execute(select(BookingType).where(BookingType.owner_id.in_([u.id for u in users.values()])).order_by(BookingType.created_at))).scalars().all()
+    for bt in rows:
+        mem = await team.page_members(db, bt.id)
+        if not mem: continue
+        o = next(u for u in users.values() if u.id == bt.owner_id)
+        out.append({**_type_out(bt), "team_members": mem, "owner_email": o.email, "owner_name": _host_name(o), "mine": o.id == user.id})
+    return out
+
+async def _set_team(db: AsyncSession, bt: BookingType, user: User, raw) -> None:
+    from app.services import team, store
+    if not raw:
+        await store.drop(db, team.page_key(bt.id)); return
+    team_emails = await team.need_team(db, user)
+    if not isinstance(raw, list): raise HTTPException(422, "Choose teammates from your company.")
+    want = list(dict.fromkeys(str(e).strip().lower() for e in raw if str(e).strip()))
+    bad = [e for e in want if e not in team_emails]
+    if bad: raise HTTPException(422, f"{bad[0]} is not on your company account.")
+    await store.put(db, team.page_key(bt.id), {"members": [e for e in want if e != user.email.lower()]})
+
 @router.post("/booking-types")
 async def create_type(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    if len((await db.execute(select(BookingType).where(BookingType.owner_id == user.id))).scalars().all()) >= 20:
-        raise HTTPException(409, "You can have up to 20 booking pages.")
+    have = len((await db.execute(select(BookingType).where(BookingType.owner_id == user.id))).scalars().all())
+    from app.services import entitlements as ent
+    await ent.check_booking_pages(db, user, have)          # Basic: 1 booking page
+    if have >= 20: raise HTTPException(409, "You can have up to 20 booking pages.")
     bt = BookingType(owner_id=user.id, timezone="UTC", availability=dict(DEFAULT_HOURS))
     from app.services import calendar_sync as cal
     bt.timezone = str(await cal.user_timezone(db))
     _apply(bt, payload, creating=True)
     bt.slug = await _unique_slug(db, _slug(str(payload.get("slug") or bt.title)))
+    if payload.get("team_members"): await team_need(db, user)
     db.add(bt); db.add(AuditLog(actor=user.email, action="booking.type.create", resource_type="booking_type", safe_metadata={"slug": bt.slug}))
-    await db.commit(); return _type_out(bt)
+    await db.commit()
+    if "team_members" in payload: await _set_team(db, bt, user, payload["team_members"])
+    return _type_out(bt) | {"team_members": await _members_of(db, bt)}
 
 @router.patch("/booking-types/{tid}")
 async def update_type(tid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -107,7 +144,9 @@ async def update_type(tid: str, payload: dict, user: User = Depends(principal), 
     if not bt or bt.owner_id != user.id: raise HTTPException(404, "Booking page not found.")
     _apply(bt, payload)
     if payload.get("slug"): bt.slug = await _unique_slug(db, _slug(str(payload["slug"])), bt.id)
-    await db.commit(); return _type_out(bt)
+    await db.commit()
+    if "team_members" in payload: await _set_team(db, bt, user, payload["team_members"])
+    return _type_out(bt) | {"team_members": await _members_of(db, bt)}
 
 @router.post("/booking-types/{tid}/share-draft")
 async def share_draft(tid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -159,7 +198,8 @@ async def share_type(tid: str, payload: dict, user: User = Depends(principal), d
 async def delete_type(tid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     bt = await db.get(BookingType, tid)
     if not bt or bt.owner_id != user.id: raise HTTPException(404, "Booking page not found.")
-    await db.delete(bt); await db.commit(); return {"ok": True}
+    from app.services import store, team
+    await store.drop(db, team.page_key(bt.id)); await db.delete(bt); await db.commit(); return {"ok": True}
 
 def _booking_out(b: Booking, bt: BookingType | None, base: str = "") -> dict:
     return {"id": b.id, "type_id": b.type_id, "type_title": bt.title if bt else "", "guest_name": b.guest_name, "guest_email": b.guest_email, "guest_note": b.guest_note,
@@ -182,11 +222,11 @@ async def _busy(db: AsyncSession, owner_id: str, start: datetime, end: datetime,
         out.append((a, b))
     return out
 
-async def free_slots(db: AsyncSession, bt: BookingType, start_day: date, end_day: date, skip_meeting: str = "") -> list[datetime]:
+async def free_slots(db: AsyncSession, bt: BookingType, start_day: date, end_day: date, skip_meeting: str = "", owner_id: str = "") -> list[datetime]:
     zone = _zone(bt.timezone); now = datetime.now(timezone.utc)
     earliest = now + timedelta(hours=bt.min_notice_hours); latest = now + timedelta(days=bt.days_ahead)
     first = datetime.combine(start_day, dtime.min, zone).astimezone(timezone.utc); last = datetime.combine(end_day + timedelta(days=1), dtime.min, zone).astimezone(timezone.utc)
-    busy = await _busy(db, bt.owner_id, first - timedelta(hours=12), last + timedelta(hours=12), skip_meeting)
+    busy = await _busy(db, owner_id or bt.owner_id, first - timedelta(hours=12), last + timedelta(hours=12), skip_meeting)
     dur, buf = timedelta(minutes=bt.duration_minutes), timedelta(minutes=bt.buffer_minutes)
     out, day = [], start_day
     while day <= end_day:
@@ -200,6 +240,28 @@ async def free_slots(db: AsyncSession, bt: BookingType, start_day: date, end_day
         day += timedelta(days=1)
     return out
 
+async def team_slots(db: AsyncSession, bt: BookingType, owner: User, d0: date, d1: date) -> list[datetime]:
+    """A shared page offers a time when at least one teammate is free then."""
+    from app.services import team
+    hosts = await team.hosts_of(db, bt, owner)
+    if len(hosts) == 1: return await free_slots(db, bt, d0, d1)
+    got: set[datetime] = set()
+    for h in hosts: got.update(await free_slots(db, bt, d0, d1, owner_id=h.id))
+    return sorted(got)
+
+async def pick_host(db: AsyncSession, bt: BookingType, owner: User, start: datetime) -> User:
+    """Round robin: of the teammates free at that time, the one with the fewest upcoming bookings gets it."""
+    from app.services import team
+    hosts = await team.hosts_of(db, bt, owner)
+    if len(hosts) == 1: return owner
+    z = _zone(bt.timezone); d = start.astimezone(z).date(); now = datetime.now(timezone.utc); best = None
+    for h in hosts:
+        if start not in await free_slots(db, bt, d - timedelta(days=1), d + timedelta(days=1), owner_id=h.id): continue
+        n = len((await db.execute(select(Booking).where(Booking.owner_id == h.id, Booking.status == "booked", Booking.start_at >= now))).scalars().all())
+        if best is None or n < best[0]: best = (n, h)
+    if not best: raise HTTPException(409, "Sorry, that time was just taken or is no longer available. Please pick another.")
+    return best[1]
+
 # ---------------- public: the page guests see ----------------
 async def _public_type(db: AsyncSession, slug: str) -> tuple[BookingType, User]:
     bt = (await db.execute(select(BookingType).where(BookingType.slug == slug))).scalar_one_or_none()
@@ -212,17 +274,19 @@ def _host_name(u: User) -> str: return u.display_name or u.email.split("@")[0]
 @router.get("/public/book/{slug}")
 async def public_page(slug: str, db: AsyncSession = Depends(get_db)):
     bt, owner = await _public_type(db, slug)
-    return {"title": bt.title, "description": bt.description, "duration_minutes": bt.duration_minutes, "host": _host_name(owner), "timezone": bt.timezone, "days_ahead": bt.days_ahead}
+    from app.services import team
+    hosts = await team.hosts_of(db, bt, owner)
+    return {"title": bt.title, "description": bt.description, "duration_minutes": bt.duration_minutes, "host": _host_name(owner) if len(hosts) == 1 else ", ".join(_host_name(h) for h in hosts[:4]) + (" and others" if len(hosts) > 4 else ""), "team": len(hosts) > 1, "timezone": bt.timezone, "days_ahead": bt.days_ahead}
 
 @router.get("/public/book/{slug}/slots")
 async def public_slots(slug: str, start: str = "", end: str = "", db: AsyncSession = Depends(get_db)):
-    bt, _ = await _public_type(db, slug)
+    bt, bowner = await _public_type(db, slug)
     zone = _zone(bt.timezone); today = datetime.now(zone).date()
     try: d0 = date.fromisoformat(start) if start else today; d1 = date.fromisoformat(end) if end else d0 + timedelta(days=bt.days_ahead)
     except ValueError: raise HTTPException(422, "Use dates like 2026-10-20.")
     d0 = max(d0 - timedelta(days=1), today - timedelta(days=1)); d1 = min(d1 + timedelta(days=1), today + timedelta(days=bt.days_ahead + 1))
     if (d1 - d0).days > 70: raise HTTPException(422, "Ask for up to ten weeks at a time.")
-    return {"duration_minutes": bt.duration_minutes, "slots": [s.isoformat().replace("+00:00", "Z") for s in await free_slots(db, bt, d0, d1)]}
+    return {"duration_minutes": bt.duration_minutes, "slots": [s.isoformat().replace("+00:00", "Z") for s in await team_slots(db, bt, bowner, d0, d1)]}
 
 def _limit(request: Request, key: str, n: int = 12, per: int = 3600) -> None:
     ip = request.client.host if request.client else "?"; k = f"{key}:{ip}"; now = time.time()
@@ -299,7 +363,7 @@ def _base(payload: dict) -> str:
 async def _create(db: AsyncSession, bt: BookingType, owner: User, name: str, email: str, note: str, tz: str, start: datetime, base: str) -> tuple[Booking, str]:
     from app.api.routes_rooms import make_room
     end = start + timedelta(minutes=bt.duration_minutes)
-    z = _zone(bt.timezone); free = await free_slots(db, bt, (start.astimezone(z).date()) - timedelta(days=1), start.astimezone(z).date() + timedelta(days=1))
+    z = _zone(bt.timezone); free = await free_slots(db, bt, (start.astimezone(z).date()) - timedelta(days=1), start.astimezone(z).date() + timedelta(days=1), owner_id=owner.id)
     if start not in free: raise HTTPException(409, "Sorry, that time was just taken or is no longer available. Please pick another.")
     host = _host_name(owner)
     m = Meeting(owner_id=owner.id, external_id=f"local:{secrets.token_hex(8)}", title=f"{bt.title}: {name} and {host}", organizer=shown_email(owner.email), start_at=start, end_at=end, sensitivity="normal", status="scheduled",
@@ -324,7 +388,8 @@ async def public_book(slug: str, payload: dict, request: Request, db: AsyncSessi
     _limit(request, "book")
     bt, owner = await _public_type(db, slug)
     name, email, note, tz = _guest(payload)
-    b, join = await _create(db, bt, owner, name, email, note, tz, _parse_start(payload.get("start")), _base(payload))
+    start = _parse_start(payload.get("start")); owner = await pick_host(db, bt, owner, start)     # shared pages: the teammate who is free and has the fewest bookings
+    b, join = await _create(db, bt, owner, name, email, note, tz, start, _base(payload))
     db.add(AuditLog(actor=email, action="booking.create", resource_type="booking", safe_metadata={"slug": slug})); await db.commit()
     sent = await _email_both(db, owner, bt, b, join, "booked")
     return {"token": b.token, "join_url": join, "start_at": _aware(b.start_at).isoformat(), "end_at": _aware(b.end_at).isoformat(), "email": sent, "host": _host_name(owner), "title": bt.title}
@@ -376,7 +441,7 @@ async def public_reschedule(token: str, payload: dict, request: Request, db: Asy
     if not bt.active: raise HTTPException(409, "This booking page is no longer taking bookings.")
     start = _parse_start(payload.get("start")); base = _base(payload)
     z = _zone(bt.timezone); d = start.astimezone(z).date()
-    free = await free_slots(db, bt, d - timedelta(days=1), d + timedelta(days=1), skip_meeting=b.meeting_id or "")
+    free = await free_slots(db, bt, d - timedelta(days=1), d + timedelta(days=1), skip_meeting=b.meeting_id or "", owner_id=owner.id)
     if start not in free: raise HTTPException(409, "Sorry, that time is not available. Please pick another.")
     m = await db.get(Meeting, b.meeting_id) if b.meeting_id else None
     b.start_at, b.end_at = start, start + timedelta(minutes=bt.duration_minutes)

@@ -6,6 +6,7 @@ from app.api.routes import api
 from app.api.routes_admin import router as admin_router
 from app.api.routes_connections import router as connections_router
 from app.api.routes_rooms import router as rooms_router
+from app.api.routes_calls import router as calls_router
 from app.api.routes_workspace import router as workspace_router
 from app.api.routes_sharing import router as sharing_router
 from app.api.routes_docedit import router as docedit_router
@@ -39,6 +40,7 @@ app.include_router(api)
 app.include_router(admin_router)
 app.include_router(connections_router)
 app.include_router(rooms_router)
+app.include_router(calls_router)
 app.include_router(workspace_router)
 app.include_router(sharing_router)
 app.include_router(docedit_router)

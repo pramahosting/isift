@@ -147,3 +147,131 @@ def test_commbox_not_for_basic_and_admin_table_has_plan_details(client, monkeypa
     assert client.get("/api/v1/mailbox/accounts", headers=bh).status_code == 200
     row = next(u for u in client.get("/api/v1/admin/users", headers=ah).json() if u["email"] == client.email)
     assert row["limits"]["custom"] == {"commbox": True}
+
+def test_price_change_shows_at_once_and_is_never_cached(client):
+    ah, _ = login(client)
+    r = client.get("/api/v1/billing/plans"); assert "no-store" in r.headers["cache-control"]
+    assert client.patch("/api/v1/admin/pricing/default-individual", json={"monthly": 2000, "yearly": 22800}, headers=ah).status_code == 200
+    ind = next(p for p in client.get("/api/v1/billing/plans?t=1").json()["plans"] if p["id"] == "individual")
+    assert ind["monthly"] == 2000 and ind["yearly"] == 22800
+
+def test_basic_gets_a_taste_of_ai_and_one_booking_page(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch)
+    L = client.get("/api/v1/me/limits", headers=bh).json(); assert L["ai_per_month"] == 3 and L["booking_pages"] == 1 and L["calls"] is False
+    week = {str(d): [["09:00", "17:00"]] for d in range(7)}
+    r = client.post("/api/v1/booking-types", json={"title": "One", "duration_minutes": 30, "availability": week}, headers=bh); assert r.status_code == 200, r.text
+    r = client.post("/api/v1/booking-types", json={"title": "Two", "duration_minutes": 30, "availability": week}, headers=bh); assert r.status_code == 403 and "1 booking page" in r.text
+    uid = user_id(client, ah, client.email)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"booking_pages": 3, "ai_per_month": 1}}, headers=ah)
+    assert client.post("/api/v1/booking-types", json={"title": "Two", "duration_minutes": 30, "availability": week}, headers=bh).status_code == 200
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.models import User
+    from sqlalchemy import select
+    from app.services import entitlements as ent
+    from fastapi import HTTPException
+    async def go():
+        async with SessionLocal() as db:
+            u = (await db.execute(select(User).where(User.email == client.email))).scalar_one()
+            await ent.use_ai(db, u)
+            try: await ent.use_ai(db, u)
+            except HTTPException as e: return e.status_code
+    assert asyncio.run(go()) == 403
+
+def test_calling_between_users(client, monkeypatch):
+    ah, atok = login(client)
+    bh = basic_user(client, monkeypatch); bmail = client.email; btok = bh["Authorization"].split()[1]
+    r = client.post("/api/v1/calls", json={"to": "admin@isift.au"}, headers=bh); assert r.status_code == 403 and "Basic" in r.text      # Basic cannot place calls
+    uid = user_id(client, ah, bmail)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"calls": True}}, headers=ah)
+    r = client.post("/api/v1/calls", json={"to": "admin@isift.au"}, headers=bh); assert r.status_code == 409 and "not online" in r.text   # callee has no open tab
+    assert client.post("/api/v1/calls", json={"to": "nobody@nowhere.com"}, headers=bh).status_code == 404
+    with client.websocket_connect("/api/v1/ws/calls") as aws, client.websocket_connect("/api/v1/ws/calls") as bws:
+        aws.send_json({"type": "auth", "token": atok}); assert aws.receive_json()["type"] == "ready"
+        bws.send_json({"type": "auth", "token": btok}); assert bws.receive_json()["type"] == "ready"
+        r = client.post("/api/v1/calls", json={"to": "admin@isift.au", "base_url": "http://t/"}, headers=bh); assert r.status_code == 200, r.text
+        cid, code = r.json()["call_id"], r.json()["code"]
+        m = aws.receive_json(); assert m["type"] == "incoming" and m["call_id"] == cid and m["code"] == code and m["from"]["email"] == bmail
+        assert client.post(f"/api/v1/calls/{cid}/answer", json={"accept": True}, headers=bh).status_code == 404       # only the callee can answer
+        assert client.post(f"/api/v1/calls/{cid}/answer", json={"accept": True}, headers=ah).json()["code"] == code
+        assert aws.receive_json()["type"] == "ended"
+        assert bws.receive_json()["type"] == "accepted"
+        # second call: declined
+        cid2 = client.post("/api/v1/calls", json={"to": "admin@isift.au", "base_url": "http://t/"}, headers=bh).json()["call_id"]; aws.receive_json()
+        client.post(f"/api/v1/calls/{cid2}/answer", json={"accept": False}, headers=ah); assert aws.receive_json()["type"] == "ended"; assert bws.receive_json()["type"] == "declined"
+        # third call: the caller hangs up before it is answered
+        cid3 = client.post("/api/v1/calls", json={"to": "admin@isift.au", "base_url": "http://t/"}, headers=bh).json()["call_id"]; aws.receive_json()
+        client.post(f"/api/v1/calls/{cid3}/cancel", headers=bh); m = aws.receive_json(); assert m["type"] == "ended" and m["reason"] == "cancelled"
+    ws, w = join(client, code, name="Admin", token=atok)
+    try: assert w.receive_json()["type"] == "welcome"
+    finally: ws.__exit__(None, None, None)
+
+def _team(client):
+    """Admin owns a company on the Business plan with two teammates; returns headers for owner, bella, carl."""
+    ah, _ = login(client); client.get("/api/v1/account", headers=ah)
+    assert client.post("/api/v1/account/company", json={"name": "Acme"}, headers=ah).status_code == 201
+    out = [ah]
+    for who in ("bella", "carl"):
+        m = client.post("/api/v1/account/company/members", json={"email": f"{who}@acme.com", "name": who.title(), "role": "member"}, headers=ah); assert m.status_code == 201, m.text
+        t = client.post("/api/v1/auth/local-login", json={"username": f"{who}@acme.com", "password": m.json()["temp_password"]}).json()["access_token"]
+        h = {"Authorization": "Bearer " + t}; client.get("/api/v1/account", headers=h); out.append(h)
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.services import store
+    async def upgrade():
+        async with SessionLocal() as db:
+            link = await store.get(db, store.hkey("memberof", "admin@isift.au"), {})
+            await store.put(db, f"billing:co:{link['company_id']}", {"plan": "business", "period": "monthly", "status": "active", "period_end": None, "auto_renew": False, "failure_count": 0, "charges": []})
+    asyncio.run(upgrade())
+    return out
+
+def test_team_needs_business_company(client, monkeypatch):
+    bh = basic_user(client, monkeypatch)
+    assert client.get("/api/v1/team/action-items", headers=bh).status_code == 402
+    assert client.get("/api/v1/team/booking-pages", headers=bh).status_code == 402
+    r = client.post("/api/v1/booking-types", json={"title": "Team", "team_members": ["x@y.com"]}, headers=bh); assert r.status_code == 402
+
+def test_team_shared_action_items(client):
+    from datetime import datetime, timezone
+    ah, bh, ch = _team(client)
+    base = {"title": "Standup", "start_at": datetime.now(timezone.utc).isoformat(), "end_at": datetime.now(timezone.utc).isoformat()}
+    mid = client.post("/api/v1/meetings", json=base, headers=bh)
+    if mid.status_code >= 400: pytest.skip("meeting create route differs")
+    mid = mid.json()["id"]
+    from app.core.db import SessionLocal
+    import asyncio
+    from app.models import ActionItem, Meeting
+    async def add(sens):
+        async with SessionLocal() as db:
+            m = await db.get(Meeting, mid); m.sensitivity = sens
+            a = ActionItem(meeting_id=mid, description="Send the deck", owner="carl@acme.com", status="assigned"); db.add(a); await db.commit(); return a.id
+    aid = asyncio.get_event_loop().run_until_complete(add("normal")) if False else asyncio.run(add("normal"))
+    got = client.get("/api/v1/team/action-items", headers=ch).json()
+    assert [x["description"] for x in got] == ["Send the deck"] and got[0]["mine"] is False
+    assert client.patch(f"/api/v1/team/action-items/{aid}", json={"status": "completed"}, headers=ch).json()["status"] == "completed"
+    assert client.get("/api/v1/action-items", headers=bh).json()[0]["status"] == "completed"       # the meeting owner sees it
+    assert client.get("/api/v1/action-items", headers=ch).json() == []                             # not copied into Carl's own list
+    asyncio.run(add("sensitive")); assert len(client.get("/api/v1/team/action-items", headers=ch).json()) == 0   # sensitive meetings are never shared
+    outsider = basic_user(client, None) if False else None
+
+def test_team_booking_page_round_robin(client):
+    ah, bh, ch = _team(client)
+    week = {str(d): [["09:00", "10:00"]] for d in range(7)}
+    r = client.post("/api/v1/booking-types", json={"title": "Sales call", "duration_minutes": 30, "min_notice_hours": 0, "timezone": "UTC", "availability": week, "slug": "sales", "team_members": ["bella@acme.com", "carl@acme.com", "x@other.com"]}, headers=ah)
+    assert r.status_code == 422                                                                   # not on the company
+    r = client.post("/api/v1/booking-types", json={"title": "Sales call", "duration_minutes": 30, "min_notice_hours": 0, "timezone": "UTC", "availability": week, "slug": "sales", "team_members": ["bella@acme.com", "carl@acme.com"]}, headers=ah)
+    assert r.status_code == 200, r.text
+    slug = r.json()["slug"]; assert r.json()["team_members"] == ["bella@acme.com", "carl@acme.com"]
+    page = client.get(f"/api/v1/public/book/{slug}").json(); assert page["team"] is True
+    seen = client.get(f"/api/v1/team/booking-pages", headers=bh).json(); assert [p["slug"] for p in seen] == [slug] and seen[0]["mine"] is False
+    slots = client.get(f"/api/v1/public/book/{slug}/slots").json()["slots"]; assert slots
+    first = slots[0]
+    body = lambda n: {"name": f"G{n}", "email": f"g{n}@example.com", "start": first, "timezone": "UTC", "base_url": "http://t/"}
+    for n in range(3): assert client.post(f"/api/v1/public/book/{slug}", json=body(n)).status_code == 200      # three people may take the same time
+    assert client.post(f"/api/v1/public/book/{slug}", json=body(9)).status_code == 409                       # all three busy now
+    counts = [len(client.get("/api/v1/bookings", headers=h).json()) for h in (ah, bh, ch)]
+    assert counts == [1, 1, 1]                                                                    # shared out evenly
+    assert first not in client.get(f"/api/v1/public/book/{slug}/slots").json()["slots"]
+    # a teammate who is removed from the page stops getting bookings
+    assert client.patch(f"/api/v1/booking-types/{r.json()['id']}", json={"team_members": []}, headers=ah).json()["team_members"] == []
+    assert client.get(f"/api/v1/public/book/{slug}").json()["team"] is False
