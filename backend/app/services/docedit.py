@@ -88,8 +88,18 @@ def _lines(raw: bytes) -> list:
                         fam = "Courier" if any(k in low for k in ("courier", "mono", "consolas")) else "Times" if any(k in low for k in ("times", "serif", "georgia", "garamond", "cambria", "palatino")) and "sans" not in low else "Helvetica"
                         bold = any(k in low for k in ("bold", "black", "heavy", "demi")); italic = any(k in low for k in ("italic", "oblique"))
                         base = (t - chars[0].matrix[5]) if chars else (t - o.y0)
+                        words, cw, prev = [], None, None
+                        for ch in chars:
+                            t_ = ch.get_text()
+                            if t_.isspace(): cw = None; prev = ch; continue
+                            if cw is None or (prev is not None and ch.x0 - prev.x1 > max(1.0, (track if track > 0.4 else 0) + 0.3 * size)):
+                                cw = [t_, ch.x0, ch.x1]; words.append(cw)
+                            else: cw[0] += t_; cw[2] = ch.x1
+                            prev = ch
+                        words = [[w_[0], round(w_[1] - l, 2), round(w_[2] - l, 2)] for w_ in words]
+                        if "".join(w_[0] for w_ in words).replace(" ", "") != txt.replace(" ", ""): words = []     # the words do not add up to the line: use the whole line instead
                         out.append({"bbox": [round(o.x0 - l, 2), round(t - o.y1, 2), round(o.x1 - l, 2), round(t - o.y0, 2)], "text": txt, "size": round(size, 1),
-                                    "base": round(base, 2), "track": round(track, 2) if track > 0.4 else 0, "fam": fam, "bold": bold, "italic": italic})
+                                    "words": words, "base": round(base, 2), "track": round(track, 2) if track > 0.4 else 0, "fam": fam, "bold": bold, "italic": italic})
                 elif hasattr(o, "__iter__"):
                     for c in o: walk(c)
             for o in pages[i]: walk(o)
@@ -208,7 +218,7 @@ def pdf_apply(raw: bytes, ops: list):
         if x1 - x0 < 2 or y1 - y0 < 2: raise EditError("An edit area is too small.")
         return [x0, y0, x1, y1]
     for o in ops:
-        if o.get("t") not in ("delete", "text", "sign"): raise EditError("Unknown edit.")
+        if o.get("t") not in ("delete", "text", "sign", "shape"): raise EditError("Unknown edit.")
         page_of(o)
     covers: dict = {}
     dels = [o for o in ops if o.get("t") == "delete"]
@@ -240,7 +250,7 @@ def pdf_apply(raw: bytes, ops: list):
         if col: covers.setdefault(i, []).append([x0, y0, x1, y1, col])
     layers: dict = {}
     for o in ops:
-        if o.get("t") in ("text", "sign"): layers.setdefault(page_of(o), []).append(o)
+        if o.get("t") in ("text", "sign", "shape"): layers.setdefault(page_of(o), []).append(o)
     for i in sorted(set(layers) | set(covers)):
         l, b, r, t = _box(w.pages[i]); W, H = r - l, t - b; buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
         for cv in covers.get(i, []):
@@ -257,6 +267,31 @@ def pdf_apply(raw: bytes, ops: list):
                 c.setFillColorRGB(*_color(o.get("color")))
                 for k, line in enumerate(text.split("\n")):
                     tx = c.beginText(x, H - (y + size * 0.9465 + k * size * 1.2)); tx.setFont(_font_name(o), size); tx.setCharSpace(track); tx.textOut(line); c.drawText(tx)
+            elif o["t"] == "shape":
+                x0, y0, x1, y1 = rect_of(o, i)
+                kind = str(o.get("kind") or "rect"); col = _color(o.get("color") or "#dc2626")
+                try: lw = max(0.5, min(float(o.get("w") or 2), 12.0))
+                except Exception: lw = 2.0
+                by0, by1 = H - y1, H - y0       # PDF y runs upwards
+                c.saveState(); c.setStrokeColorRGB(*col); c.setFillColorRGB(*col); c.setLineWidth(lw); c.setLineCap(1); c.setLineJoin(1)
+                if kind == "highlight":
+                    c.setFillAlpha(0.35); c.rect(x0, by0, x1 - x0, by1 - by0, stroke=0, fill=1)
+                elif kind == "rect": c.rect(x0, by0, x1 - x0, by1 - by0, stroke=1, fill=0)
+                elif kind == "ellipse": c.ellipse(x0, by0, x1, by1, stroke=1, fill=0)
+                elif kind in ("line", "arrow"):
+                    ax, ay, bx, by = (x0, by1, x1, by0) if not o.get("flip") else (x0, by0, x1, by1)
+                    if o.get("rev"): ax, ay, bx, by = bx, by, ax, ay
+                    c.line(ax, ay, bx, by)
+                    if kind == "arrow":
+                        import math
+                        ang = math.atan2(by - ay, bx - ax); hl = 6 + lw * 2
+                        p = c.beginPath(); p.moveTo(bx, by); p.lineTo(bx - hl * math.cos(ang - 0.45), by - hl * math.sin(ang - 0.45)); p.lineTo(bx - hl * math.cos(ang + 0.45), by - hl * math.sin(ang + 0.45)); p.close(); c.drawPath(p, stroke=0, fill=1)
+                elif kind == "check":
+                    p = c.beginPath(); p.moveTo(x0 + (x1 - x0) * .12, by0 + (by1 - by0) * .5); p.lineTo(x0 + (x1 - x0) * .4, by0 + (by1 - by0) * .18); p.lineTo(x0 + (x1 - x0) * .9, by0 + (by1 - by0) * .86); c.drawPath(p, stroke=1, fill=0)
+                elif kind == "cross":
+                    c.line(x0 + (x1 - x0) * .15, by0 + (by1 - by0) * .15, x0 + (x1 - x0) * .85, by0 + (by1 - by0) * .85); c.line(x0 + (x1 - x0) * .15, by0 + (by1 - by0) * .85, x0 + (x1 - x0) * .85, by0 + (by1 - by0) * .15)
+                else: raise EditError("Unknown shape.")
+                c.restoreState()
             else:
                 x0, y0, x1, y1 = rect_of(o, i)
                 c.drawImage(ImageReader(io.BytesIO(png_ok(b64_in(o.get("png"), 400_000)))), x0, H - y1, x1 - x0, y1 - y0, mask="auto", preserveAspectRatio=True, anchor="c")

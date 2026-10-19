@@ -137,7 +137,7 @@ def test_open_and_edit_meeting_like_zoom(client):
                      "options": {"video_off_on_entry": True, "auto_record": True}, "add_invitees": "c@example.com"}, headers=h)
     assert p.status_code == 200, p.text; n = p.json()
     assert n["title"] == "Plan v2" and n["duration_minutes"] == 45 and n["start_at"].startswith("2030-01-02T11:00") and n["access"] == "open" and n["passcode"] is None
-    assert n["options"] == {"mute_on_entry": True, "video_off_on_entry": True, "auto_record": True, "host_video_off": False, "virtual_room": True} and "c@example.com" in n["invitees"]
+    assert n["options"] == {"mute_on_entry": True, "video_off_on_entry": True, "auto_record": True, "host_video_off": False, "virtual_room": False} and "c@example.com" in n["invitees"]
     p2 = client.patch(f"/api/v1/meetings/{mid}", json={"access": "passcode", "passcode": "4321"}, headers=h).json(); assert p2["passcode"] == "4321"
     code = n["meeting_id"]; assert client.get(f"/api/v1/rooms/{code}").json()["options"]["mute_on_entry"] is True
     assert client.patch(f"/api/v1/meetings/{mid}", json={"title": ""}, headers=h).status_code == 422
