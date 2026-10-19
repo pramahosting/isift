@@ -1410,4 +1410,5 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 /* AI highlight */
 .ai-tag{display:inline-block;font-style:normal;font-weight:800;font-size:.68em;letter-spacing:.06em;line-height:1;padding:3px 6px;border-radius:6px;margin-left:6px;vertical-align:middle;color:#fff;background:linear-gradient(135deg,#6d5efc,#2f6bff)}
 .float-chip .ai-tag{margin:0 6px 0 0}
+.ai-tag.big{font-size:.4em;margin-left:10px;padding:4px 8px}
 .ai-word{background:linear-gradient(135deg,#6d5efc,#2f6bff);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}

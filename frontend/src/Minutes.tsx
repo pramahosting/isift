@@ -95,7 +95,7 @@ export function MinutesCard({m,generated,title,onSave,collapsed}:{m:any,generate
   </div>}
  </>;
  return <section className="panel mn-card-panel">
-  <div className="panelhead"><div><h2>Version {m.version}</h2><p className="muted">Generated {generated} · <span className={`badge ${tone}`}>{label}</span>{m.edited_by?` · edited by ${m.edited_by}`:''}</p></div></div>
+  <div className="panelhead"><div><h2>Version {m.version}</h2><p className="muted"><i className="ai-tag">AI</i> Generated {generated} · <span className={`badge ${tone}`}>{label}</span>{m.edited_by?` · edited by ${m.edited_by}`:''}</p></div></div>
   {collapsed?<details><summary>Show this version</summary>{body}</details>:body}
  </section>;
 }
