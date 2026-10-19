@@ -2037,3 +2037,14 @@ def test_table_shape_change_is_shared_with_everyone(client):
     assert m["shape"] == "round"
     ls, lw = join(client, r["code"], name="Late"); assert lw.receive_json()["shape"] == "round"   # later joiners see the current shape
     for x in (ls, gs, hs): x.__exit__(None, None, None)
+
+
+def test_host_can_rename_meeting(client):
+    h, tok = login(client)
+    r = client.post("/api/v1/rooms", json={"base_url": "http://t/", "title": "Old name"}, headers=h)
+    assert r.status_code == 200, r.text; code = r.json()["code"]
+    assert client.post(f"/api/v1/rooms/{code}/rename", json={"title": "  New   name "}).status_code in (401, 403)
+    n = client.post(f"/api/v1/rooms/{code}/rename", json={"title": "  New   name "}, headers=h)
+    assert n.status_code == 200 and n.json()["title"] == "New name"
+    assert client.get(f"/api/v1/rooms/{code}", headers=h).json()["title"] == "New name"
+    assert client.post(f"/api/v1/rooms/{code}/rename", json={"title": "  "}, headers=h).status_code == 400

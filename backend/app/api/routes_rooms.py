@@ -529,6 +529,20 @@ async def end_meeting(code: str, payload: dict | None = None, user: User = Depen
     db.add(AuditLog(actor=user.email, action="room.end", resource_type="room", safe_metadata={})); await db.commit()
     return {"ok": True}
 
+@router.post("/rooms/{code}/rename")
+async def rename_meeting(code: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """The host changes the meeting's name. Everyone in the room sees the new name straight away."""
+    room = await _host_room_any(db, code, user)
+    title = " ".join(str((payload or {}).get("title") or "").split())[:200]
+    if not title: raise HTTPException(400, "Type a name for the meeting.")
+    room.title = title
+    if room.meeting_id:
+        m = await db.get(Meeting, room.meeting_id)
+        if m: m.title = title
+    await db.commit()
+    if code in HUB: await _broadcast(code, {"type": "title", "title": title})
+    return {"ok": True, "title": title}
+
 # ---- recordings ----
 async def _host_room(db: AsyncSession, code: str, user: User) -> Room:
     room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
