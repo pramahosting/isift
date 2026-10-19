@@ -32,7 +32,7 @@ export function PricingPage({loggedIn,current,onBack,onChoose}:{loggedIn:boolean
     <main className="pr-main">
       <p className="eyebrow">PRICING</p><h1>Plans that grow with your meetings</h1>
       <p className="pr-sub">Start with Basic, free for ever. Move to Individual for AI minutes, booking pages and full host controls, or Business for a whole company.</p>
-      <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly <em>save about 21%</em></button></div>
+      <div className="pr-toggle" role="group" aria-label="Billing period"><button type="button" className={!annual?'on':''} onClick={()=>setAnnual(false)}>Monthly</button><button type="button" className={annual?'on':''} onClick={()=>setAnnual(true)}>Yearly{(()=>{const n=Math.max(0,...PLANS.filter(p=>p.id!=='basic'&&live.onSale(p.id)).map(p=>{const q=live.prices(p.id);return q.monthly>0?Math.round((1-q.yearly/(q.monthly*12))*100):0}));return n>0?<em>save about {n}%</em>:null})()}</button></div>
       <div className="pr-grid">{PLANS.filter(p=>live.onSale(p.id)||current===p.id).map(p=>{const pr=live.prices(p.id);const price=annual?pr.perMonthYearly:pr.monthly;
         return <section key={p.id} className={`pr-card${p.popular?' popular':''}${current===p.id?' current':''}`} aria-label={`${p.name} plan`}>
           {p.popular&&<span className="pr-badge"><Sparkles size={13}/> Most popular</span>}
