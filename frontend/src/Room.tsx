@@ -1,6 +1,8 @@
 import React,{useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {rememberRoom} from './Connections';
-import {SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer} from 'lucide-react';
+import {BgProcessor,PRESETS,loadSaved,save as saveBg,readImage} from './vbg';
+import type {BgMode} from './vbg';
+import {Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer} from 'lucide-react';
 
 type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStream;mic:boolean;cam:boolean;screen:boolean};
 const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
@@ -25,10 +27,15 @@ function WallClock(){
 function SideWindow(){
   return <g>
     <clipPath id="vw-glass"><polygon points="3.2,10.7 12.8,11.7 12.8,31.6 3.2,36.0"/></clipPath>
-    <linearGradient id="vw-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#9fd2f5"/><stop offset="1" stopColor="#e7f5ff"/></linearGradient>
-    <linearGradient id="vw-cur" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#8e2f35"/><stop offset=".5" stopColor="#b8494f"/><stop offset="1" stopColor="#8a2c32"/></linearGradient>
+    <linearGradient id="vw-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#4f9fe0"/><stop offset=".55" stopColor="#a9d6f5"/><stop offset="1" stopColor="#e9f6ff"/></linearGradient>
+    <linearGradient id="vw-cur" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#dcdad4"/><stop offset=".3" stopColor="#ffffff"/><stop offset=".6" stopColor="#e6e4de"/><stop offset=".85" stopColor="#ffffff"/><stop offset="1" stopColor="#d8d6d0"/></linearGradient>
     <polygon points="2.8,9.9 13.2,11.0 13.2,32.4 2.8,36.9" fill="#f6f3ec" stroke="#cdc6b6" strokeWidth=".15"/>
-    <g clipPath="url(#vw-glass)"><rect x="0" y="0" width="20" height="50" fill="url(#vw-sky)"/><circle cx="10" cy="16" r="1.6" fill="#fff3b0"/><path d="M0 30 Q5 22 9 28 T20 24 L20 40 L0 40Z" fill="#6fae6a"/><path d="M0 34 Q6 29 12 33 T20 31 L20 40 L0 40Z" fill="#4f9456"/></g>
+    <g clipPath="url(#vw-glass)"><rect x="0" y="0" width="20" height="50" fill="url(#vw-sky)"/><circle cx="9.6" cy="15.2" r="3.4" fill="#fff6c8" opacity=".35"/><circle cx="9.6" cy="15.2" r="1.5" fill="#fff8d6"/>
+      <g fill="#fff" opacity=".92"><ellipse cx="5.2" cy="15.6" rx="2.1" ry=".55"/><ellipse cx="6.2" cy="15.2" rx="1.3" ry=".5"/><ellipse cx="11.6" cy="19.2" rx="1.9" ry=".5"/><ellipse cx="12.4" cy="18.8" rx="1.1" ry=".45"/></g>
+      <path d="M0 28.5 L2.6 24.6 L4.6 27 L7 22.6 L9.6 27.4 L12 24.8 L14 28.6 L20 28.6 L20 40 L0 40Z" fill="#8fa9c4"/><path d="M0 29.6 L3 27.4 L6 29 L9 26.8 L13 29.2 L20 27.6 L20 40 L0 40Z" fill="#6f93a8" opacity=".85"/>
+      <path d="M0 31 Q4 27.6 8 30.4 T20 28.6 L20 40 L0 40Z" fill="#6fae6a"/><path d="M0 34 Q6 30.4 12 33.4 T20 31.6 L20 40 L0 40Z" fill="#4f9456"/><path d="M0 37 Q7 34 13 36.4 T20 35 L20 44 L0 44Z" fill="#3d8148"/>
+      <rect x="4.45" y="29.6" width=".35" height="3.4" fill="#5b3f2a"/><circle cx="4.6" cy="28.6" r="1.6" fill="#2f7a3f"/><circle cx="3.8" cy="29.4" r="1.1" fill="#3a8a4a"/><circle cx="5.5" cy="29.4" r="1.1" fill="#35833f"/>
+      <circle cx="10.6" cy="34.6" r=".18" fill="#fff"/><circle cx="7.4" cy="35.8" r=".18" fill="#ffd84a"/><circle cx="11.6" cy="36.6" r=".18" fill="#ff9ec0"/></g>
     <polygon points="7.9,10.9 8.3,11.2 8.3,33.9 7.9,34.1" fill="#f6f3ec" opacity=".9"/><polygon points="3.2,23.4 12.8,21.7 12.8,22.4 3.2,24.0" fill="#f6f3ec" opacity=".9"/>
     <line x1="2" y1="8.7" x2="14" y2="10.2" stroke="#4a3426" strokeWidth=".35" strokeLinecap="round"/><circle cx="2" cy="8.7" r=".45" fill="#8c6a3f"/><circle cx="14" cy="10.2" r=".45" fill="#8c6a3f"/>
     <polygon points="2.4,9.0 5.6,9.4 5.6,44.6 2.4,47.0" fill="url(#vw-cur)"/><polygon points="10.6,9.9 13.8,10.3 13.8,38.2 10.6,40.6" fill="url(#vw-cur)"/>
@@ -87,7 +94,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   type ChatMsg={name:string;text:string;at:string;me?:boolean;key:string;names:Record<string,string>;g:string};const [chat,setChat]=useState<ChatMsg[]>([]);const [chatOpen,setChatOpen]=useState(false);const [chatText,setChatText]=useState('');const [chatKey,setChatKey]=useState('all');const [unread,setUnread]=useState<Record<string,number>>({});const [picking,setPicking]=useState(false);const [pickSel,setPickSel]=useState<string[]>([]);const [extraKeys,setExtraKeys]=useState<string[]>([]);const chatKeyRef=React.useRef('all'),chatOpenRef=React.useRef(false);chatKeyRef.current=chatKey;chatOpenRef.current=chatOpen;
   const [notice,setNotice]=useState('');const [localStream,setLocalStream]=useState<MediaStream|null>(null);const [mediaNote,setMediaNote]=useState('');
   const ws=useRef<WebSocket|null>(null);const pcs=useRef<Record<string,RTCPeerConnection>>({});const myId=useRef('');
-  const local=useRef<{audio?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack}>({});
+  const local=useRef<{audio?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
   const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});
   const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
   const rec=useRef<any>(null);const wasRecording=useRef(false);
@@ -113,11 +120,11 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     let stream:MediaStream|null=null;
     try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:{width:{ideal:1280},height:{ideal:720}}})}
     catch{try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote('Camera not available - joining with microphone only.')}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}}
-    if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
+    if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;local.current.raw=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
     setLocalStream(stream);return stream;
   },[]);
   useEffect(()=>{if(phase==='lobby'&&info&&!localStream&&!err)getMedia()},[phase,info]);// preview in the lobby
-  useEffect(()=>()=>{local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop()},[]);
+  useEffect(()=>()=>{local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop()},[]);
 
   // ---- peer connections ----
   const send=(m:any)=>{if(ws.current?.readyState===1)ws.current.send(JSON.stringify(m))};
@@ -157,10 +164,12 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const [copied,setCopied]=useState('');
   const copyText=async(id:string,t:string)=>{try{await navigator.clipboard.writeText(t);setCopied(id);setTimeout(()=>setCopied(''),2000)}catch{window.prompt('Copy this:',t)}};
   const endMeeting=async()=>{if(!window.confirm('End this meeting? The link stops working and the meeting is cancelled.'))return;const r=await fetch(`${api}/rooms/${code}/end`,{method:'POST',headers:authH,body:JSON.stringify({cancel:true})});if(r.ok){local.current.audio?.stop();local.current.cam?.stop();onLeave()}else setErr('Could not end the meeting. Try again.')};
-  const [joining,setJoining]=useState(false);
+  const [joining,setJoining]=useState(false);const [barOn,setBarOn]=useState(true);const [fs,setFs]=useState(false);
+  const goFs=()=>{try{if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen()}catch{}};
+  useEffect(()=>{const f=()=>setFs(!!document.fullscreenElement);document.addEventListener('fullscreenchange',f);return()=>document.removeEventListener('fullscreenchange',f)},[]);
   useEffect(()=>{if(phase!=='lobby'||err)setJoining(false)},[phase,err]);
   const join=async()=>{
-    if(joining)return;setErr('');setJoining(true);
+    if(joining)return;setErr('');setJoining(true);try{document.documentElement.requestFullscreen?.().catch(()=>{})}catch{}
     const slow=setTimeout(()=>{setErr('Could not reach the meeting. Check your connection and press Join again.');setJoining(false);try{ws.current?.close()}catch{}},20000);
     const sock=new WebSocket(wsUrl(api,code));ws.current=sock;
     sock.onopen=()=>send({type:'join',client:(()=>{try{let c=sessionStorage.getItem('isift.cid');if(!c){c=Math.random().toString(36).slice(2)+Date.now().toString(36);sessionStorage.setItem('isift.cid',c)}return c}catch{return ''}})(),name:name.trim()||'Guest',token:token||undefined,passcode:passcode.trim()||undefined});
@@ -210,7 +219,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     sock.onclose=()=>{clearTimeout(slow);setPhase(p=>{if(p==='lobby'){setErr(e=>e||'Could not connect to the meeting. Press Join again.');setJoining(false)}return p==='room'||p==='waiting'?'ended':p})};
     sock.onerror=()=>{setJoining(false)};
   };
-  const leaveLocal=()=>{Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();ws.current?.close()};
+  const leaveLocal=()=>{Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
   const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
   const endAll=async()=>{if(!window.confirm('End the meeting for everyone?'))return;if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
 
@@ -218,6 +227,29 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};
   const toggleCam=()=>{const t=local.current.cam;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.video){setNotice('The host has not allowed participants to start their video. Ask the host.');return}t.enabled=!t.enabled;setCam(t.enabled);send({type:'state',mic:!!local.current.audio?.enabled,cam:t.enabled,screen})};
   const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}};
+  const [bg,setBg]=useState<BgMode>(loadSaved);const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const bgInit=useRef(false);
+  const swapCam=async(nt:MediaStreamTrack)=>{const L=local.current,old=L.cam,en=old?old.enabled!==false:true,sharing=!!L.video&&L.video!==old;nt.enabled=en;L.cam=nt;if(!sharing){L.video=nt;await replaceVideo(nt)}setLocalStream(new MediaStream([...(L.audio?[L.audio]:[]),nt]))};
+  const applyBg=async(m:BgMode)=>{
+    setBg(m);saveBg(m);const L=local.current,raw=L.raw;if(!raw)return;
+    if(m.kind==='none'){const p=L.proc;if(p){L.proc=undefined;await swapCam(raw);p.stop()}setBgBusy(false);return}
+    if(L.proc){L.proc.setMode(m);return}
+    setBgBusy(true);const p=new BgProcessor(raw);L.proc=p;p.setMode(m);
+    p.onfail=()=>{setNotice('Background effects are not supported on this device or browser.');if(L.proc===p){L.proc=undefined;p.stop()}setBgBusy(false);setBg({kind:'none'});saveBg({kind:'none'})};
+    p.onready=async()=>{if(L.proc===p){await swapCam(p.track);setBgBusy(false)}};
+  };
+  useEffect(()=>{if(localStream&&!bgInit.current&&local.current.raw){bgInit.current=true;if(bg.kind!=='none')applyBg(bg)}},[localStream]);
+  const bgPanel=<div className="rm-bgwrap" onClick={()=>setBgOpen(false)}><div className="rm-bgpanel" role="dialog" aria-label="Background and effects" onClick={e=>e.stopPropagation()}>
+    <div className="rm-bghead"><b>Background &amp; effects</b><button type="button" onClick={()=>setBgOpen(false)} aria-label="Close"><X size={16}/></button></div>
+    {!local.current.raw&&<p className="muted small">No camera is available, so there is nothing to change.</p>}
+    <div className="rm-bggrid">
+      <button type="button" className={`rm-bgopt${bg.kind==='none'?' on':''}`} onClick={()=>applyBg({kind:'none'})}><i className="none"><X size={18}/></i><span>None</span></button>
+      <button type="button" className={`rm-bgopt${bg.kind==='blur'&&bg.level<14?' on':''}`} onClick={()=>applyBg({kind:'blur',level:8})}><i className="blur"/><span>Slight blur</span></button>
+      <button type="button" className={`rm-bgopt${bg.kind==='blur'&&bg.level>=14?' on':''}`} onClick={()=>applyBg({kind:'blur',level:20})}><i className="blur strong"/><span>Strong blur</span></button>
+      {PRESETS.map(p=><button type="button" key={p.id} className={`rm-bgopt${bg.kind==='image'&&bg.id===p.id?' on':''}`} onClick={()=>applyBg({kind:'image',id:p.id,url:p.url})}><i style={{backgroundImage:`url("${p.url}")`}}/><span>{p.name}</span></button>)}
+      <label className={`rm-bgopt${bg.kind==='image'&&bg.id==='custom'?' on':''}`}><i className="up"><Plus size={20}/></i><span>Upload image</span><input type="file" accept="image/*" hidden onChange={async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;try{applyBg({kind:'image',id:'custom',url:await readImage(f)})}catch{setNotice('That image could not be read.')}}}/></label>
+    </div>
+    <p className="muted small">{bgBusy?'Starting background effect…':'Only you choose your own background; everyone sees it. It uses some computer power.'}</p>
+  </div></div>;
   const toggleScreen=async()=>{
     if(screen){await replaceVideo(local.current.cam);local.current.video=local.current.cam;setLocalStream(s=>s);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false});return}
     try{const d=await (navigator.mediaDevices as any).getDisplayMedia({video:true});const t=d.getVideoTracks()[0];local.current.video=t;t.onended=()=>{replaceVideo(local.current.cam);local.current.video=local.current.cam;setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false})};await replaceVideo(t);setScreen(true);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true})}catch{setNotice('Screen sharing was cancelled or is not available in this browser.')}
@@ -340,7 +372,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     {info.access==='passcode'&&!info.you_are_host&&<label>Meeting passcode<input value={passcode} onChange={e=>setPasscode(e.target.value)} maxLength={12} placeholder="Passcode from your invitation" autoComplete="off"/></label>}
     {info.access==='signed_in'&&!info.signed_in&&<p className="syncerr" role="alert">This meeting is only open to people with an account. Sign in to join.{onSignIn&&<> <button type="button" className="primary" onClick={()=>{leaveLocal();onSignIn()}}>Sign in</button></>}</p>}
     {info.waiting_room&&!info.you_are_host&&<p className="muted small">The host will let you in when they are ready.</p>}
-    <div className="rm-lobbyctl"><button type="button" className={`secondary${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio}>{mic?<Mic size={16}/>:<MicOff size={16}/>} {mic?'Mic on':'Mic off'}</button><button type="button" className={`secondary${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam}>{cam?<Video size={16}/>:<VideoOff size={16}/>} {cam?'Camera on':'Camera off'}</button></div>
+    {bgOpen&&bgPanel}<div className="rm-lobbyctl"><button type="button" className={`secondary${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio}>{mic?<Mic size={16}/>:<MicOff size={16}/>} {mic?'Mic on':'Mic off'}</button><button type="button" className={`secondary${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam}>{cam?<Video size={16}/>:<VideoOff size={16}/>} {cam?'Camera on':'Camera off'}</button><button type="button" className={`secondary${bg.kind!=='none'?' on':''}`} onClick={()=>setBgOpen(true)} disabled={!local.current.raw}><ImageIcon size={16}/> Background</button></div>
     <p className="muted small">The host may record this meeting. You will see a clear “Recording” banner if they do, and you can leave at any time.</p>
     {err&&<p className="syncerr" role="alert">{err}</p>}
     <button className={`primary join${joining?' busy':''}`} aria-busy={joining} onClick={join} disabled={joining||!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{joining?"Joining…":!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
@@ -364,7 +396,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const hostRow=ordered.find(r=>rankOf(r.host,r.cohost)===2);const hostName=hostRow?(hostRow.self?'you':hostRow.name):(info.host||'');
   const canAct=(r:Row)=>!r.self&&myRank>rankOf(r.host,r.cohost);
   const togglePeople=()=>{setPeopleOpen(o=>!o);setChatOpen(false);setMenuFor('')};
-  return <div className="rm-shell">
+  return <div className={`rm-shell${barOn?'':' nobar'}`}>
     <header className="rm-top"><b className="rm-title">{info.title}</b>{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> Recording</span>}{group&&<span className="rm-group"><Group size={13}/> {group.name}</span>}{clock&&<span className="rm-clock" title="Time left in the discussion groups"><Timer size={13}/> {clock}</span>}<span className="muted"><Users size={14}/> {tiles}</span>{notice&&<span className="rm-notice" role="status">{notice}</span>}</header>
     {ask&&<div className="rm-ask" role="alert"><span>{ask.by} asks you to turn on your {ask.what==='cam'?'camera':'microphone'}.</span><button className="primary" onClick={()=>{if(ask.what==='cam')toggleCam();else toggleMic();const t=ask.what==='cam'?local.current.cam:local.current.audio;if(t&&!t.enabled){}setAsk(null)}}>Turn on</button><button className="secondary" onClick={()=>setAsk(null)}>Not now</button></div>}
     {banner&&<div className="rm-banner" role="status"><Megaphone size={16}/><span><b>{banner.name}:</b> {banner.text}</span><button type="button" className="iconbtn" aria-label="Dismiss" onClick={()=>setBanner(null)}><X size={14}/></button></div>}
@@ -456,9 +488,10 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <div className="rm-msgs">{curChat.filter(c=>c.key===chatKey).map((c,i)=><div key={i} className={`rm-msg${c.me?' me':''}`}><b>{c.me?'You':c.name}</b><p>{c.text}</p></div>)}{!curChat.some(c=>c.key===chatKey)&&<p className="muted">No messages yet.</p>}</div>
       <form onSubmit={sendChat}><label className="rm-to"><span>To:</span><select value={chatKey} onChange={e=>{const v=e.target.value;if(v==='all'||v.includes(','))openThread(v);else{const k=[myId.current,v].sort().join(',');setExtraKeys(x=>x.includes(k)?x:[...x,k]);openThread(k)}}} aria-label="Send to"><option value="all">Everyone</option>{chatKey!=='all'&&!list.some(pe=>[myId.current,pe.id].sort().join(',')===chatKey)&&<option value={chatKey}>{threadLabel(chatKey)}</option>}{list.map(pe=><option key={pe.id} value={[myId.current,pe.id].sort().join(',')}>{pe.name}{pe.host?(pe.cohost?' (co-host)':' (host)'):''}</option>)}</select></label><input value={chatText} onChange={e=>setChatText(e.target.value)} placeholder={chatKey==='all'?'Message everyone':`Message ${threadLabel(chatKey)}`} maxLength={2000}/><button className="primary" aria-label="Send"><Send size={15}/></button></form></aside>}
     </div>
-    <footer className="rm-bar">
+    {barOn&&<footer className="rm-bar">
       <button className={`rm-btn${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio} aria-label={mic?'Mute microphone':'Unmute microphone'}>{mic?<Mic size={18}/>:<MicOff size={18}/>}<span>{mic?'Mute':'Unmute'}</span></button>
       <button className={`rm-btn${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam} aria-label={cam?'Turn camera off':'Turn camera on'}>{cam?<Video size={18}/>:<VideoOff size={18}/>}<span>{cam?'Camera':'Camera off'}</span></button>
+      <button className={`rm-btn${bg.kind!=='none'?' on':''}`} onClick={()=>setBgOpen(true)} aria-label="Background and effects"><ImageIcon size={18}/><span>Background</span></button>
       <button className={`rm-btn${screen?' on':''}`} onClick={toggleScreen} aria-label="Share screen"><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button>
       <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({tiles})</span></button>
       <button className={`rm-btn${chatOpen?' on':''}`} onClick={()=>{setChatOpen(o=>!o);setPeopleOpen(false);if(!chatOpen)setUnread(u=>({...u,[chatKey]:0}))}} aria-label="Chat"><MessageSquare size={18}/><span>Chat</span>{Object.values(unread).reduce((a,b)=>a+b,0)>0&&<i className="rm-dot">{Object.values(unread).reduce((a,b)=>a+b,0)}</i>}</button>
@@ -470,6 +503,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       {(primary||(isHost&&!!info?.options?.open_room))&&(recording?<button className="rm-btn rec" disabled={recBusy} onClick={()=>stopRecording()} aria-label="Stop recording"><Square size={18}/><span>{recBusy?'Saving…':'Stop rec'}</span></button>:<button className="rm-btn" onClick={startRecording} aria-label="Start recording"><Circle size={18}/><span>Record</span></button>)}
       <button className="rm-btn leave" onClick={leave} aria-label="Leave meeting"><PhoneOff size={18}/><span>Leave</span></button>
       {primary&&<button className="rm-btn leave" onClick={endAll} aria-label="End meeting for everyone"><X size={18}/><span>End all</span></button>}
-    </footer>
+    </footer>}
+    {bgOpen&&bgPanel}
+    <div className="rm-viewctl"><button onClick={goFs} aria-label={fs?"Exit full screen":"Full screen"} title={fs?"Exit full screen":"Full screen"}>{fs?<Minimize size={16}/>:<Maximize size={16}/>}</button><button onClick={()=>setBarOn(v=>!v)} aria-label={barOn?"Hide buttons":"Show buttons"} title={barOn?"Hide buttons":"Show buttons"}>{barOn?<ChevronDown size={16}/>:<ChevronUp size={16}/>}</button></div>
   </div>;
 }

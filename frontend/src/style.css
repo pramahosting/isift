@@ -1228,5 +1228,37 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 /* decoration: windows with curtains, a framed picture and a wall clock */
 .rm-decor{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
 /* people sit on a chair in front of the wall, not on it: a chair back behind each person and a shadow cast on the wall */
-.rm-seat::before{content:"";position:absolute;left:-6%;right:-6%;top:-6%;bottom:-34%;z-index:-1;border-radius:20px 20px 8px 8px;background:linear-gradient(#444a58,#272b34);box-shadow:inset 0 2px 0 #ffffff26,0 10px 22px #00000066,14px 8px 26px #0000004d}
-.rm-seat .rm-tile{box-shadow:0 10px 18px #0007,0 0 0 3px #1c212b}
+.rm-seat::before{display:none}
+.rm-seat .rm-tile{box-shadow:none;border:0;outline:0}
+
+/* full-screen meeting + hideable button bar */
+.rm-shell{width:100vw;max-width:none}
+.rm-room{width:min(100%,calc((100vh - var(--rm-res,170px)) * 1.7778))}
+.rm-shell.nobar{--rm-res:70px}
+.rm-viewctl{position:fixed;right:12px;bottom:12px;display:flex;gap:6px;z-index:60}
+.rm-viewctl button{width:34px;height:34px;border-radius:50%;border:0;background:#232d42cc;color:#fff;display:grid;place-items:center;cursor:pointer}
+.rm-viewctl button:hover{background:#3a4866}
+
+.rm-bgwrap{position:fixed;inset:0;background:#0008;z-index:200;display:grid;place-items:center;padding:16px}
+.rm-bgpanel{background:#1a2133;color:#fff;border-radius:16px;padding:16px;width:min(560px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 50px #000a}
+.rm-bghead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.rm-bghead button{background:none;border:0;color:#fff;cursor:pointer}
+.rm-bggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:10px}
+.rm-bgopt{display:flex;flex-direction:column;gap:5px;align-items:stretch;background:#232d42;border:2px solid transparent;border-radius:12px;padding:6px;color:#fff;cursor:pointer;font-size:12px;text-align:center}
+.rm-bgopt.on{border-color:#4d8dff}.rm-bgopt:hover{background:#2f3b57}
+.rm-bgopt i{display:grid;place-items:center;aspect-ratio:16/9;border-radius:8px;background:#0e1422 center/cover no-repeat}
+.rm-bgopt i.blur{background:linear-gradient(120deg,#6a7a96,#b5c0d3,#7f8ba3);filter:blur(1.5px)}.rm-bgopt i.blur.strong{filter:blur(3px)}
+.rm-bgopt i.up{border:2px dashed #55627f;background:none}
+.rm-lobbyctl .secondary.on{outline:2px solid #4d8dff}
+.rm-shell:not(.nobar) .rm-bar{padding-right:96px}
+/* natural wooden table */
+.rm-room .rm-table{
+ background:
+  linear-gradient(180deg,#ffffff2e 0%,#ffffff00 22%,#00000000 70%,#0000002e 100%),
+  repeating-linear-gradient(90deg,#00000000 0 70px,#2a150a40 70px 72px,#00000000 72px 140px,#2a150a40 140px 142px,#00000000 142px 215px,#2a150a40 215px 217px,#00000000 217px 290px),
+  repeating-linear-gradient(0deg,#4a2a1214 0 1px,#00000000 1px 4px,#c8905a12 4px 5px,#00000000 5px 9px,#4a2a120d 9px 10px,#00000000 10px 17px),
+  repeating-linear-gradient(90deg,#94602f 0 70px,#9d6835 70px 140px,#8d5a2b 140px 215px,#996433 215px 290px);
+ box-shadow:0 12px 0 #4a2a14,0 14px 0 #2e1a0d,0 30px 40px #0007,inset 0 2px 0 #ffffff55,inset 0 0 0 3px #5e3718,inset 0 -8px 16px #3a1f0f66}
+.rm-leg{background:linear-gradient(90deg,#4a2a14,#8b552d 45%,#5e3718)!important}
+.rm-foot{background:radial-gradient(ellipse at 50% 40%,#8b552d,#4a2a14)!important}
+.rm-grip{width:7px;height:7px;margin:5.5px;border-width:1px;box-shadow:0 1px 2px #0005}
+.rm-grip::after{content:"";position:absolute;inset:-8px;border-radius:50%}
