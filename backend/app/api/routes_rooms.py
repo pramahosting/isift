@@ -66,6 +66,9 @@ def clean_options(raw, keep: dict | None = None) -> dict:
 async def make_room(db: AsyncSession, user: User, title: str, base_url: str, meeting: Meeting | None = None, start: datetime | None = None, minutes: int = 60,
                     access: str | None = None, passcode: str | None = None, waiting_room: bool | None = None, options: dict | None = None) -> tuple[Room, Meeting]:
     await rs.apply_overrides(db)
+    if (options or {}).get("open_room"):
+        from app.services import entitlements as ent
+        if not await ent.can_open_room(db, user): raise HTTPException(403, "An open room is available to the administrator and to paid plans. Upgrade your plan, or ask an administrator to allow it for you.")
     access, passcode = clean_access(access, passcode)
     waiting = settings.room_default_waiting if waiting_room is None else bool(waiting_room)
     code = secrets.token_urlsafe(9).replace("_", "x").replace("-", "y")
@@ -322,7 +325,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
         await _send(ws, {"type": "error", "message": "This meeting is full."}); return False
     peers_before = [_pub(i, p) for i, p in _view(state, None)]           # a newcomer starts in the main room
     state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None}
-    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
+    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None})
     await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
@@ -342,7 +345,11 @@ async def room_socket(ws: WebSocket, code: str):
                 host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
                 from app.services import virtual_room as vr
                 vr_meeting = (room_options or {}).get("virtual_room", False) is True                          # the tick box in the meeting setup
-                vr_allowed = await vr.allowed(db, await db.get(User, host_id))                                # the service and the host's account allow it
+                host_user = await db.get(User, host_id)
+                vr_allowed = await vr.allowed(db, host_user)                                # the service and the host's account allow it
+                from app.services import entitlements as ent
+                host_lim = await ent.limits(db, host_user)                                  # plan limits of whoever hosts: recording, meeting length, open room
+                if not host_lim["open_room"]: room_options["open_room"] = False             # an open room only works for the administrator and paid hosts
                 room_options["virtual_room"] = vr_allowed and vr_meeting
                 if room_options.get("open_room"): access, waiting_room = "open", False                  # open room: anyone joins at any time, nobody is admitted
         if not room or ended:
@@ -355,8 +362,9 @@ async def room_socket(ws: WebSocket, code: str):
             ok, why = _passcode_ok(code, first.get("passcode"), passcode)
             if not ok: await _send(ws, {"type": "error", "code": "passcode", "message": why}); await ws.close(); return
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
-        state = HUB.setdefault(code, {"peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
+        state = HUB.setdefault(code, {"started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
+        if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         client = str(first.get("client") or "")[:40]
         if client:                                         # the same browser tab joining again (refresh, network drop): drop its old, dead connection first
             for old_id, old in list(state["peers"].items()):
@@ -434,6 +442,8 @@ async def room_socket(ws: WebSocket, code: str):
                     try: await w["ws"].close()
                     except Exception: pass
                 await _tell_hosts(state)
+            elif _rank(state["peers"][pid]) == 2 and t == "record" and msg.get("on") and not state.get("rec_ok", True):
+                await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you."})
             elif _rank(state["peers"][pid]) == 2 and t == "record":
                 state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
             elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape"):
@@ -502,7 +512,25 @@ async def room_socket(ws: WebSocket, code: str):
             if not state["peers"] and not state["waiting"]:
                 task = (state.get("groups") or {}).get("task")
                 if task: task.cancel()
+                if state.get("timer"): state["timer"].cancel()
                 HUB.pop(code, None)
+
+async def _meeting_clock(code: str, state: dict) -> None:
+    """Basic hosts get meetings of a limited length: everyone is told 10 minutes before the end (like Zoom), and the meeting then closes."""
+    from app.services.entitlements import WARN_MINUTES
+    end = state["started"] + state["limit"] * 60
+    try:
+        warn = end - WARN_MINUTES * 60
+        if warn > time.time(): await asyncio.sleep(warn - time.time())
+        left = max(0, round((end - time.time()) / 60))
+        await _broadcast(code, {"type": "notice", "kind": "ending", "ends_in": max(0, int(end - time.time())), "minutes": left, "message": f"This meeting will end in {left} minute{'s' if left != 1 else ''} because the host's plan allows {state['limit']} minute{'s' if state['limit'] != 1 else ''}. The host can start a new meeting, or upgrade the plan for longer meetings."})
+        if end > time.time(): await asyncio.sleep(end - time.time())
+        await _broadcast(code, {"type": "ended", "reason": "limit"})
+        async with SessionLocal() as db:
+            room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
+            if room: await end_room(db, room, False)
+    except asyncio.CancelledError:
+        pass
 
 async def finish_meeting(db: AsyncSession, room: Room) -> None:
     """A meeting that really took place: record when it actually ended and mark it completed (the caller commits)."""
@@ -575,6 +603,8 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
                          user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     if not consent_acknowledged: raise HTTPException(400, "Confirm that participants were told the meeting was recorded.")
     room = await _host_room(db, code, user)
+    from app.services import entitlements as ent
+    if not (await ent.limits(db, user))["recording"]: raise HTTPException(403, "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you.")
     base = Path(settings.audio_storage_dir) / "recordings"; base.mkdir(parents=True, exist_ok=True)
     rid = str(uuid.uuid4()); keep = base / f"{rid}.webm"
     audio_path = Path(settings.audio_storage_dir) / f"{rid}-speech.webm"; Path(settings.audio_storage_dir).mkdir(parents=True, exist_ok=True)

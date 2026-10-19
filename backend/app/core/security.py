@@ -71,7 +71,7 @@ async def principal(request: HTTPConnection, credentials: HTTPAuthorizationCrede
         db.add(user)
     else:
         user.email=email; user.display_name=user.display_name or claims.get("name", email)
-        if user.display_name == "Local Demo Administrator": user.display_name = claims.get("name") or "Administrator"     # older installs used this name
+        if user.display_name in ("Local Demo Administrator", "Administrator") and user.entra_subject == "local-admin": user.display_name = "Pramod Singh"     # older installs used this name
         # An administrator's choice (Users page) applies; sign-in claims and ADMIN_EMAILS can only add admin rights.
         user.role = "admin" if claim_admin or user.role_override == "admin" else "user"
     if user.is_active is False: raise HTTPException(403, "This account is disabled. Contact an administrator.")

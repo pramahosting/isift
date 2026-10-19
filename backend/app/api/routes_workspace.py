@@ -239,6 +239,8 @@ async def list_notes(kind: str = "doc", user: User = Depends(principal), db: Asy
 @router.post("/notes")
 async def new_note(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     kind = payload.get("kind") if payload.get("kind") in KINDS else "doc"
+    from app.services import entitlements as ent
+    await ent.use_document(db, user)                    # Basic: 5 new files (Docs modules and whiteboards together) a day
     n = Note(owner_id=user.id, kind=kind, title=(str(payload.get("title") or "").strip() or "Untitled")[:200], content=_check_content(kind, payload.get("content"))); db.add(n); await db.commit()
     return _note_out(n)
 
@@ -286,7 +288,9 @@ async def delete_note(nid: str, user: User = Depends(principal), db: AsyncSessio
 async def get_pmi(db: AsyncSession, user: User, base_url: str = "") -> Room:
     """Each person has one permanent room (their Personal Meeting ID) that is never ended."""
     for r in (await db.execute(select(Room).where(Room.host_id == user.id, Room.meeting_id.is_(None)))).scalars().all():
-        if (r.options or {}).get("pmi"): return r
+        if (r.options or {}).get("pmi"):
+            if r.title in ("Administrator's Personal Meeting Room", "Local Demo Administrator's Personal Meeting Room") and user.display_name: r.title = f"{user.display_name}'s Personal Meeting Room"; await db.commit()
+            return r
     from app.api.routes_rooms import clean_access
     from app.core import runtime_settings as rs
     await rs.apply_overrides(db)
@@ -316,7 +320,11 @@ async def my_pmi(user: User = Depends(principal), db: AsyncSession = Depends(get
 @router.patch("/me/pmi")
 async def my_pmi_set(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     r = await get_pmi(db, user)
-    if "open_room" in payload: await set_pmi_open(db, r, bool(payload["open_room"]))
+    if "open_room" in payload:
+        if payload["open_room"]:
+            from app.services import entitlements as ent
+            if not await ent.can_open_room(db, user): raise HTTPException(403, "An open room is available to the administrator and to paid plans. Upgrade your plan, or ask an administrator to allow it for you.")
+        await set_pmi_open(db, r, bool(payload["open_room"]))
     return _pmi_out(r)
 
 

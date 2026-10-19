@@ -40,7 +40,7 @@ async def local_login(payload:dict,db:AsyncSession=Depends(get_db)):
     if username.lower()=="admin":
         from app.services import store
         saved=await store.get(db,"admin_password",{})      # set from My account > Password; otherwise the LOCAL_ADMIN_PASSWORD setting
-        if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@example.test","Administrator")
+        if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@example.test","Pramod Singh")
         raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     account=(await db.execute(select(LocalAccount).where(LocalAccount.email==username.lower()))).scalar_one_or_none()
     if not account: raise HTTPException(401,{"message":"No account was found for that user ID or email.","code":"no_account"})

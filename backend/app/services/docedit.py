@@ -12,6 +12,12 @@ PNG = b"\x89PNG\r\n\x1a\n"
 class EditError(ValueError): pass
 for _n in ("pyhanko", "pyhanko_certvalidator"): logging.getLogger(_n).setLevel(logging.CRITICAL)  # a self-signed certificate is expected, not an error to log
 
+def pdf_page_count(raw: bytes) -> int:
+    from pypdf import PdfReader
+    import io
+    try: return len(PdfReader(io.BytesIO(raw)).pages)
+    except Exception: return 0
+
 def b64_in(data: str, limit: int = MAX_BYTES) -> bytes:
     try: raw = base64.b64decode((data or "").split(",", 1)[-1], validate=False)
     except Exception: raise EditError("The file could not be read.")

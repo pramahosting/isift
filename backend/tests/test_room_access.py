@@ -698,10 +698,10 @@ def test_share_reports_why_sending_or_groq_failed(client, monkeypatch):
     assert d["ai"] is False and "401" in d["note"] and "Invalid API Key" in d["note"] and "console.groq.com" in d["note"]
 
 
-def test_local_administrator_is_called_administrator(client):
+def test_local_administrator_is_called_pramod_singh(client):
     h, _ = login(client)
     me = client.get("/api/v1/auth/me", headers=h).json()
-    assert me["display_name"] == "Administrator"
+    assert me["display_name"] == "Pramod Singh"
     import asyncio
     from app.core.db import SessionLocal
     from app.models import User
@@ -711,7 +711,7 @@ def test_local_administrator_is_called_administrator(client):
             u = (await db.execute(select(User).where(User.entra_subject == "local-admin"))).scalar_one(); u.display_name = "Local Demo Administrator"; await db.commit()
     asyncio.run(old())
     h2, _ = login(client)
-    assert client.get("/api/v1/auth/me", headers=h2).json()["display_name"] == "Administrator"
+    assert client.get("/api/v1/auth/me", headers=h2).json()["display_name"] == "Pramod Singh"
 
 
 def test_admin_connection_test_checks_the_groq_key(client, monkeypatch):
@@ -1658,6 +1658,9 @@ def test_personal_meeting_room_open_switch(client):
 def test_admin_and_owner_can_delete_open_room_meetings_but_not_personal_room(client, monkeypatch):
     h, tok = login(client)
     su = signed_up(client, monkeypatch, "owner2@example.com", "Own", "Er"); oh = {"Authorization": "Bearer " + su["access_token"]}
+    client.get("/api/v1/account", headers=oh)
+    uid = next(u["id"] for u in client.get("/api/v1/admin/users", headers=h).json() if u["email"] == "owner2@example.com")
+    assert client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"open_room": True}}, headers=h).status_code == 200      # open rooms need a paid plan or the administrator's permission
     mk = lambda hh: client.post("/api/v1/meetings", json={"base_url": "http://t/", "title": "Standing", "provider": "room", "start_at": "2031-01-01T10:00:00Z", "duration_minutes": 30, "recurrence": {"every": "day", "count": 3}, "options": {"open_room": True}}, headers=hh)
     r = mk(oh); assert r.status_code in (200, 201), r.text; mid = r.json()["id"]; code = r.json()["join_url"].rsplit("/", 1)[-1]
     # another ordinary user cannot see or delete it; the administrator can list and delete the whole series

@@ -26,8 +26,10 @@ def say(msg: str) -> None:
 async def _admin(db) -> User:
     u = (await db.execute(select(User).where(User.entra_subject == ADMIN_SUBJECT))).scalar_one_or_none()
     if not u:
-        u = User(entra_subject=ADMIN_SUBJECT, email=ADMIN_EMAIL, display_name="Administrator", role="admin", role_override="admin")
+        u = User(entra_subject=ADMIN_SUBJECT, email=ADMIN_EMAIL, display_name="Pramod Singh", role="admin", role_override="admin")
         db.add(u); await db.commit(); await db.refresh(u)
+    elif u.display_name in ("Administrator", "Local Demo Administrator"):
+        u.display_name = "Pramod Singh"; await db.commit()          # the built-in administrator now carries a real name
     return u
 
 async def run() -> None:

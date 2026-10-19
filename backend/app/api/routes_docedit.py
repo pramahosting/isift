@@ -16,9 +16,15 @@ async def _run(fn, *a):
     except de.EditError as e: raise HTTPException(400, str(e))
 
 @router.post("/inspect")
-async def inspect(payload: dict, user: User = Depends(principal)):
+async def inspect(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     try: raw = de.b64_in(payload.get("data")); kind = de.kind_of(payload.get("name"), raw)
     except de.EditError as e: raise HTTPException(400, str(e))
+    from app.services import entitlements as ent
+    cap = (await ent.limits(db, user))["pdf_pages"]
+    if kind == "pdf" and cap:
+        n = await asyncio.to_thread(de.pdf_page_count, raw)
+        if n > cap: raise HTTPException(403, f"This PDF has {n} pages. The Basic plan can open PDFs of up to {cap} pages. Upgrade your plan, or ask an administrator to raise your limit.")
+    if payload.get("count"): await ent.use_document(db, user)       # uploading a file to edit counts as one document today (re-reading it later does not)
     out = {**(await _run(de.pdf_inspect if kind == "pdf" else de.docx_inspect, raw)), "name": payload.get("name")}
     if kind == "pdf": out["signatures"] = await asyncio.to_thread(de.pdf_signatures, raw)
     return out
