@@ -40,7 +40,7 @@ async def local_login(payload:dict,db:AsyncSession=Depends(get_db)):
     if username.lower()=="admin":
         from app.services import store
         saved=await store.get(db,"admin_password",{})      # set from My account > Password; otherwise the LOCAL_ADMIN_PASSWORD setting
-        if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@example.test","Pramod Singh")
+        if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@isift.au","Pramod Singh")
         raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     account=(await db.execute(select(LocalAccount).where(LocalAccount.email==username.lower()))).scalar_one_or_none()
     if not account: raise HTTPException(401,{"message":"No account was found for that user ID or email.","code":"no_account"})
@@ -160,7 +160,7 @@ async def meetings(user:User=Depends(principal),db:AsyncSession=Depends(get_db))
     from app.services.identity import shown_email
     out=[MeetingOut.model_validate(m) for m in (await db.execute(select(Meeting).where(Meeting.owner_id==user.id).order_by(Meeting.start_at.desc()).limit(200))).scalars().all()]
     for m in out:
-        if m.organizer: m.organizer=shown_email(m.organizer)     # never show the placeholder admin@example.test
+        if m.organizer: m.organizer=shown_email(m.organizer)     # never show the placeholder admin@isift.au
     return out
 
 @api.get("/meetings/{meeting_id}")

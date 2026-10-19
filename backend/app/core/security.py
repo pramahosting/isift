@@ -62,7 +62,7 @@ async def principal(request: HTTPConnection, credentials: HTTPAuthorizationCrede
     email = (claims.get("preferred_username") or claims.get("email") or "").lower()
     if not subject or not email: raise HTTPException(401, "Token is missing a stable user identity")
     role_names = claims.get("roles", [])
-    is_local_admin = settings.is_local_demo and email == "admin@example.test"
+    is_local_admin = settings.is_local_demo and email == "admin@isift.au"
     claim_admin = is_local_admin or settings.entra_admin_role in role_names or email in settings.admins
     result = await db.execute(select(User).where(User.entra_subject == subject))
     user = result.scalar_one_or_none()

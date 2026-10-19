@@ -10,7 +10,7 @@ class GraphUnavailable(RuntimeError): pass
 
 def mailbox_for(email: str) -> str | None:
     """Each person is read from their own mailbox. The built-in demo admin uses the configured calendar user."""
-    if email.lower() == "admin@example.test": return settings.graph_user_id or None
+    if email.lower() == "admin@isift.au": return settings.graph_user_id or None
     return email or None
 
 class GraphClient:

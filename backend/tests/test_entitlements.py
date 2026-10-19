@@ -100,7 +100,7 @@ def test_paid_and_admin_have_no_limits(client, monkeypatch):
     from app.services import entitlements as ent
     async def go():
         async with SessionLocal() as db:
-            u = (await db.execute(select(User).where(User.email == "admin@example.test"))).scalar_one()
+            u = (await db.execute(select(User).where(User.email == "admin@isift.au"))).scalar_one()
             return await ent.limits(db, u)
     L = asyncio.run(go()); assert L["recording"] and L["open_room"] and L["meeting_minutes"] == 0 and L["docs_per_day"] == 0
 
@@ -115,3 +115,35 @@ def test_old_personal_room_name_follows_the_host(client):
             r = (await db.execute(select(Room).where(Room.code == code))).scalar_one(); r.title = "Administrator's Personal Meeting Room"; await db.commit()
     asyncio.run(old())
     assert client.get(f"/api/v1/rooms/{code}").json()["title"] == "Pramod Singh's Personal Meeting Room"
+
+def test_built_in_admin_email_moves_to_isift_au(client):
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.models import User, Meeting
+    from app.services import store, entitlements as ent
+    from sqlalchemy import select
+    from app import startup
+    login(client)
+    async def go():
+        async with SessionLocal() as db:
+            u = (await db.execute(select(User).where(User.entra_subject == "local-admin"))).scalar_one_or_none()
+            if not u:
+                u = User(entra_subject="local-admin", email="admin@example.test", display_name="Administrator", role="admin", role_override="admin"); db.add(u)
+            u.email = "admin@example.test"; await db.commit()
+            await store.put(db, store.hkey("profile", "admin@example.test"), {"limits": {"recording": True}})
+            await startup._admin(db)
+            u = (await db.execute(select(User).where(User.entra_subject == "local-admin"))).scalar_one()
+            return u.email, u.display_name, await ent.overrides(db, "admin@isift.au")
+    assert asyncio.run(go()) == ("admin@isift.au", "Pramod Singh", {"recording": True})
+
+def test_commbox_not_for_basic_and_admin_table_has_plan_details(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch)
+    r = client.get("/api/v1/mailbox/accounts", headers=bh); assert r.status_code == 403 and "Commbox" in r.text
+    assert client.get("/api/v1/mailbox/accounts", headers=ah).status_code == 200
+    assert client.get("/api/v1/me/limits", headers=bh).json()["commbox"] is False
+    row = next(u for u in client.get("/api/v1/admin/users", headers=ah).json() if u["email"] == client.email)
+    assert row["plan_info"]["plan"] == "basic" and row["plan_info"]["paid"] is False and row["limits"]["commbox"] is False
+    client.patch(f"/api/v1/admin/users/{row['id']}", json={"limits": {"commbox": True}}, headers=ah)      # a special permission overrides the plan
+    assert client.get("/api/v1/mailbox/accounts", headers=bh).status_code == 200
+    row = next(u for u in client.get("/api/v1/admin/users", headers=ah).json() if u["email"] == client.email)
+    assert row["limits"]["custom"] == {"commbox": True}

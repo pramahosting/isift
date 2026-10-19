@@ -521,7 +521,7 @@ async def room_socket(ws: WebSocket, code: str):
             if not state["peers"] and not state["waiting"]:
                 task = (state.get("groups") or {}).get("task")
                 if task: task.cancel()
-                if state.get("timer"): state["timer"].cancel()
+                if state.get("timer") and not state.get("ending"): state["timer"].cancel()
                 HUB.pop(code, None)
 
 async def _meeting_clock(code: str, state: dict) -> None:
@@ -534,12 +534,13 @@ async def _meeting_clock(code: str, state: dict) -> None:
         left = max(0, round((end - time.time()) / 60))
         await _broadcast(code, {"type": "notice", "kind": "ending", "ends_in": max(0, int(end - time.time())), "minutes": left, "message": f"This meeting will end in {left} minute{'s' if left != 1 else ''} because the host's plan allows {state['limit']} minute{'s' if state['limit'] != 1 else ''}. The host can start a new meeting, or upgrade the plan for longer meetings."})
         if end > time.time(): await asyncio.sleep(end - time.time())
+        state["ending"] = True                          # from here the room's own shutdown must not cancel this task half way through
         await _broadcast(code, {"type": "ended", "reason": "limit"})
         async with SessionLocal() as db:
             room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
             if room: await end_room(db, room, False)
     except asyncio.CancelledError:
-        pass
+        raise
 
 async def finish_meeting(db: AsyncSession, room: Room) -> None:
     """A meeting that really took place: record when it actually ended and mark it completed (the caller commits)."""

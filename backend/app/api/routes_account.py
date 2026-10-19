@@ -15,7 +15,7 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 ROLES = ("owner", "admin", "member")
 PROFILE_TEXT = {"phone": 40, "job_title": 100, "department": 100, "city": 100, "country": 100, "language": 40, "bio": 500}
 
-def _builtin(user: User) -> bool: return settings.is_local_demo and user.email == "admin@example.test"
+def _builtin(user: User) -> bool: return settings.is_local_demo and user.email == "admin@isift.au"
 def _em(v) -> str: return str(v or "").strip().lower()
 
 async def _profile(db, email: str) -> dict:
@@ -146,7 +146,7 @@ async def add_member(payload: dict, user: User = Depends(principal), db: AsyncSe
     if any(m["email"] == email for m in c["members"]): raise HTTPException(409, "That person is already in the company.")
     if (await store.get(db, store.hkey("memberof", email), {})).get("company_id"): raise HTTPException(409, "That person already belongs to another company account.")
     temp = None
-    if settings.is_local_demo and not await _local_account(db, email) and email != "admin@example.test":
+    if settings.is_local_demo and not await _local_account(db, email) and email != "admin@isift.au":
         if not name: raise HTTPException(422, "Enter the person's name so their sign-in can be created.")
         temp = str(payload.get("password") or "") or secrets.token_urlsafe(9)
         if len(temp) < 8: raise HTTPException(422, "The password must be at least 8 characters.")

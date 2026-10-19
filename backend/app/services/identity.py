@@ -1,11 +1,11 @@
 """Real, deliverable addresses for the host.
 
-The built-in local administrator is stored with the placeholder admin@example.test, which no mail server accepts. These helpers
+The built-in local administrator is stored with the placeholder admin@isift.au, which no mail server accepts. These helpers
 put a real address from Admin settings in its place wherever an address is shown or emailed.
 """
 from app.core.config import settings
 
-PLACEHOLDER_ADMIN = "admin@example.test"      # how the built-in administrator is stored; never shown
+PLACEHOLDER_ADMIN = "admin@isift.au"      # how the built-in administrator is stored; never shown
 FAKE_DOMAINS = {"example.test", "example.com", "example.org", "example.net", "localhost", "invalid"}
 
 def routable(addr: str) -> bool:

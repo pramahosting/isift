@@ -17,7 +17,7 @@ from app.services import calendar_sync as cal
 from app.services import datasets as ds
 
 log = logging.getLogger("isift")
-ADMIN_EMAIL, ADMIN_SUBJECT = "admin@example.test", "local-admin"
+ADMIN_EMAIL, ADMIN_SUBJECT = "admin@isift.au", "local-admin"
 DONE_KEY = "startup_mock_loaded"
 
 def say(msg: str) -> None:
@@ -28,9 +28,26 @@ async def _admin(db) -> User:
     if not u:
         u = User(entra_subject=ADMIN_SUBJECT, email=ADMIN_EMAIL, display_name="Pramod Singh", role="admin", role_override="admin")
         db.add(u); await db.commit(); await db.refresh(u)
-    elif u.display_name in ("Administrator", "Local Demo Administrator"):
-        u.display_name = "Pramod Singh"; await db.commit()          # the built-in administrator now carries a real name
+    else:
+        if u.display_name in ("Administrator", "Local Demo Administrator"): u.display_name = "Pramod Singh"      # the built-in administrator now carries a real name
+        if u.email == OLD_ADMIN_EMAIL: await _move_admin_email(db, u)
+        await db.commit()
     return u
+
+OLD_ADMIN_EMAIL = "admin@example.test"
+
+async def _move_admin_email(db, u: User) -> None:
+    """An install made before the built-in administrator got admin@isift.au: move the account and everything keyed by its address (profile, plan, limits, notices, meeting organizer)."""
+    from sqlalchemy import update
+    from app.models import Meeting, IntegrationSetting
+    from app.services import store
+    u.email = ADMIN_EMAIL
+    await db.execute(update(Meeting).where(Meeting.organizer == OLD_ADMIN_EMAIL).values(organizer=ADMIN_EMAIL))
+    for prefix in ("profile", "billing", "docs-usage", "notif", "memberof"):
+        old, new = store.hkey(prefix, OLD_ADMIN_EMAIL), store.hkey(prefix, ADMIN_EMAIL)
+        row = await db.get(IntegrationSetting, old)
+        if row and not await db.get(IntegrationSetting, new):
+            db.add(IntegrationSetting(key=new, value=dict(row.value or {}))); await db.delete(row)
 
 async def run() -> None:
     if not settings.is_local_demo: return           # sample data and computer calendar are local-demo features

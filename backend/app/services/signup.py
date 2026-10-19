@@ -22,7 +22,7 @@ def validate(p: dict) -> dict:
     if not 1 <= len(first) <= 60: raise SignupError("Enter your first name.")
     if not 1 <= len(last) <= 60: raise SignupError("Enter your last name.")
     if not EMAIL.fullmatch(email) or len(email) > 254: raise SignupError("Enter a valid email address.")
-    if email in ("admin", "admin@example.test"): raise SignupError("That email is reserved. Use a different one.", "exists", 409)
+    if email in ("admin", "admin@isift.au"): raise SignupError("That email is reserved. Use a different one.", "exists", 409)
     if not 8 <= len(pw) <= 128: raise SignupError("Password must be 8 to 128 characters.")
     country = str(p.get("country", "")).strip().upper()
     if country not in countries.BY_CODE: raise SignupError("Choose your country.")

@@ -11,7 +11,11 @@ from app.integrations import mail as mailer, mailbox as mb
 from app.services import calendar_sync as cal
 from app.services.invites import EMAIL
 
-router = APIRouter(prefix="/api/v1/mailbox", tags=["mail"])
+async def _commbox_allowed(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    from app.services import entitlements as ent
+    await ent.need_commbox(user, db)           # Basic plan: no Commbox unless an administrator allows it
+
+router = APIRouter(prefix="/api/v1/mailbox", tags=["mail"], dependencies=[Depends(_commbox_allowed)])
 MAX_ACCOUNTS = 10
 
 def _key(user_id: str) -> str: return f"mailboxes:{user_id}"

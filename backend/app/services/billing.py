@@ -116,6 +116,16 @@ async def plan_of(db, user) -> str:
     key, c, _ = await holder(db, user)
     return (await record(db, key, c))["plan"]
 
+async def admin_summary(db, user) -> dict:
+    """What the administrator sees for one person: plan, dates, last payment."""
+    key, c, _ = await holder(db, user)
+    r = await record(db, key, c)
+    paid = next((x for x in r["charges"] if x.get("status") == "paid"), None)
+    cents_ = (paid or {}).get("amount_cents") or r.get("paid_cents") or 0
+    return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "period": r.get("period", "monthly") if r["plan"] != "basic" else None,
+            "start": r.get("period_start"), "end": r.get("ends_on") or r.get("period_end"), "status": r.get("status", "active"),
+            "paid": bool(paid), "paid_on": (paid or {}).get("settled"), "amount": round(cents_ / 100, 2) if paid or r["plan"] != "basic" else 0, "currency": settings.square_currency}
+
 def _card(r): return {"brand": r.get("card_brand"), "last4": r.get("card_last4"), "exp_month": r.get("card_exp_month"), "exp_year": r.get("card_exp_year")} if r.get("card_id") else None
 
 async def view(db, user) -> dict:

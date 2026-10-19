@@ -737,7 +737,7 @@ def test_admin_connection_test_checks_the_groq_key(client, monkeypatch):
     r = client.post("/api/v1/admin/integrations/test", headers=h).json()["groq_ai"]; assert r["status"] == "connected" and "available" in r["detail"]
 
 
-def test_host_notice_never_goes_to_the_placeholder_admin_address(client, monkeypatch):
+def test_host_notice_goes_to_the_admins_own_address(client, monkeypatch):
     from app.integrations import mail as mailer
     from app.core.config import settings
     from app.core import runtime_settings as rs
@@ -754,15 +754,15 @@ def test_host_notice_never_goes_to_the_placeholder_admin_address(client, monkeyp
     def book(i, email): return client.post(f"/api/v1/public/book/{slug}", json={"name": "G", "email": email, "start": slots[i], "timezone": "UTC", "base_url": "http://t/"}).json()
     assert book(0, "guest@yahoo.com")["email"] == "sent"
     recipients = [t for _, to, _ in sent for t in to]
-    assert "guest@yahoo.com" in recipients and "boss@gmail.com" in recipients and "admin@example.test" not in recipients     # host copy goes to a real address
-    assert all(a.get("reply_to") == "boss@gmail.com" for a, _, _ in sent)                                                    # replies reach a real address too
+    assert "guest@yahoo.com" in recipients and "admin@isift.au" in recipients     # the administrator's own address is real, so the host copy goes there
+    assert all(a.get("reply_to") == "admin@isift.au" for a, _, _ in sent)                                                    # and replies reach it too
     sent.clear(); cfg(error_email_to="", smtp_user="app@gmail.com")
     book(1, "guest2@yahoo.com")
     recipients = [t for _, to, _ in sent for t in to]
-    assert "admin@example.test" not in recipients and "app@gmail.com" in recipients                                        # falls back to the app email login
+    assert "admin@isift.au" in recipients
     sent.clear(); cfg(smtp_user="app@example.test", smtp_from="info@example.test")
     book(2, "guest3@yahoo.com")
-    assert "admin@example.test" not in [t for _, to, _ in sent for t in to] and ["guest3@yahoo.com"] in [to for _, to, _ in sent]   # no real host address known: only the guest is emailed
+    assert "admin@isift.au" in [t for _, to, _ in sent for t in to] and ["guest3@yahoo.com"] in [to for _, to, _ in sent]
 
 
 def test_organizer_shows_a_real_address_not_the_placeholder(client, monkeypatch):
@@ -778,10 +778,10 @@ def test_organizer_shows_a_real_address_not_the_placeholder(client, monkeypatch)
     slot = client.get(f"/api/v1/public/book/{slug}/slots").json()["slots"][0]
     assert client.post(f"/api/v1/public/book/{slug}", json={"name": "G", "email": "g@yahoo.com", "start": slot, "timezone": "UTC", "base_url": "http://t/"}).status_code == 200
     rows = client.get("/api/v1/meetings", headers=h).json()
-    assert rows and all(r["organizer"] != "admin@example.test" for r in rows)
-    assert any(r["organizer"] == "info@isift.au" for r in rows)
-    booked = next(r for r in rows if r["organizer"] == "info@isift.au")
-    one = client.get(f"/api/v1/meetings/{booked['id']}", headers=h).json()["meeting"]; assert one["organizer"] == "info@isift.au"
+    assert rows and all(r["organizer"] == "admin@isift.au" for r in rows)
+    assert any(r["organizer"] == "admin@isift.au" for r in rows)
+    booked = next(r for r in rows if r["organizer"] == "admin@isift.au")
+    one = client.get(f"/api/v1/meetings/{booked['id']}", headers=h).json()["meeting"]; assert one["organizer"] == "admin@isift.au"
 
 
 def test_modules_switch_off_and_public_list(client):
@@ -867,7 +867,7 @@ def test_account_profile_password_company_and_invite_alert(client):
     from app.core.config import settings
     h, tok = login(client)
     a = client.get("/api/v1/account", headers=h).json()
-    assert a["user"]["email"] == "admin@example.test" and a["company"] is None and a["password"]["can_change"] is True
+    assert a["user"]["email"] == "admin@isift.au" and a["company"] is None and a["password"]["can_change"] is True
     r = client.patch("/api/v1/account", json={"phone": "0400 000 000", "city": "Sydney", "country": "Australia", "timezone": "Australia/Sydney", "work_days": [0, 1, 2], "work_start": "08:00", "work_end": "16:00", "display_name": "Admin Person"}, headers=h)
     assert r.status_code == 200 and r.json()["profile"]["city"] == "Sydney" and r.json()["user"]["display_name"] == "Admin Person"
     assert client.patch("/api/v1/account", json={"timezone": "Mars/Base"}, headers=h).status_code == 422
@@ -888,7 +888,7 @@ def test_account_profile_password_company_and_invite_alert(client):
     assert client.post("/api/v1/account/password", json={"current": temp, "new": "NewPassw0rd!"}, headers=bh).status_code == 200
     assert client.post("/api/v1/auth/local-login", json={"username": "bella@acme.com", "password": "NewPassw0rd!"}).status_code == 200
     assert client.patch("/api/v1/account/company", json={"plan": "business"}, headers=bh).status_code in (200, 403)
-    assert client.delete("/api/v1/account/company/members/admin@example.test", headers=bh).status_code == 409
+    assert client.delete("/api/v1/account/company/members/admin@isift.au", headers=bh).status_code == 409
     # invite alert from a running meeting
     r = make(client, h, access="open", waiting_room=False)
     assert client.post(f"/api/v1/rooms/{r['code']}/invite", json={"emails": "bella@acme.com", "base_url": "http://t/"}, headers=bh).status_code == 403     # not in the meeting
@@ -1107,7 +1107,7 @@ def test_access_keys_for_addins(client):
     key = k.json()["key"]; assert key.startswith("isift_pat_")
     ls = client.get("/api/v1/account/access-keys", headers=h).json()["keys"]; assert len(ls) == 1 and "key" not in ls[0] and ls[0]["last4"] == key[-4:]
     kh = {"Authorization": "Bearer " + key}
-    assert client.get("/api/v1/auth/me", headers=kh).json()["email"] == "admin@example.test"
+    assert client.get("/api/v1/auth/me", headers=kh).json()["email"] == "admin@isift.au"
     assert client.get("/api/v1/booking-types", headers=kh).status_code == 200
     r = client.post("/api/v1/rooms", json={"title": "From Outlook", "base_url": "http://t/"}, headers=kh); assert r.status_code == 200 and r.json()["url"]
     assert client.get("/api/v1/admin/billing/overview", headers=kh).status_code == 403          # not on the allow list
@@ -1222,7 +1222,7 @@ def test_plan_change_credit_difference_and_manual_refund(client, monkeypatch):
     async def _user(db):
         from sqlalchemy import select
         from app.models import User
-        return (await db.execute(select(User).where(User.email == "admin@example.test"))).scalars().first()
+        return (await db.execute(select(User).where(User.email == "admin@isift.au"))).scalars().first()
     asyncio.run(backdate(182))
     q = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly"}, headers=h).json()
     credit = round(16712 * 183 / 365); assert q["kind"] == "change" and q["credit_cents"] == credit and q["charge_cents"] == 0 and q["refund_cents"] == credit - 1359
@@ -1476,7 +1476,7 @@ def test_virtual_room_switches(client, monkeypatch):
     assert vr(a) is True and vr(b) is False and vr(d) is False                    # the meeting checkbox; gallery is the default
     assert client.patch("/api/v1/account", json={"virtual_room": False}, headers=h).json()["profile"]["virtual_room"] is False
     assert vr(a) is False                                                         # the customer switched it off for the account
-    me = next(u for u in client.get("/api/v1/admin/users", headers=h).json() if u["email"] == "admin@example.test")
+    me = next(u for u in client.get("/api/v1/admin/users", headers=h).json() if u["email"] == "admin@isift.au")
     assert me["virtual_room"] is False
     assert client.patch(f"/api/v1/admin/users/{me['id']}", json={"virtual_room": True}, headers=h).json()["virtual_room"] is True   # an administrator switched it back on
     assert vr(a) is True and vr(b) is False
@@ -1730,10 +1730,10 @@ def test_share_note_and_board_as_pdf(client, monkeypatch):
 def test_admin_shown_as_isift_address(client):
     from app.services.identity import shown_email
     from app.core.config import settings
-    assert shown_email("admin@example.test") == "info@isift.au" and shown_email("bob@gmail.com") == "bob@gmail.com"
+    assert shown_email("admin@isift.au") == "admin@isift.au" and shown_email("bob@gmail.com") == "bob@gmail.com"
     h, _ = login(client); m = make(client, h, title="Org check", start_at="2031-05-01T10:00:00Z", duration_minutes=30)
     rows = client.get("/api/v1/meetings", headers=h).json()
-    assert rows and all(r["organizer"] != "admin@example.test" for r in rows)
+    assert rows and all(r["organizer"] == "admin@isift.au" for r in rows)
 
 
 SHARE_FILES = {"doc": "Plain words", "board": '{"v":2,"items":[],"board":{"w":1200,"h":700}}', "wp": "<h1>Plan</h1><p>Hello <b>team</b></p>",
@@ -1872,13 +1872,13 @@ def test_dashboard_organizer_never_placeholder(client):
     d = client.get("/api/v1/dashboard", headers=h).json() if client.get("/api/v1/dashboard", headers=h).status_code == 200 else None
     assert d is not None
     rows = d["meetings"] + d["today"].get("meetings", []) if isinstance(d.get("today"), dict) else d["meetings"]
-    assert rows and all(r["organizer"] != "admin@example.test" for r in rows), sorted({r["organizer"] for r in rows})
+    assert rows and all(r["organizer"] == "admin@isift.au" for r in rows), sorted({r["organizer"] for r in rows})
 
 
 def test_dashboard_organizer_is_not_the_placeholder(client):
     h, _ = login(client); make(client, h, title="Dash org", start_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z"), duration_minutes=30)
     d = client.get("/api/v1/dashboard", headers=h); assert d.status_code == 200, d.text
-    orgs = [m["organizer"] for m in d.json()["meetings"]]; assert orgs and all(o == "info@isift.au" for o in orgs), orgs
+    orgs = [m["organizer"] for m in d.json()["meetings"]]; assert orgs and all(o == "admin@isift.au" for o in orgs), orgs
 
 def _b64(b): import base64; return base64.b64encode(b).decode()
 

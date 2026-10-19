@@ -202,7 +202,7 @@ async def create_meeting(payload: dict, user: User = Depends(principal), db: Asy
     join, ext = None, f"local:{uuid.uuid4().hex}"
     if payload.get("provider") == "zoom":
         await rs.apply_overrides(db)
-        try: z = await zoom.create_meeting(title, start, minutes, str(tz), "me" if user.email == "admin@example.test" else user.email, agenda)
+        try: z = await zoom.create_meeting(title, start, minutes, str(tz), "me" if user.email == "admin@isift.au" else user.email, agenda)
         except zoom.ZoomUnavailable as exc: raise HTTPException(502, str(exc))
         join, ext = z["join_url"], f"zoom:{z['id']}"
     elif payload.get("provider") in ("teams", "meet"):

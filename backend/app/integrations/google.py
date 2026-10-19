@@ -23,7 +23,7 @@ def configured() -> bool:
     return bool(_key())
 
 def subject_for(email: str) -> str | None:
-    if email.lower() == "admin@example.test": return settings.google_calendar_user or None
+    if email.lower() == "admin@isift.au": return settings.google_calendar_user or None
     return email or None
 
 async def _token(subject: str) -> str:

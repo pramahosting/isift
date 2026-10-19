@@ -133,7 +133,7 @@ def template_csv(table: str) -> str:
 async def create_local_user(db: AsyncSession, email: str, name: str, password: str, role: str, active: bool = True) -> User:
     email = email.strip().lower()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or len(email) > 254: raise ValueError("Enter a valid email address.")
-    if email == "admin@example.test": raise ValueError("That email is reserved for the built-in administrator.")
+    if email == "admin@isift.au": raise ValueError("That email is reserved for the built-in administrator.")
     if role not in ("admin", "user"): raise ValueError("Role must be admin or user.")
     if password and not (8 <= len(password) <= 128): raise ValueError("Password must be 8 to 128 characters.")
     if (await db.execute(select(LocalAccount).where(LocalAccount.email == email))).scalar_one_or_none(): raise ValueError("A user with this email already exists.")
@@ -151,7 +151,7 @@ class Ctx:
     async def owner(self, row: dict) -> User:
         email = (row.get("owner_email") or "").strip().lower()
         if self.force_owner or not email: return self.actor
-        if email == "admin@example.test" and self.actor.role == "admin": return self.actor   # the built-in admin is whoever is signed in as admin
+        if email == "admin@isift.au" and self.actor.role == "admin": return self.actor   # the built-in admin is whoever is signed in as admin
         if email not in self._users:
             self._users[email] = (await self.db.execute(select(User).where(User.email == email))).scalar_one_or_none()
         u = self._users[email]

@@ -15,9 +15,10 @@ from app.services import datasets as ds
 
 from app.services import virtual_room as vrm
 from app.services import entitlements as ent
+from app.services import billing
 router = APIRouter(prefix="/api/v1")
 log = logging.getLogger("isift")
-BUILTIN_ADMIN = "admin@example.test"
+BUILTIN_ADMIN = "admin@isift.au"
 
 async def mock_guard(db: AsyncSession = Depends(get_db)):
     from app.api.routes_modules import disabled
@@ -87,7 +88,7 @@ async def _row(db, u: User, counts: dict) -> dict:
     return {"id": u.id, "email": u.email, "display_name": u.display_name, "role": u.role, "is_active": u.is_active is not False,
             "last_login_at": u.last_login_at, "created_at": u.created_at, "source": "local" if (acct or builtin) else "microsoft",
             "builtin": builtin, "has_password": bool(acct), "meetings": counts.get(u.id, 0), "virtual_room": await vrm.account_on(db, u.email),
-            "limits": await ent.summary(db, u)}
+            "limits": await ent.summary(db, u), "plan_info": await billing.admin_summary(db, u)}
 
 async def _admins_left(db, excluding: str | None = None) -> int:
     q = select(func.count()).select_from(User).where(User.role == "admin", User.is_active.isnot(False))
