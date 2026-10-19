@@ -307,3 +307,5 @@ Two more per-person limits (Admin > Users > edit > Limits, and columns in the pl
 - **Storage** (`storage_mb`): the text of a person's Docs and whiteboards plus cloud recordings of meetings they host. Basic 100 MB; Individual and Business 5 GB. Going over refuses new files, bigger saves and cloud recordings with "Your storage is full"; shrinking edits and deletes always work. Edits by teammates count against the file owner.
 - **Hosted meeting hours a month** (`meeting_hours_per_month`): time a person's rooms were open, counted when each room empties. Basic 20 hours; Individual and Business 300 (fair use). A meeting cannot run past the hours left, and a host with none left cannot start one. Resets each calendar month.
 Defaults live in `BASIC` and `PAID_DEFAULT` in `backend/app/services/entitlements.py`. The person's own use is returned by `GET /me/limits` (`storage_used_mb`, `hours_used_month`).
+
+The **Phone** item in the left menu opens a page to ring someone: search or type an email, tap *Call* next to a contact, or use *Recent* (the last 10 people called from this browser). Code: `PhonePage` in `frontend/src/Calls.tsx`.

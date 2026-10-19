@@ -1395,3 +1395,14 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .team-actions .actionrow{border-top:1px solid var(--line,#e5e8ee)}
 label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font-weight:400}
 .bk-team label.chk{display:flex}
+
+/* visible Call button in the top bar */
+.callbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line,#d9dee7);background:transparent;border-radius:999px;padding:6px 12px;font-weight:600;cursor:pointer;color:inherit}
+.callbtn:hover{background:rgba(37,99,235,.08)}
+@media(max-width:560px){.callbtn span{display:none}.callbtn{padding:8px}}
+
+/* Phone page */
+.phone-page{display:grid;gap:16px}
+.phone-dial{display:flex;gap:10px}
+.phone-dial input{flex:1}
+.phone-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--line,#e5e8ee)}
