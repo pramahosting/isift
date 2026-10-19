@@ -285,6 +285,18 @@ The whiteboard shape library (flowchart, ER, UML, BPMN, containers, cloud and AI
 Below 900 px wide the menu slides in from the left (three-line button at the top left). It uses the same light look as the desktop menu so every module name is readable; the Docs tabs wrap onto two lines on a phone; upload buttons are grey with dark text.
 
 ### Plan limits (Basic, paid, administrator)
-- **Basic:** meetings of up to **70 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
+- **Basic:** meetings of up to **70 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **3 AI minutes summaries a month**; **1 booking page**; **no calling other people** (Basic can still receive calls); **no Commbox**; **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
 - **Individual / Business:** open room, recording, any meeting length, no daily document limit. **Administrators** are never limited.
 - **Per person:** Admin > Users > Edit > *Plan limits for this person* changes any of these for one account (0 = no limit). The code is `backend/app/services/entitlements.py`.
+
+### Calling other iSift users
+The phone button in the top bar rings another signed-in iSift user (type their email). They get a ringing pop-up with Accept and Decline; on Accept both open a private two-person room. Ringing travels over `/api/v1/ws/calls` (one websocket per signed-in tab) and calls ring for 45 seconds. Code: `backend/app/api/routes_calls.py`, `frontend/src/Calls.tsx`. Placing calls needs the *Allow calling other people* permission (Individual, Business, or an administrator's special permission); receiving calls is always allowed. The ringing list is held in memory, so with several app servers a caller and callee must reach the same one (this server runs as one process).
+
+### Landing page sections
+The home page has *The difference*, *Why iSift*, *How iSift compares* (a table against Zoom, Calendly, Cal.com, Microsoft Teams, Google Meet and PDF editors) and *Trust* sections. The wording and the table cells are in `frontend/src/Landing.tsx`; the competitor facts were checked in October 2026 and should be re-checked from time to time.
+
+## Team plan: shared booking pages and shared action items
+
+Needs a **company account on the Business plan** (Account, Company). Others get "402 Team sharing is part of the Business plan".
+- **Shared booking page:** when editing a booking page, *Share with my team* lists company people. One link then offers every time at least one ticked person (plus the owner) is free; each booking goes to the free person with the fewest upcoming bookings (round robin) and appears in that person's Meetings and Bookings. Guests, rescheduling and cancelling work as before and stay with the person who got the booking. Teammates see the link under *Team booking pages* and can copy it; only the owner edits. If the company leaves Business or a person leaves the company, the page quietly falls back to the owner alone. The list of people is stored under key `teampage:<page id>` (no schema change). API: `team_members` on `POST/PATCH /booking-types`, `GET /team/booking-pages`.
+- **Shared action items:** *Action items* shows a *Team action items* panel with action items from teammates' meetings whose sensitivity is normal (sensitive meetings are never shared). Anyone on the team can change status, owner, due date or priority. API: `GET /team/action-items`, `PATCH /team/action-items/{id}`. Code: `services/team.py`, `frontend/src/Team.tsx`.
