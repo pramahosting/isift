@@ -1326,3 +1326,7 @@ label.se-new{background:var(--cobalt,#2b62f0)!important;color:#fff!important;bor
 .rm-editname{display:inline-flex;gap:4px;align-items:center}
 .rm-seatbar{transform:translate(-50%,calc(-100% - 46px))}
 .rm-hres{right:-8px;bottom:auto;top:-8px;cursor:nesw-resize}
+
+.rm-myname{display:flex;gap:6px;align-items:center;flex:1}.rm-myname input{min-width:0;flex:1;padding:5px 8px;border:1px solid #b9c4d6;border-radius:8px;font-size:14px}.rm-myname .primary{padding:5px 10px}
+.rm-pname{flex-wrap:wrap;row-gap:2px}.rm-pname .rm-badge{white-space:nowrap}
+.rm-pname{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;flex:1 1 0}.rm-prow>*:not(.rm-pname){flex:none}
