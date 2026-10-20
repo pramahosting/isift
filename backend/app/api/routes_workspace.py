@@ -295,6 +295,7 @@ async def get_pmi(db: AsyncSession, user: User, base_url: str = "") -> Room:
     """Each person has one permanent room (their Personal Meeting ID) that is never ended."""
     for r in (await db.execute(select(Room).where(Room.host_id == user.id, Room.meeting_id.is_(None)))).scalars().all():
         if (r.options or {}).get("pmi"):
+            if r.ended_at is not None: r.ended_at = None; await db.commit()      # a personal room is permanent
             if r.title in ("Administrator's Personal Meeting Room", "Local Demo Administrator's Personal Meeting Room") and user.display_name: r.title = f"{user.display_name}'s Personal Meeting Room"; await db.commit()
             return r
     from app.api.routes_rooms import clean_access

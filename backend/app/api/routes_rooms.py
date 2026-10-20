@@ -140,6 +140,7 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
     if not room: raise HTTPException(404, "This meeting link is not valid.")
     host = await db.get(User, room.host_id)
+    if room.ended_at is not None and (room.options or {}).get("pmi"): room.ended_at = None; await db.commit()
     if refresh_pmi_title(room, host): await db.commit()
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
@@ -454,6 +455,8 @@ async def room_socket(ws: WebSocket, code: str):
         if first.get("type") != "join": await ws.close(); return
         async with SessionLocal() as db:
             room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
+            if room and room.ended_at is not None and (room.options or {}).get("pmi"):
+                room.ended_at = None; await db.commit()          # a personal room is permanent: one closed by an older version opens again
             if room:
                 host_id, ended, access, passcode, waiting_room, room_options = room.host_id, room.ended_at is not None, room.access, room.passcode, room.waiting_room, dict(room.options or {})
                 from app.services import virtual_room as vr
@@ -613,7 +616,7 @@ async def room_socket(ws: WebSocket, code: str):
             elif _rank(state["peers"][pid]) == 2 and t == "end":
                 async with SessionLocal() as db:
                     r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
-                    if r and not (r.options or {}).get("open_room"):               # an open room is never closed for good: everyone leaves, the link keeps working
+                    if r and not (r.options or {}).get("open_room") and not (r.options or {}).get("pmi"):               # an open room is never closed for good: everyone leaves, the link keeps working
                         r.ended_at = datetime.now(timezone.utc); await finish_meeting(db, r); await db.commit()
                 await _broadcast(code, {"type": "ended"})
                 for p in list(state["peers"].values()) + list(state["waiting"].values()):

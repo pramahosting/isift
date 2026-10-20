@@ -528,3 +528,35 @@ def test_administrator_sets_limits_and_modules_for_a_whole_plan(client, monkeypa
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": None}}, headers=ah)
     back = client.get("/api/v1/me/limits", headers=bh).json()
     assert back["recording"] is False and back["max_participants"] == 100 and back["storage_mb"] == 100 and back["modules_off"] == []
+
+
+
+def test_personal_room_opens_again_after_it_was_closed(client):
+    import asyncio
+    ah, _ = login(client); code = client.get("/api/v1/me/pmi", headers=ah).json()["code"]
+    from app.core.db import SessionLocal
+    from app.models import Room
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    async def close():
+        async with SessionLocal() as db:
+            r = (await db.execute(select(Room).where(Room.code == code))).scalar_one(); r.ended_at = datetime.now(timezone.utc); await db.commit()
+    asyncio.run(close())
+    assert client.get(f"/api/v1/rooms/{code}").json()["ended"] is False
+    asyncio.run(close())
+    assert client.get("/api/v1/me/pmi", headers=ah).status_code == 200
+    assert client.get(f"/api/v1/rooms/{code}").json()["ended"] is False
+
+
+def test_host_ending_personal_room_does_not_close_it(client):
+    import contextlib, time
+    from tests.test_room_access import _until
+    ah, _ = login(client); tok = ah["Authorization"].split(" ", 1)[1]
+    code = client.get("/api/v1/me/pmi", headers=ah).json()["code"]
+    hs, host = join(client, code, token=tok); host.receive_json(); host.send_json({"type": "end"}); _until(host, "ended")
+    with contextlib.suppress(Exception): hs.__exit__(None, None, None)
+    time.sleep(0.6)
+    assert client.get(f"/api/v1/rooms/{code}").json()["ended"] is False
+    hs, host = join(client, code, token=tok); m = host.receive_json(); assert m["type"] == "welcome"
+    with contextlib.suppress(Exception): hs.__exit__(None, None, None)
+    time.sleep(0.6)
