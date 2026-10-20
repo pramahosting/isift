@@ -1437,3 +1437,24 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 .rm-selfshare h2{margin:0;font-size:22px}.rm-selfshare p{margin:0;max-width:420px;opacity:.75;font-size:13px}
 .rm-selfprev{width:min(300px,60vw);aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid #ffffff22}
 .rm-selfprev .rm-tile{min-height:0;height:100%;border-radius:0}
+/* the shared screen always fits its space (a phone turned sideways has little height): the tile is exactly as big as the space, never taller */
+.rm-spot-main>.rm-tile{aspect-ratio:auto!important;width:100%;height:100%!important}
+.rm-spot-main>.rm-tile video{width:100%;height:100%;object-fit:contain}
+.rm-spot-main>.rm-tile{grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(0,1fr);overflow:hidden}
+.rm-spot-main>.rm-tile video{position:absolute;inset:0;width:100%;height:100%;min-height:0;object-fit:contain}
+/* zoomable big picture */
+.rm-zoomwrap{position:absolute;inset:0;overflow:hidden;border-radius:12px;user-select:none;-webkit-user-select:none}
+.rm-zoomin{position:absolute;inset:0;transform-origin:center center;will-change:transform}
+.rm-zoomin>.rm-tile{position:absolute;inset:0;width:100%;height:100%!important;aspect-ratio:auto!important;border-radius:12px;display:grid;grid-template-rows:minmax(0,1fr);grid-template-columns:minmax(0,1fr);overflow:hidden}
+.rm-zoomin>.rm-tile video{position:absolute;inset:0;width:100%;height:100%;min-height:0;object-fit:contain}
+.rm-zoomctl{position:absolute;right:10px;bottom:10px;z-index:4;display:flex;align-items:center;gap:4px;background:#0d1320cc;color:#fff;border-radius:10px;padding:4px 6px;font-size:12px;backdrop-filter:blur(4px)}
+.rm-zoomctl button{border:0;background:#ffffff26;color:#fff;border-radius:7px;min-width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;padding:0 8px}.rm-zoomctl button:hover:not(:disabled){background:#ffffff40}.rm-zoomctl button:disabled{opacity:.4;cursor:default}
+.rm-zoomctl span{min-width:40px;text-align:center}
+.rm-spot-tag{z-index:4}
+@media (max-height:520px){.rm-zoomctl{right:6px;bottom:6px;padding:2px 4px}.rm-zoomctl button{min-width:28px;height:28px}.rm-spot-tag{left:6px;top:6px;padding:3px 8px}}
+/* a phone held upright: the shared screen takes the full width and the small people tiles sit in a row under it */
+@media (max-width:640px) and (orientation:portrait){
+  .rm-spot{flex-direction:column!important}
+  .rm-spot-strip{width:auto!important;height:64px!important;flex-direction:row!important;overflow-x:auto!important;overflow-y:hidden!important;order:1!important}
+  .rm-spot-strip .rm-wrap{width:96px!important;height:100%!important}
+}

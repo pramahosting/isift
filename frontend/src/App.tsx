@@ -85,7 +85,7 @@ export default function App({initialToken,msal}){
  const [off,setOff]=useState<string[]>([]);
  const loadModules=useCallback(()=>{fetch(`${API}/modules`).then(r=>r.json()).then(d=>setOff((d.modules||[]).filter((m:any)=>!m.enabled).map((m:any)=>m.id))).catch(()=>{})},[]);
  useEffect(()=>{loadModules()},[loadModules,token]);
- const modOn=(...ids:string[])=>!ids.length||ids.some(i=>!off.includes(i));
+ const modOn=(...ids:string[])=>!ids.length||ids.some(i=>!off.includes(i)&&!(lim?.modules_off||[]).includes(i));
  const meetTabs=MEET_TABS.filter(t=>modOn(TAB_MOD[t]));
  const commTabs=['Mail','Calendar','Contacts'].filter(t=>modOn(COMM_MOD[t])&&commOk);
  const capsOn=CAPS.filter((c:any)=>!c.mods||modOn(...c.mods));
@@ -209,6 +209,7 @@ const ADMIN_TABS=[
  {id:'basics',label:'Run the app',icon:Settings,desc:'What the app needs to start working: AI, sample data and everyday defaults.',groups:['Groq AI (minutes, briefings, transcripts, email)','Startup','Mock data','Power Automate']},
  {id:'mail',label:'Email and calendar',icon:Mail,desc:'How calendars are read and how the app sends email.',groups:['Email sent by the app','Mail sign-in (Google, Microsoft, Yahoo)','Calendar']},
  {id:'modules',label:'Modules',icon:ListChecks,desc:'Choose which parts of iSift people can see.',groups:[]},
+ {id:'planfeatures',label:'Plan features',icon:ListChecks,desc:'Choose what each plan includes: limits and which modules.',groups:[]},
  {id:'pricing',label:'Pricing',icon:CreditCard,desc:'The price list for Individual and Business. Only active prices appear on the home page and can be bought.',groups:[]},
  {id:'allmeetings',label:'All meetings',icon:CalendarDays,desc:'Every iSift room meeting of every user, so an administrator can remove one.',groups:[]},
  {id:'payments',label:'Payments',icon:CreditCard,desc:'Square takes plan payments by card. Set it up once here; keys are stored encrypted and never reach browsers.',groups:['Payments (Square)']},
@@ -280,6 +281,42 @@ function PricingAdmin({request,act}:any){
   <div className="actions"><button className="primary" disabled={!!edit} onClick={()=>{setMsg('');setEdit({...blank})}}><Plus size={16}/> Add a price</button></div>
  </section>
 }
+const PLAN_ROWS:{k:string;label:string;bool?:boolean;hint?:string}[]=[
+ {k:'max_participants',label:'People in one video meeting',hint:'0 = up to the overall ceiling'},
+ {k:'meeting_minutes',label:'Length of a meeting (minutes)',hint:'0 = no limit'},
+ {k:'meeting_hours_per_month',label:'Hosted meeting hours a month',hint:'0 = no limit'},
+ {k:'recording',label:'Cloud recording',bool:true},
+ {k:'open_room',label:'Open room (always-open meeting link)',bool:true},
+ {k:'calls',label:'Call another user inside the app',bool:true},
+ {k:'commbox',label:'Commbox: mail, calendar and contacts',bool:true},
+ {k:'booking_pages',label:'Booking pages',hint:'0 = no limit'},
+ {k:'ai_per_month',label:'AI summaries a month',hint:'0 = no limit'},
+ {k:'docs_per_day',label:'Documents and whiteboards a day',hint:'0 = no limit'},
+ {k:'pdf_pages',label:'PDF pages that can be edited',hint:'0 = no limit'},
+ {k:'storage_mb',label:'Storage per person (MB)',hint:'0 = no limit'},
+];
+function PlanFeaturesPanel({request,act}:any){
+ const [cfg,setCfg]=useState<any>(null),[draft,setDraft]=useState<Record<string,{lim:Record<string,any>;off:string[]}>>({}),[msg,setMsg]=useState('');
+ const eff=(p:any)=>({lim:{...p.defaults,...p.limits} as Record<string,any>,off:[...(p.modules_off||[])]});
+ const load=()=>request('/admin/plan-config').then((d:any)=>{setCfg(d);setDraft(Object.fromEntries(d.plans.map((p:any)=>[p.id,eff(p)])))}).catch(()=>{});
+ useEffect(()=>{load()},[]);
+ if(!cfg)return <section className="panel"><div className="panelhead"><h2>Plan features</h2><ListChecks size={18}/></div><p className="hint">Loading…</p></section>;
+ const dirty=cfg.plans.some((p:any)=>JSON.stringify(draft[p.id])!==JSON.stringify(eff(p)));
+ const setLim=(pid:string,k:string,v:any)=>{setMsg('');setDraft(d=>({...d,[pid]:{...d[pid],lim:{...d[pid].lim,[k]:v}}}))};
+ const toggleMod=(pid:string,id:string,on:boolean)=>{setMsg('');setDraft(d=>({...d,[pid]:{...d[pid],off:on?d[pid].off.filter(x=>x!==id):[...d[pid].off,id]}}))};
+ const save=()=>act(async()=>{let last:any=cfg;for(const p of cfg.plans){const d=draft[p.id];if(JSON.stringify(d)===JSON.stringify(eff(p)))continue;const limits:Record<string,any>={};for(const r of PLAN_ROWS){const v=r.bool?!!d.lim[r.k]:Math.max(0,Math.floor(Number(d.lim[r.k]||0)));limits[r.k]=v===p.defaults[r.k]?null:v}last=await request('/admin/plan-config',{method:'PUT',body:JSON.stringify({plan:p.id,limits,modules_off:d.off})})}setCfg(last);setDraft(Object.fromEntries(last.plans.map((p:any)=>[p.id,eff(p)])));setMsg('Saved. The new limits and modules apply to everyone on those plans straight away.')});
+ return <section className="panel"><div className="panelhead"><h2>Plan features</h2><ListChecks size={18}/></div>
+  <p className="hint">Set what Basic, Individual and Business include. A person's own special permission (Users, Edit) still overrides the plan. Modules switched off on the Modules tab are off for everyone. The wording on the Pricing page is written separately, so update it there if you change a headline limit.</p>
+  {msg&&<div className="okmsg" role="status">{msg}</div>}
+  <div className="plantable-wrap"><table className="modtable plan-features"><thead><tr><th>Limits</th>{cfg.plans.map((p:any)=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>
+   {PLAN_ROWS.map(r=><tr key={r.k}><td><b>{r.label}</b>{r.hint&&<small className="muted"> {r.hint}</small>}</td>{cfg.plans.map((p:any)=><td key={p.id}>{r.bool?<input type="checkbox" aria-label={`${r.label}, ${p.name}`} checked={!!draft[p.id]?.lim[r.k]} onChange={e=>setLim(p.id,r.k,e.target.checked)}/>:<input type="number" min={0} max={10000000} style={{width:110}} aria-label={`${r.label}, ${p.name}`} value={draft[p.id]?.lim[r.k]??0} onChange={e=>setLim(p.id,r.k,e.target.value)}/>}</td>)}</tr>)}
+  </tbody></table></div>
+  <div className="plantable-wrap"><table className="modtable plan-features"><thead><tr><th>Modules included</th>{cfg.plans.map((p:any)=><th key={p.id}>{p.name}</th>)}</tr></thead><tbody>
+   {cfg.modules.map((m:any)=><tr key={m.id}><td><b>{m.label}</b></td>{cfg.plans.map((p:any)=><td key={p.id}><input type="checkbox" aria-label={`${m.label}, ${p.name}`} checked={!(draft[p.id]?.off||[]).includes(m.id)} onChange={e=>toggleMod(p.id,m.id,e.target.checked)}/></td>)}</tr>)}
+  </tbody></table></div>
+  <div className="actions"><button className="primary" disabled={!dirty} onClick={save}><Save size={16}/> Save plan features</button>{dirty&&<button className="secondary" onClick={load}>Discard changes</button>}</div>
+ </section>
+}
 function ModulesPanel({request,act,onChanged}:any){
  const [rows,setRows]=useState<any[]>([]),[saved,setSaved]=useState<Record<string,boolean>>({}),[msg,setMsg]=useState('');
  const load=()=>request('/modules').then((d:any)=>{setRows(d.modules);setSaved(Object.fromEntries(d.modules.map((m:any)=>[m.id,m.enabled])))}).catch(()=>{});
@@ -341,7 +378,8 @@ function AdminSettings({settings,request,act,load,onModules,user}:any){
   {tab==='pricing'&&<PricingAdmin request={request} act={act}/>}
   {tab==='allmeetings'&&<AllMeetingsAdmin request={request} act={act}/>}
   {tab==='modules'&&<ModulesPanel request={request} act={act} onChanged={onModules}/>}
-  {tab!=='modules'&&tab!=='pricing'&&tab!=='allmeetings'&&<section className="panel"><div className="panelhead"><h2>{tab==='basics'?'Integration settings':cur.label}</h2><ShieldCheck size={18}/></div>
+  {tab==='planfeatures'&&<PlanFeaturesPanel request={request} act={act}/>}
+  {tab!=='modules'&&tab!=='planfeatures'&&tab!=='pricing'&&tab!=='allmeetings'&&<section className="panel"><div className="panelhead"><h2>{tab==='basics'?'Integration settings':cur.label}</h2><ShieldCheck size={18}/></div>
    <p className="hint">Edit a value and choose <b>Save integration settings</b>; changes apply immediately. Secrets are stored encrypted and only a masked preview is shown. Leave a secret blank to keep it unchanged.</p>
    {msg&&<div className="okmsg" role="status">{msg}</div>}
    {(tabGroups(tab).map(g=>[g,groups[g]]) as [string,any[]][]).map(([group,items])=><div className="setgroup" key={group}><h3>{GROUP_TITLES[group]?.[0]||group}</h3>{GROUP_TITLES[group]?.[1]&&<p className="groupnote">{GROUP_TITLES[group][1]}</p>}

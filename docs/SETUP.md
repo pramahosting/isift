@@ -330,7 +330,7 @@ Meetings of up to 8 people connect browser to browser. A meeting of 9 or more sw
 2. iSift > Admin settings > Meeting platforms > **Video meetings**: paste **Cloudflare SFU application ID** and **secret**, and save. The Admin setup checklist shows "Video server for big meetings" as ready.
 3. Optional: **People shown and heard at once** (default 8) is how many tiles a big meeting shows. The current speakers, anyone sharing a screen and the host are shown; everyone else stays in the Participants list and takes the place of a quiet speaker when they start talking.
 
-Notes: the secret stays on the server (browsers talk to iSift, iSift talks to Cloudflare). Cloudflare charges per GB sent to people (first 1,000 GB a month free, shared with TURN). Discussion groups are not available in big meetings. Plan limits on people in a meeting: Basic 25, paid plans 100, up to 300 when an administrator raises it for a customer (Users > edit > "People in one meeting"). Without the SFU set up, bigger meetings still work but each browser sends video to everyone, which is only comfortable up to about 8 people.
+Notes: the secret stays on the server (browsers talk to iSift, iSift talks to Cloudflare). Cloudflare charges per GB sent to people (first 1,000 GB a month free, shared with TURN). Discussion groups are not available in big meetings. Plan limits on people in a meeting: Basic and paid plans 100, up to 300 when an administrator raises it for a customer (Users > edit > "People in one meeting"). Without the SFU set up, bigger meetings still work but each browser sends video to everyone, which is only comfortable up to about 8 people.
 
 ## Recording ready email
 
