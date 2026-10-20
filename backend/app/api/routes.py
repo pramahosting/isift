@@ -419,6 +419,10 @@ async def test_integrations(user:User=Depends(require_admin)):
 
 @api.get("/health")
 async def health(db:AsyncSession=Depends(get_db)):
-    try: await db.execute(select(func.count()).select_from(User)); db_ok=True
+    import time as _t
+    t0=_t.perf_counter(); first=second=None
+    try:
+        await db.execute(select(func.count()).select_from(User)); first=(_t.perf_counter()-t0)*1000; db_ok=True      # includes taking a connection from the pool
+        t1=_t.perf_counter(); await db.execute(select(func.count()).select_from(User)); second=(_t.perf_counter()-t1)*1000   # one question on a ready connection = the distance to the database
     except Exception: db_ok=False
-    return {"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","build":"2026-10-20-sfu-recording-email","integrations":integration_status()}
+    return {"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","db_first_ms":None if first is None else round(first),"db_query_ms":None if second is None else round(second),"build":"2026-10-21-speed","integrations":integration_status()}
