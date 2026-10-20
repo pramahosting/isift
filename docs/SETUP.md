@@ -309,3 +309,14 @@ Two more per-person limits (Admin > Users > edit > Limits, and columns in the pl
 Defaults live in `BASIC` and `PAID_DEFAULT` in `backend/app/services/entitlements.py`. The person's own use is returned by `GET /me/limits` (`storage_used_mb`, `hours_used_month`).
 
 The **Phone** item in the left menu opens a page to ring someone: search or type an email, tap *Call* next to a contact, or use *Recent* (the last 10 people called from this browser). Code: `PhonePage` in `frontend/src/Calls.tsx`.
+
+## Video and sound that do not reach other people (TURN relay)
+
+Video and sound travel directly between browsers (WebRTC). On company networks, phone data and some home routers a direct path is impossible, so people see black tiles or hear nothing, and calls feel slow. **A TURN relay fixes that and is needed for a public site.** Options under Admin settings > Video meetings:
+- **Cloudflare TURN (easiest, hosted):** Cloudflare dashboard > Realtime > TURN > create a key. Paste *Cloudflare TURN key ID* and *API token*. iSift fetches short-lived credentials by itself.
+- **Your own coturn:** put `turn:your-host:3478` in *STUN / TURN servers* and, for coturn with `use-auth-secret`, the *TURN shared secret* (or a fixed username and password).
+The Admin setup checklist shows "TURN relay" as ready once one is set. Also in this release: ICE candidates that arrive early are kept instead of dropped, a connection that drops is restarted automatically, and each person's outgoing video bitrate shrinks as the room grows (1.5 Mbps with 2 people, about 220 kbps beyond 6) so meetings stay smooth. Meetings of more than about 8 people are limited by each browser sending video to everyone; a media server (SFU) would be the next step.
+
+## Sign-up codes that do not arrive
+
+Many hosts (Northflank, Render, Railway and others) block outgoing SMTP, so the verification email never leaves the server. Under Admin settings > Email sent by the app, either fix SMTP or, simpler, paste a **Resend API key** (resend.com, free tier) and set the **From address** to an address on a domain you verified there. Mail then goes over HTTPS; the same account sends booking emails, support mail and test emails (press *Send test email* to check). Logging in with an email whose sign-up was never finished now says "Your sign-up is not complete yet" and opens the code screen, where *Send a new code* works; if the code expired it says so and opens the sign-up form.

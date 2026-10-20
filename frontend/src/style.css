@@ -1412,3 +1412,5 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 .float-chip .ai-tag{margin:0 6px 0 0}
 .ai-tag.big{font-size:.4em;margin-left:10px;padding:4px 8px}
 .ai-word{background:linear-gradient(135deg,#6d5efc,#2f6bff);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+
+.rm-tile.self.scr video{transform:none}
