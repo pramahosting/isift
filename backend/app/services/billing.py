@@ -21,7 +21,7 @@ LEGACY = {"free": "basic", "pro": "individual", "enterprise": "business"}
 # Monthly prices as listed. Yearly was 12 x a per-month price of 11.33 / 14.66 (13.596 / 17.592 a year); it now has a further 5% off: 129.16 / 167.12 a year. per_month_yearly is that total divided by 12 (for display).
 PLANS = {
  "basic": {"name": "Basic", "monthly": 0, "yearly": 0, "per_month_yearly": 0},
- "individual": {"name": "Individual", "monthly": 1359, "yearly": 12916, "per_month_yearly": 1076},
+ "individual": {"name": "Personal Pro", "monthly": 1359, "yearly": 12916, "per_month_yearly": 1076},
  "business": {"name": "Business", "monthly": 1759, "yearly": 16712, "per_month_yearly": 1393},
 }
 PERIODS = ("monthly", "yearly")
@@ -235,7 +235,7 @@ async def charge_now(db, key: str, today: date | None = None) -> dict:
 async def subscribe(db, user, plan: str, period: str, immediate: bool = False, terms: dict | None = None) -> dict:
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
-    if plan not in PLANS: raise BillingError("Choose Basic, Individual or Business.", 422)
+    if plan not in PLANS: raise BillingError("Choose Basic, Personal Pro or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
     await load_prices(db); require_on_sale(plan)
     r = await record(db, key, c); today = date.today()
@@ -287,7 +287,7 @@ def refundable(r: dict) -> int:
 
 async def quote(db, user, plan: str, period: str) -> dict:
     key, c, can = await holder(db, user)
-    if plan not in PLANS: raise BillingError("Choose Basic, Individual or Business.", 422)
+    if plan not in PLANS: raise BillingError("Choose Basic, Personal Pro or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
     await load_prices(db); require_on_sale(plan)
     r = await record(db, key, c); today = date.today(); credit = unused_credit(r, today)

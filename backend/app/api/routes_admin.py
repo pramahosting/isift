@@ -188,7 +188,7 @@ async def get_plan_config(admin: User = Depends(require_admin), db: AsyncSession
 @router.put("/admin/plan-config")
 async def put_plan_config(payload: dict, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     plan = payload.get("plan")
-    if plan not in ent.PLAN_IDS: raise HTTPException(422, "Choose Basic, Individual or Business.")
+    if plan not in ent.PLAN_IDS: raise HTTPException(422, "Choose Basic, Personal Pro or Business.")
     from app.api.routes_modules import IDS
     off = payload.get("modules_off")
     if off is not None: off = [m for m in off if m in IDS]

@@ -22,7 +22,7 @@ def _clean_price(d: dict, base: dict | None = None) -> dict:
     out = dict(base or {})
     for k in ("plan", "label", "monthly", "yearly", "active"):
         if k in d: out[k] = d[k]
-    if out.get("plan") not in B.PAID: raise HTTPException(422, "Choose Individual or Business. Basic is always free.")
+    if out.get("plan") not in B.PAID: raise HTTPException(422, "Choose Personal Pro or Business. Basic is always free.")
     out["label"] = str(out.get("label") or "Standard").strip()[:60] or "Standard"
     for k in ("monthly", "yearly"):
         try: out[k] = int(round(float(out.get(k))))
