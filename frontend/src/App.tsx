@@ -212,7 +212,7 @@ const ADMIN_TABS=[
  {id:'pricing',label:'Pricing',icon:CreditCard,desc:'The price list for Individual and Business. Only active prices appear on the home page and can be bought.',groups:[]},
  {id:'allmeetings',label:'All meetings',icon:CalendarDays,desc:'Every iSift room meeting of every user, so an administrator can remove one.',groups:[]},
  {id:'payments',label:'Payments',icon:CreditCard,desc:'Square takes plan payments by card. Set it up once here; keys are stored encrypted and never reach browsers.',groups:['Payments (Square)']},
- {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings']}];
+ {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings, including the TURN relay (Cloudflare) for video and sound.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings']}];
 const GROUP_TITLES:Record<string,[string,string]>={
  'Groq AI (minutes, briefings, transcripts, email)':['AI for minutes, briefings and sharing (Groq)','Writes minutes, action items, daily briefings, transcripts of recordings and the email for sharing a booking link. Uses the Groq model named below.'],
  'Startup':['When the app starts',''],'Mock data':['Sample data','Sample meetings and CSV import for trying the app. Turn off for real use.'],
@@ -225,7 +225,7 @@ const GROUP_TITLES:Record<string,[string,string]>={
  'Google Meet':['Google Meet','Lets people book Google Meet meetings here. Needs a Google Workspace service account with domain-wide delegation.'],
  'Recording storage (Cloudflare R2)':['Where meeting recordings are kept (Cloudflare R2)','Recordings are uploaded to a private Cloudflare R2 bucket (video is compressed to MP4 when ffmpeg is installed). In Cloudflare: R2 > create a bucket, then Manage API tokens > create a token with Object Read & Write, and copy the endpoint (S3 API) address, the Access key ID and the Secret access key here. Press Connection test on Run the app to check it. Until this is set up, recordings are kept in the database (up to 150 MB each).'],
  'Payments (Square)':['Square (plan payments)','Create an application at developer.squareup.com, then copy the Application ID, an access token and your Location ID from its Credentials and Locations pages. Test in sandbox first (use Square’s test card 4111 1111 1111 1111). Use the Connection test below to check the keys.'],
- 'Video meetings':['Built-in video meetings','Meetings hosted by this app. No outside account needed.']};
+ 'Video meetings':['Built-in video meetings and TURN relay','Meetings hosted by this app. No outside account needed. Scroll down to Cloudflare TURN key ID and API token: they make video and sound reach people on strict networks and phone data.']};
 function EmailTest({request,email}:any){
  const [to,setTo]=useState(email&&!email.endsWith('example.test')?email:'');const [res,setRes]=useState<any>(null);const [busy,setBusy]=useState(false);
  const send=async()=>{setBusy(true);setRes(null);try{setRes({ok:true,text:(await request('/admin/email/test',{method:'POST',body:JSON.stringify({to})})).message})}catch(e:any){setRes({ok:false,text:e.message})}finally{setBusy(false)}};

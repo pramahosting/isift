@@ -1414,3 +1414,26 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 .ai-word{background:linear-gradient(135deg,#6d5efc,#2f6bff);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
 
 .rm-tile.self.scr video{transform:none}
+
+/* bulk select users */
+.selbar{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line,#e5e8ee);flex-wrap:wrap}
+.selbar .danger-btn{margin-left:auto}
+.upick{width:34px;flex:0 0 34px}
+.bulklist{margin:8px 0;padding-left:18px;max-height:180px;overflow:auto}
+.plantable th:first-child,.plantable td:first-child{width:34px}
+.utable .urow{grid-template-columns:34px minmax(200px,2.2fr) minmax(110px,.9fr) minmax(90px,.7fr) 80px minmax(150px,1.2fr) minmax(210px,1.6fr)}
+@media(max-width:860px){.utable .urow{grid-template-columns:1fr 1fr}.utable .urow .upick{grid-column:1/-1;width:auto}.utable .urow .upick:empty{display:none}}
+
+/* shared screen: fills the space; everyone else is a narrow column of small pictures on the right, which can be hidden */
+.rm-spot{flex-direction:row!important;overflow:hidden;min-height:0}
+.rm-spot-main{position:relative;min-width:0;min-height:0;display:block!important}
+.rm-spot-main>.rm-tile{position:absolute;inset:0;height:auto;min-height:0;border-radius:12px}
+.rm-spot-main>.rm-tile video{max-width:100%;max-height:100%}
+.rm-spot-strip{order:0!important;width:128px!important;height:auto!important;flex-direction:column!important;flex-shrink:0;overflow-x:hidden!important;overflow-y:auto!important;justify-content:flex-start!important;gap:6px}
+.rm-spot-strip .rm-wrap{width:100%!important;height:76px!important;flex:0 0 auto}
+.rm-spot-strip .rm-tile{min-height:0!important;height:100%!important;border-radius:8px}
+@media(max-width:800px){.rm-spot-strip{width:84px!important}.rm-spot-strip .rm-wrap{height:56px!important}}
+.rm-selfshare{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;background:#161f30;border-radius:12px;padding:20px}
+.rm-selfshare h2{margin:0;font-size:22px}.rm-selfshare p{margin:0;max-width:420px;opacity:.75;font-size:13px}
+.rm-selfprev{width:min(300px,60vw);aspect-ratio:16/9;border-radius:10px;overflow:hidden;border:1px solid #ffffff22}
+.rm-selfprev .rm-tile{min-height:0;height:100%;border-radius:0}

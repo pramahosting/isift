@@ -7,6 +7,13 @@ const when=v=>{if(!v)return 'Never';try{return new Date(v).toLocaleString(undefi
 export function UsersPage({request,download,me,canCreate,onChanged}){
  const [users,setUsers]=useState<any[]|null>(null),[q,setQ]=useState(''),[err,setErr]=useState(''),[msg,setMsg]=useState('');
  const [form,setForm]=useState<any>(null),[formErr,setFormErr]=useState(''),[saving,setSaving]=useState(false),[del,setDel]=useState<any>(null);
+ const [sel,setSel]=useState<string[]>([]),[bulk,setBulk]=useState(false),[bulkBusy,setBulkBusy]=useState(false);
+ const canPick=(u:any)=>!u.builtin&&u.id!==me?.id;const pickable=(users||[]).filter(canPick);
+ const allOn=pickable.length>0&&pickable.every((u:any)=>sel.includes(u.id));
+ const flip=(id:string)=>setSel(l=>l.includes(id)?l.filter(x=>x!==id):[...l,id]);
+ useEffect(()=>{setSel(l=>l.filter(id=>(users||[]).some((u:any)=>u.id===id&&canPick(u))))},[users]);
+ const removeMany=async()=>{setBulkBusy(true);setMsg('');const ids=[...sel];let ok=0;const bad:string[]=[];for(const id of ids){const u=(users||[]).find((x:any)=>x.id===id);try{await request(`/admin/users/${id}`,{method:'DELETE'});ok++}catch(ex:any){bad.push(`${u?.email||id}: ${ex.message}`)}}setBulkBusy(false);setBulk(false);setSel([]);setMsg(`Deleted ${ok} user${ok===1?'':'s'}.`+(bad.length?` Could not delete: ${bad.join('; ')}`:''));await refresh(q.trim());onChanged&&onChanged()};
+ const bar=<div className="selbar"><label className="checklabel"><input type="checkbox" checked={allOn} disabled={!pickable.length} onChange={e=>setSel(e.target.checked?pickable.map((u:any)=>u.id):[])} aria-label="Select all users"/> Select all</label><span className="muted small">{sel.length?`${sel.length} selected`:'Tick users to delete several at once'}</span><button className="primary danger-btn" disabled={!sel.length} onClick={()=>setBulk(true)}><Trash2 size={14}/> Delete selected{sel.length?` (${sel.length})`:''}</button></div>;
  const refresh=useCallback(async(term='')=>{try{setUsers(await request('/admin/users'+(term?`?q=${encodeURIComponent(term)}`:'')));setErr('')}catch(e){setErr(e.message)}},[request]);
  useEffect(()=>{refresh()},[refresh]);
  useEffect(()=>{const t=setTimeout(()=>refresh(q.trim()),250);return()=>clearTimeout(t)},[q,refresh]);
@@ -75,9 +82,10 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    <div className="actions"><button className="primary" disabled={saving}>{saving?'Saving…':form.mode==='create'?'Create user':'Save changes'}</button><button type="button" className="secondary" onClick={()=>setForm(null)}>Cancel</button></div>
   </form>}
   {users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
-   <div className="plantable-wrap"><table className="plantable"><thead><tr><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
+   {bar}
+   <div className="plantable-wrap"><table className="plantable"><thead><tr><th><input type="checkbox" checked={allOn} disabled={!pickable.length} onChange={e=>setSel(e.target.checked?pickable.map((u:any)=>u.id):[])} aria-label="Select all users in this table"/></th><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
    {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={calls:'Calls',ai_per_month:'AI summaries',booking_pages:'Booking pages',commbox:'Commbox',open_room:'Open room',recording:'Recording',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
-    return <tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
+    return <tr key={u.id}><td>{canPick(u)&&<input type="checkbox" checked={sel.includes(u.id)} onChange={()=>flip(u.id)} aria-label={`Select ${u.email}`}/>}</td><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
      <td><span className={`badge ${p.plan&&p.plan!=='basic'?'green':''}`}>{adm?'Administrator':p.plan_name||'Basic'}</span></td>
      <td>{p.plan==='basic'||adm?'\u2013':day(p.start)}</td><td>{p.plan==='basic'||adm?'\u2013':day(p.end)}</td>
      <td>{adm?'\u2013':p.plan==='basic'?'Free':p.paid?'Yes':'No'}</td><td>{adm||p.plan==='basic'?'\u2013':day(p.paid_on)}</td>
@@ -90,9 +98,10 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
   <section className="panel">
    <div className="searchbar"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by name or email" aria-label="Search users"/></div>
    {users===null?<div className="empty">Loading users…</div>:!users.length?<div className="empty">No users match.</div>:
-   <div className="utable" role="table" aria-label="Users">
-    <div className="urow uhead" role="row"><span>User</span><span>Role</span><span>Status</span><span>Meetings</span><span>Last sign-in</span><span>Actions</span></div>
+   <>{bar}<div className="utable" role="table" aria-label="Users">
+    <div className="urow uhead" role="row"><span className="upick"/><span>User</span><span>Role</span><span>Status</span><span>Meetings</span><span>Last sign-in</span><span>Actions</span></div>
     {users.map(u=><div className="urow" role="row" key={u.id}>
+     <span className="ucell upick" data-label="">{canPick(u)?<input type="checkbox" checked={sel.includes(u.id)} onChange={()=>flip(u.id)} aria-label={`Select ${u.email}`}/>:null}</span>
      <span className="ucell uname" data-label="User"><b>{u.display_name||u.email}</b><small>{u.email}{u.builtin?' · built-in':''}{u.source==='microsoft'?' · Microsoft':''}</small></span>
      <span className="ucell" data-label="Role"><span className={`badge ${u.role==='admin'?'green':''}`}>{u.role==='admin'?'Administrator':'Member'}</span></span>
      <span className="ucell" data-label="Status"><span className={`badge ${u.is_active?'green':'red'}`}>{u.is_active?'Active':'Disabled'}</span></span>
@@ -104,8 +113,14 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
       {!u.builtin&&u.id!==me?.id&&<button className="textbtn danger" onClick={()=>setDel(u)} aria-label={`Delete ${u.email}`}><Trash2 size={14}/> Delete</button>}
      </span>
     </div>)}
-   </div>}
+   </div></>}
   </section>
+  {bulk&&<div className="modal-backdrop" onClick={()=>!bulkBusy&&setBulk(false)}><div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm delete selected users" onClick={e=>e.stopPropagation()}>
+   <AlertTriangle size={22}/><h2>Delete {sel.length} user{sel.length===1?'':'s'}?</h2>
+   <ul className="bulklist">{sel.slice(0,12).map(id=>{const u=(users||[]).find((x:any)=>x.id===id);return <li key={id}>{u?.display_name||u?.email} <small className="muted">{u?.email}</small></li>})}{sel.length>12&&<li>and {sel.length-12} more</li>}</ul>
+   <p>This permanently removes these accounts and their meetings, transcripts, minutes, action items, documents and booking pages. It cannot be undone. To keep the data and only block sign-in, choose Disable instead.</p>
+   <div className="actions"><button className="primary danger-btn" disabled={bulkBusy} onClick={removeMany}>{bulkBusy?'Deleting…':'Delete users'}</button><button className="secondary" disabled={bulkBusy} onClick={()=>setBulk(false)}>Cancel</button></div>
+  </div></div>}
   {del&&<div className="modal-backdrop" onClick={()=>setDel(null)}><div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm delete" onClick={e=>e.stopPropagation()}>
    <AlertTriangle size={22}/><h2>Delete {del.display_name||del.email}?</h2>
    <p>This permanently removes the account{del.meetings?` and ${del.meetings} meeting(s) with their transcripts, minutes and action items`:''}. It cannot be undone. To keep the data and only block sign-in, choose Disable instead.</p>
