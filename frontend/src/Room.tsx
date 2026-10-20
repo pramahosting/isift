@@ -3,6 +3,7 @@ import {rememberRoom} from './Connections';
 import {Scene,ScenePicker} from './Scenes';
 import {BgProcessor,PRESETS,loadSaved,save as saveBg,readImage} from './vbg';
 import type {BgMode} from './vbg';
+import {SfuClient} from './sfu';
 import {Pencil,Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer} from 'lucide-react';
 
 type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStream;mic:boolean;cam:boolean;screen:boolean};
@@ -93,6 +94,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const ws=useRef<WebSocket|null>(null);const pcs=useRef<Record<string,RTCPeerConnection>>({});const pendIce=useRef<Record<string,any[]>>({});const sigQ=useRef<Record<string,Promise<any>>>({});const myId=useRef('');
   const local=useRef<{audio?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
   const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});
+  const sfuRef=useRef<SfuClient|null>(null);const sfuOnRef=useRef(false);const [sfuOn,setSfuOn]=useState(false);const [stage,setStage]=useState<string[]>([]);const stageRef=useRef<string[]>([]);const sfuInfo=useRef<Record<string,any>>({});const resubT=useRef<any>(null);
   const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
   const rec=useRef<any>(null);const wasRecording=useRef(false);
   // discussion groups, boardroom table and active speaker
@@ -143,7 +145,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   // ---- local media ----
   const getMedia=useCallback(async()=>{
     let stream:MediaStream|null=null;
-    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:{width:{ideal:960,max:1280},height:{ideal:540,max:720},frameRate:{ideal:24,max:30}}})}
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:{width:{ideal:1280,max:1280},height:{ideal:720,max:720},frameRate:{ideal:24,max:30}}})}
     catch{try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote('Camera not available - joining with microphone only.')}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}}
     if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;local.current.raw=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
     setLocalStream(stream);return stream;
@@ -168,8 +170,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   };
   const tuneSenders=()=>{      // fewer bits per person as the room grows, so everyone's video and sound stay smooth
     const list=Object.values(pcs.current),n=list.length;
-    const kbps=n<=1?1500:n<=3?800:n<=6?400:220,scale=n<=3?1:n<=6?1.5:2;
-    for(const pc of list)for(const tx of pc.getSenders()){if(tx.track?.kind!=='video')continue;try{const p=tx.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];p.encodings[0].maxBitrate=kbps*1000;p.encodings[0].scaleResolutionDownBy=scale;p.encodings[0].maxFramerate=n>6?15:24;(p as any).degradationPreference='maintain-framerate';tx.setParameters(p).catch(()=>{})}catch{}}
+    const kbps=n<=1?2500:n<=2?1500:n<=3?1000:n<=6?500:250,scale=n<=2?1:n<=3?1.33:n<=6?2:3;
+    for(const pc of list)for(const tx of pc.getSenders()){if(tx.track?.kind!=='video')continue;try{const p=tx.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];p.encodings[0].maxBitrate=kbps*1000;p.encodings[0].scaleResolutionDownBy=scale;p.encodings[0].maxFramerate=n>6?15:24;(p as any).degradationPreference='balanced';tx.setParameters(p).catch(()=>{})}catch{}}
   };
   const attachLocal=async(pc:RTCPeerConnection)=>{
     for(const tx of pc.getTransceivers()){
@@ -193,7 +195,19 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     }
   };
   const onSignal=(from:string,data:any)=>{sigQ.current[from]=(sigQ.current[from]||Promise.resolve()).then(()=>onSignalNow(from,data)).catch(()=>{})};     // one message at a time per person, in order
-  const dropPeer=(id:string)=>{pcs.current[id]?.close();delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id];setTimeout(()=>tuneSenders(),0);delete peerStreams.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
+  const dropPeer=(id:string)=>{delete sfuInfo.current[id];pcs.current[id]?.close();delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id];setTimeout(()=>tuneSenders(),0);delete peerStreams.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
+  // ---- big meetings: everyone sends once to the Cloudflare video server; we receive the people on stage ----
+  const resub=()=>{clearTimeout(resubT.current);resubT.current=setTimeout(()=>{const c=sfuRef.current;if(!c)return;c.subscribe(stageRef.current.filter(id=>id!==myId.current&&sfuInfo.current[id])).catch(e=>{if(e?.message!=='closed')setNotice(e?.message||'Could not receive video from the meeting.')})},400)};
+  const enterSfu=async()=>{
+    if(sfuOnRef.current)return;sfuOnRef.current=true;setSfuOn(true);
+    Object.keys(pcs.current).forEach(id=>{try{pcs.current[id].close()}catch{}delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id]});     // direct connections give way to the video server
+    for(const id of Object.keys(peerStreams.current))peerStreams.current[id]=new MediaStream();
+    setPeers(p=>{const n:Record<string,Peer>={};for(const id in p)n[id]={...p[id],stream:peerStreams.current[id]};return n});
+    const c=new SfuClient(send,(id,st)=>{peerStreams.current[id]=st||new MediaStream();upsert(id,{stream:peerStreams.current[id]});recorderRefresh()});sfuRef.current=c;
+    setNotice('This is a big meeting, so video now goes through our video server. Speakers, people sharing and the host are shown; everyone is in the Participants list.');
+    try{await c.publish(local.current.audio,local.current.video)}catch(e:any){if(e?.message!=='closed')setNotice(e?.message||'Could not connect to the video server for this big meeting.')}
+    resub();
+  };
 
   const authH:any={'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})};
   const loadHostInfo=()=>!token?Promise.resolve():fetch(`${api}/rooms/${code}/host`,{headers:authH}).then(r=>r.ok?r.json():null).then(j=>j&&setHostInfo(j)).catch(()=>{});
@@ -216,10 +230,14 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       if(m.type==='waiting'){setPhase('waiting')}
       else if(m.type==='denied'){setErr('The host did not let you in.');setPhase('ended')}
       else if(m.type==='waiting-list'){setWaitList(m.list||[]);if((m.list||[]).length)setNotice(`${m.list[m.list.length-1].name} is waiting to join`)}
-      else if(m.type==='welcome'){setWaitList(m.waiting||[]);if(m.roster)setRoster(m.roster);if(m.host)loadHostInfo();myId.current=m.id;setIsHost(!!m.host);setCohost(!!m.cohost);setPolicy(m.policy||{audio:true,video:true});setRecording(!!m.recording);setCanRec(m.can_record!==false);if(typeof m.ends_in==='number'&&m.ends_in<=600)setEndWarn({at:Date.now()+m.ends_in*1000,msg:'This meeting will end soon because the host\u2019s plan limits its length.'});setPhase('room');{let jo:any={};try{jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');sessionStorage.removeItem('isift.join')}catch{}rememberRoom(code,info?.title||'Meeting');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}const o=m.options||{};setVrOn(o.virtual_room!==false);setVrAllowed(m.vroom_allowed!==false);if(m.shape)setShapeState(m.shape==="round"?"round":"rect");if(!m.host){if((o.mute_on_entry||m.policy?.audio===false)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((o.video_off_on_entry||m.policy?.video===false)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}}else{let so:any={};try{so=JSON.parse(sessionStorage.getItem('isift.start')||'{}');sessionStorage.removeItem('isift.start')}catch{}if((so.video===false||o.host_video_off)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(so.screen)setTimeout(()=>screenRef.current?.(),500);if(o.auto_record&&!m.recording)setTimeout(()=>autoRec.current?.(),800)}}for(const p of m.peers){upsert(p.id,{name:p.name,host:p.host,cohost:p.cohost});await callPeer(p.id)}send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
-      else if(m.type==='peer-joined'){upsert(m.id,{name:m.name,host:m.host,cohost:m.cohost});setNotice(`${m.name} joined`);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
+      else if(m.type==='welcome'){setWaitList(m.waiting||[]);if(m.roster)setRoster(m.roster);if(m.host)loadHostInfo();myId.current=m.id;setIsHost(!!m.host);setCohost(!!m.cohost);setPolicy(m.policy||{audio:true,video:true});setRecording(!!m.recording);setCanRec(m.can_record!==false);if(typeof m.ends_in==='number'&&m.ends_in<=600)setEndWarn({at:Date.now()+m.ends_in*1000,msg:'This meeting will end soon because the host\u2019s plan limits its length.'});setPhase('room');{let jo:any={};try{jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');sessionStorage.removeItem('isift.join')}catch{}rememberRoom(code,info?.title||'Meeting');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}const o=m.options||{};setVrOn(o.virtual_room!==false);setVrAllowed(m.vroom_allowed!==false);if(m.shape)setShapeState(m.shape==="round"?"round":"rect");if(!m.host){if((o.mute_on_entry||m.policy?.audio===false)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((o.video_off_on_entry||m.policy?.video===false)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}}else{let so:any={};try{so=JSON.parse(sessionStorage.getItem('isift.start')||'{}');sessionStorage.removeItem('isift.start')}catch{}if((so.video===false||o.host_video_off)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(so.screen)setTimeout(()=>screenRef.current?.(),500);if(o.auto_record&&!m.recording)setTimeout(()=>autoRec.current?.(),800)}}for(const p of m.peers){upsert(p.id,{name:p.name,host:p.host,cohost:p.cohost,...(p.sfu?{screen:!!p.screen}:{})});if(p.sfu)sfuInfo.current[p.id]=p.sfu;if(!m.sfu)await callPeer(p.id)}if(m.sfu){stageRef.current=m.stage||[];setStage(m.stage||[]);await enterSfu()}send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
+      else if(m.type==='peer-joined'){upsert(m.id,{name:m.name,host:m.host,cohost:m.cohost});if(!sfuOnRef.current)setNotice(`${m.name} joined`);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
       else if(m.type==='renamed'){if(m.id===myId.current)setName(m.name);else upsert(m.id,{name:m.name})}
-      else if(m.type==='peer-left'){setPeers(p=>{if(p[m.id])setNotice(`${p[m.id].name} left`);return p});dropPeer(m.id)}
+      else if(m.type==='peer-left'){if(!sfuOnRef.current)setPeers(p=>{if(p[m.id])setNotice(`${p[m.id].name} left`);return p});dropPeer(m.id)}
+      else if(m.type==='sfu'){enterSfu()}
+      else if(m.type==='sfu-active'){stageRef.current=m.ids||[];setStage(m.ids||[]);resub()}
+      else if(m.type==='sfu-pub'){sfuInfo.current[m.id]=m.sfu;if(m.screen)upsert(m.id,{screen:true});if(stageRef.current.includes(m.id))resub()}
+      else if(m.type==='sfu-res'){sfuRef.current?.handle(m)}
       else if(m.type==='signal')onSignal(m.from,m.data);
       else if(m.type==='state')upsert(m.id,{mic:m.mic,cam:m.cam,screen:m.screen});
       else if(m.type==='chat'){const ids:string[]=m.to?Array.from(new Set<string>([m.from,...m.to])).sort():[];const key=m.to?ids.join(','):'all';const names:Record<string,string>={[m.from]:m.name};(m.to||[]).forEach((x:string,k:number)=>{names[x]=m.to_names?.[k]||'Someone'});const me=m.from===myId.current;setChat(c=>[...c,{name:m.name,text:m.text,at:m.at,me,key,names,g:groupRef.current?.id||'main'}]);if(!me&&(!chatOpenRef.current||chatKeyRef.current!==key)){setUnread(u=>({...u,[key]:(u[key]||0)+1}));if(!chatOpenRef.current)setNotice(`${m.to?'(private) ':''}${m.name}: ${m.text.slice(0,60)}`)}}else if(m.type==='chat-error'){setNotice(m.message)}
@@ -260,14 +278,14 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     sock.onclose=()=>{clearTimeout(slow);setPhase(p=>{if(p==='lobby'){setErr(e=>e||'Could not connect to the meeting. Press Join again.');setJoining(false)}return p==='room'||p==='waiting'?'ended':p})};
     sock.onerror=()=>{setJoining(false)};
   };
-  const leaveLocal=()=>{Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
+  const leaveLocal=()=>{sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
   const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
   const endAll=async()=>{if(!window.confirm('End the meeting for everyone?'))return;if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
 
   // ---- controls ----
   const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};
   const toggleCam=()=>{const t=local.current.cam;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.video){setNotice('The host has not allowed participants to start their video. Ask the host.');return}t.enabled=!t.enabled;setCam(t.enabled);send({type:'state',mic:!!local.current.audio?.enabled,cam:t.enabled,screen})};
-  const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}};
+  const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}await sfuRef.current?.replaceVideo(track||null,!!track&&track!==local.current.cam).catch(()=>{})};
   const [bg,setBg]=useState<BgMode>(loadSaved);const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const [bgSel,setBgSel]=useState<BgMode>(()=>loadSaved());const openBg=()=>{setBgSel(bg);setBgOpen(true)};const bgInit=useRef(false);
   const swapCam=async(nt:MediaStreamTrack)=>{const L=local.current,old=L.cam,en=old?old.enabled!==false:true,sharing=!!L.video&&L.video!==old;nt.enabled=en;L.cam=nt;if(!sharing){L.video=nt;await replaceVideo(nt)}setLocalStream(new MediaStream([...(L.audio?[L.audio]:[]),nt]))};
   const applyBg=async(m:BgMode)=>{
@@ -381,7 +399,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   useEffect(()=>{
     if(phase!=='room')return;const AC:any=(window as any).AudioContext||(window as any).webkitAudioContext;if(!AC)return;
     let ctx:AudioContext;try{ctx=new AC()}catch{return}
-    const nodes=new Map<string,{track:string;an:AnalyserNode;src:MediaStreamAudioSourceNode}>();const buf=new Uint8Array(512);let last='';
+    const nodes=new Map<string,{track:string;an:AnalyserNode;src:MediaStreamAudioSourceNode}>();const buf=new Uint8Array(512);let last='',lastTalk=0;
     const level=(id:string,stream:MediaStream|null|undefined)=>{
       const t=stream?.getAudioTracks()[0];const cur=nodes.get(id);
       if(!t||t.readyState!=='live'){if(cur){try{cur.src.disconnect()}catch{}nodes.delete(id)}return 0}
@@ -391,7 +409,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       if(ctx.state==='suspended')ctx.resume().catch(()=>{});
       const live=new Set<string>(['__me',...Object.keys(peersRef.current)]);for(const id of Array.from(nodes.keys()))if(!live.has(id)){try{nodes.get(id)!.src.disconnect()}catch{}nodes.delete(id)}
       let best='',top=0.02;
-      const me=localRef.current;if(me&&local.current.audio?.enabled){const l=level('__me',me);if(l>top){top=l;best='__me'}}
+      const me=localRef.current;if(me&&local.current.audio?.enabled){const l=level('__me',me);if(l>top){top=l;best='__me'}if(sfuOnRef.current&&l>0.03&&Date.now()-lastTalk>3000){lastTalk=Date.now();send({type:'talk'})}}
       for(const id of Object.keys(peersRef.current)){const l=level(id,peersRef.current[id].stream);if(l>top){top=l;best=id}}
       if(best!==last){last=best;setSpeaking(best)}};
     const iv=setInterval(tick,250);
@@ -423,17 +441,18 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     <button className={`primary join${joining?' busy':''}`} aria-busy={joining} onClick={join} disabled={joining||!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{joining?"Joining…":!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
   </div></div>;
   if(phase==='waiting')return <div className="rm-center"><div className="rm-card"><h1>Waiting for the host</h1><p>The host will let you in shortly. You can leave this page at any time.</p><button className="secondary" onClick={()=>{ws.current?.close();onLeave()}}>Cancel</button></div></div>;
-  const list=Object.values(peers);const tiles=list.length+1;
+  const everyone=Object.values(peers);const list=sfuOn?everyone.filter(p=>stage.includes(p.id)):everyone;const tiles=list.length+1;const total=everyone.length+1;
   const rankOf=(h?:boolean,c?:boolean)=>!h?0:c?1:2;const myRank=rankOf(isHost,cohost);const primary=myRank===2;
   type Row={id:string;self?:boolean;name:string;host?:boolean;cohost?:boolean;mic:boolean;cam:boolean;screen:boolean;stream:MediaStream|null};
   const ordered:Row[]=[{id:'__me',self:true,name:name||'You',host:isHost,cohost,mic,cam,screen,stream:localStream},...list.map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:p.stream||null}))]
     .map((r,i)=>({r,i})).sort((a,b)=>rankOf(b.r.host,b.r.cohost)-rankOf(a.r.host,a.r.cohost)||a.i-b.i).map(x=>x.r);     // the host first, then co-hosts, then everyone else
+  const orderedAll:Row[]=sfuOn?[...ordered,...everyone.filter(p=>!stage.includes(p.id)).map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:null}))]:ordered;
   const curG=group?.id||'main';const sharing=ordered.some(r=>r.screen);
   const sharerRow=ordered.find(r=>r.screen);const autoShare=!pin&&!!sharerRow;const pinnedRow=pin?ordered.find(r=>r.id===pin):sharerRow;       // someone is sharing: their screen takes the big space and everyone else shrinks to the strip
   const selfStream=screen&&screenStream?screenStream:localStream;const togglePin=(id:string)=>setPin(p=>p===id?'':id);
   const spotTile=(r:Row)=>r.self?<VideoTile stream={selfStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen} speaking={speaking==='__me'} onDouble={()=>togglePin('__me')}/>:<VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===r.id} onDouble={()=>togglePin(r.id)}/>;
   const autoT=tiles<=1?.5:tiles===2?.58:tiles===3?.68:tiles===4?.76:tiles===5?.84:tiles<=7?.92:1;                  // the table grows with the number of people
-  const tableOk=vrOn&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
+  const tableOk=vrOn&&!sfuOn&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
   {const here=new Set(list.map(p=>p.id));seatIds.current=seatIds.current.filter(id=>here.has(id));list.forEach(p=>{if(!seatIds.current.includes(p.id))seatIds.current.push(p.id)})}
   const seatRows:Row[]=[ordered.find(r=>r.self)!,...seatIds.current.map(id=>ordered.find(r=>r.id===id)).filter(Boolean) as Row[]];
   const seats=seatPoints(seatRows.length,shape);const seatW=seatWidth(tiles);
@@ -443,7 +462,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const canAct=(r:Row)=>!r.self&&myRank>rankOf(r.host,r.cohost);
   const togglePeople=()=>{setPeopleOpen(o=>!o);setChatOpen(false);setMenuFor('')};
   return <div className={`rm-shell${barOn?'':' nobar'}${peopleOpen||chatOpen?' sideopen':''}`} style={{['--sidew' as any]:`${(peopleOpen?sideW.people?.w:chatOpen?sideW.chat?.w:0)||213}px`}}>
-    <header className="rm-top">{renaming?<form className="rm-rename" onSubmit={e=>{e.preventDefault();renameTo(nameDraft)}}><input autoFocus value={nameDraft} maxLength={200} aria-label="Meeting name" onChange={e=>setNameDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')setRenaming(false)}}/><button type="submit" className="primary">Save</button><button type="button" className="secondary" onClick={()=>setRenaming(false)}>Cancel</button></form>:<b className="rm-title">{info.title}{isHost&&!!token&&<button type="button" className="rm-editname" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{setNameDraft(info.title);setRenaming(true)}}><Pencil size={15}/></button>}</b>}{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> Recording</span>}{group&&<span className="rm-group"><Group size={13}/> {group.name}</span>}{clock&&<span className="rm-clock" title="Time left in the discussion groups"><Timer size={13}/> {clock}</span>}<span className="muted"><Users size={14}/> {tiles}</span>{endWarn&&<div className="rm-endwarn" role="alert"><b>Meeting ending soon.</b> {endWarn.msg} <span className="rm-endleft">{(()=>{const s=Math.max(0,Math.round((endWarn.at-(endNow||Date.now()))/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} left`})()}</span><button aria-label="Dismiss" onClick={()=>setEndWarn(null)}>×</button></div>}
+    <header className="rm-top">{renaming?<form className="rm-rename" onSubmit={e=>{e.preventDefault();renameTo(nameDraft)}}><input autoFocus value={nameDraft} maxLength={200} aria-label="Meeting name" onChange={e=>setNameDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')setRenaming(false)}}/><button type="submit" className="primary">Save</button><button type="button" className="secondary" onClick={()=>setRenaming(false)}>Cancel</button></form>:<b className="rm-title">{info.title}{isHost&&!!token&&<button type="button" className="rm-editname" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{setNameDraft(info.title);setRenaming(true)}}><Pencil size={15}/></button>}</b>}{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> Recording</span>}{group&&<span className="rm-group"><Group size={13}/> {group.name}</span>}{clock&&<span className="rm-clock" title="Time left in the discussion groups"><Timer size={13}/> {clock}</span>}<span className="muted"><Users size={14}/> {total}</span>{endWarn&&<div className="rm-endwarn" role="alert"><b>Meeting ending soon.</b> {endWarn.msg} <span className="rm-endleft">{(()=>{const s=Math.max(0,Math.round((endWarn.at-(endNow||Date.now()))/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} left`})()}</span><button aria-label="Dismiss" onClick={()=>setEndWarn(null)}>×</button></div>}
 {notice&&<span className="rm-notice" role="status">{notice}</span>}</header>
     {ask&&<div className="rm-ask" role="alert"><span>{ask.by} asks you to turn on your {ask.what==='cam'?'camera':'microphone'}.</span><button className="primary" onClick={()=>{if(ask.what==='cam')toggleCam();else toggleMic();const t=ask.what==='cam'?local.current.cam:local.current.audio;if(t&&!t.enabled){}setAsk(null)}}>Turn on</button><button className="secondary" onClick={()=>setAsk(null)}>Not now</button></div>}
     {banner&&<div className="rm-banner" role="status"><Megaphone size={16}/><span><b>{banner.name}:</b> {banner.text}</span><button type="button" className="iconbtn" aria-label="Dismiss" onClick={()=>setBanner(null)}><X size={14}/></button></div>}
@@ -526,8 +545,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
         {isHost&&canAct(r)&&<button className="rm-kick" title={`Remove ${r.name}`} onClick={()=>window.confirm(`Remove ${r.name} from the meeting?`)&&send({type:'kick',id:r.id})}><UserX size={14}/></button>}
       </div>)}
     </div>}
-    {peopleOpen&&<aside className="rm-chat rm-people" aria-label="Participants" style={sideStyle('people')}><span className="rm-rsz-l" title="Drag to make this window wider or narrower" onPointerDown={sideDrag('people','w')}/><span className="rm-rsz-b" title="Drag to make this window taller or shorter" onPointerDown={sideDrag('people','h')}/><div className="rm-chathead"><b>Participants ({tiles})</b><button className="iconbtn" onClick={()=>setPeopleOpen(false)} aria-label="Hide participants" title="Hide participants"><X size={16}/></button></div>
-      <ul className="rm-plist">{ordered.map(r=><li key={r.id}>
+    {peopleOpen&&<aside className="rm-chat rm-people" aria-label="Participants" style={sideStyle('people')}><span className="rm-rsz-l" title="Drag to make this window wider or narrower" onPointerDown={sideDrag('people','w')}/><span className="rm-rsz-b" title="Drag to make this window taller or shorter" onPointerDown={sideDrag('people','h')}/><div className="rm-chathead"><b>Participants ({total})</b><button className="iconbtn" onClick={()=>setPeopleOpen(false)} aria-label="Hide participants" title="Hide participants"><X size={16}/></button></div>
+      <ul className="rm-plist">{orderedAll.map(r=><li key={r.id}>
         <div className="rm-prow"><span className="rm-pname">{r.self&&editMe?<form className="rm-myname" onSubmit={e=>{e.preventDefault();const v=meDraft.trim();if(v)send({type:'rename',name:v});setEditMe(false)}}><input autoFocus value={meDraft} maxLength={60} aria-label="Your name" onChange={e=>setMeDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')setEditMe(false)}}/><button type="submit" className="primary">Save</button></form>:<><b>{r.name}</b>{r.self?' (me)':''}</>}{r.host?<em className="rm-badge">{r.cohost?'Co-host':'Host'}</em>:null}</span>
           <span className="rm-pstate">
             {r.self&&!editMe&&<button type="button" className="rm-pbtn" aria-label="Change your name" title="Change your name" onClick={()=>{setMeDraft(name);setEditMe(true)}}><Pencil size={15}/></button>}
@@ -556,7 +575,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       <button className={`rm-btn${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam} aria-label={cam?'Turn camera off':'Turn camera on'}>{cam?<Video size={18}/>:<VideoOff size={18}/>}<span>{cam?'Camera':'Camera off'}</span></button>
       <button className={`rm-btn${bg.kind!=='none'?' on':''}`} onClick={openBg} aria-label="Background and effects"><ImageIcon size={18}/><span>Background</span></button>
       <button className={`rm-btn${screen?' on':''}`} onClick={toggleScreen} aria-label="Share screen" title={(navigator.mediaDevices as any)?.getDisplayMedia?'Share your screen':'Not available on phones and tablets: join from a computer to share your screen'}><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button>
-      <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({tiles})</span></button>
+      <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({total})</span></button>
       <button className={`rm-btn${chatOpen?' on':''}`} onClick={()=>{setChatOpen(o=>!o);setPeopleOpen(false);if(!chatOpen)setUnread(u=>({...u,[chatKey]:0}))}} aria-label="Chat"><MessageSquare size={18}/><span>Chat</span>{Object.values(unread).reduce((a,b)=>a+b,0)>0&&<i className="rm-dot">{Object.values(unread).reduce((a,b)=>a+b,0)}</i>}</button>
       {isHost&&vrAllowed&&<button className={`rm-btn${vrOn?' on':''}`} onClick={()=>{const v=!vrOn;setVrOn(v);if(v)setView('table');send({type:'vroom',on:v})}} aria-pressed={vrOn} aria-label={vrOn?'Switch the virtual room off for everyone':'Switch the virtual room on for everyone'} title={vrOn?'Virtual room is on: everyone sees the boardroom table. Press to switch it off for everyone.':'Virtual room is off: everyone sees the gallery. Press to switch it on for everyone.'}><Armchair size={18}/><span>Virtual room: {vrOn?'On':'Off'}</span></button>}
       <button className={`rm-btn${inviteOpen?' on':''}`} onClick={()=>inviteOpen?setInviteOpen(false):openInvite()} aria-label="Invite people"><Link2 size={18}/><span>Invite</span></button>

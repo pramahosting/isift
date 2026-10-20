@@ -33,8 +33,8 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
     if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
     const L=form.lim||{},oL=o.limits||{},lim:any={};
     for(const k of ['calls','commbox','open_room','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
-    for(const k of ['meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
-    if(form.resetLim){for(const k of ['calls','commbox','open_room','recording','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month'])lim[k]=null}
+    for(const k of ['meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
+    if(form.resetLim){for(const k of ['calls','commbox','open_room','recording','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants'])lim[k]=null}
     if(Object.keys(lim).length)body.limits=lim;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
@@ -43,7 +43,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    setForm(null);await refresh(q.trim());onChanged&&onChanged();
   }catch(ex){setFormErr(ex.message)}finally{setSaving(false)}};
  const toggle=async u=>{setMsg('');try{await request(`/admin/users/${u.id}`,{method:'PATCH',body:JSON.stringify({is_active:!u.is_active})});setMsg(`${u.email} ${u.is_active?'disabled':'enabled'}.`);await refresh(q.trim())}catch(ex){setErr(ex.message);setTimeout(()=>setErr(''),6000)}};
- const remove=async()=>{const u=del;setDel(null);setMsg('');try{const r=await request(`/admin/users/${u.id}`,{method:'DELETE'});setMsg(`Deleted ${u.email}${r.meetings_removed?` and ${r.meetings_removed} meeting(s) with their transcripts, minutes and actions`:''}.`);await refresh(q.trim());onChanged&&onChanged()}catch(ex){setErr(ex.message);setTimeout(()=>setErr(''),6000)}};
+ const remove=async()=>{const u=del;setDel(null);setMsg('');try{const r=await request(`/admin/users/${u.id}`,{method:'DELETE'});setMsg(`Deleted ${u.email}${r.meetings_removed?` and ${r.meetings_removed} meeting(s) with their transcripts, minutes and actions`:''}.`);await refresh(q.trim());onChanged&&onChanged()}catch(ex){setErr(ex.message);setTimeout(()=>setErr(""),20000)}};
  return <>
   <div className="pagehead"><div><p className="eyebrow">ADMINISTRATION</p><h1>Users</h1><p>Create, update, disable or delete the people who can use this workspace.</p></div>
    <div className="headactions"><button className="secondary" onClick={()=>download('/admin/users/export','users.csv')}><Download size={16}/> Export CSV</button>{canCreate&&<button className="primary" onClick={openCreate}><UserPlus size={16}/> Add user</button>}</div></div>
@@ -72,6 +72,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
      <label>AI minutes summaries a month<input type="number" min={0} max={100000} value={form.lim.ai_per_month??0} onChange={e=>setForm({...form,lim:{...form.lim,ai_per_month:e.target.value}})}/><small>0 = no limit. Used this month: {form.orig?.limits?.ai_used_month??0}</small></label>
      <label>Booking pages<input type="number" min={0} max={100000} value={form.lim.booking_pages??0} onChange={e=>setForm({...form,lim:{...form.lim,booking_pages:e.target.value}})}/><small>0 = no limit</small></label>
      <label>Storage (MB)<input type="number" min={0} max={10000000} value={form.lim.storage_mb??0} onChange={e=>setForm({...form,lim:{...form.lim,storage_mb:e.target.value}})}/><small>0 = no limit. Used: {form.orig?.limits?.storage_used_mb??0} MB (Docs, whiteboards, cloud recordings)</small></label>
+     <label>People in one meeting<input type="number" min={0} max={10000} value={form.lim.max_participants??0} onChange={e=>setForm({...form,lim:{...form.lim,max_participants:e.target.value}})}/><small>0 = up to the overall ceiling. Applies to meetings this person hosts.</small></label>
      <label>Hosted meeting hours a month<input type="number" min={0} max={10000000} value={form.lim.meeting_hours_per_month??0} onChange={e=>setForm({...form,lim:{...form.lim,meeting_hours_per_month:e.target.value}})}/><small>0 = no limit. Used this month: {form.orig?.limits?.hours_used_month??0} h</small></label>
      <label>Largest PDF (pages)<input type="number" min={0} max={100000} value={form.lim.pdf_pages??0} onChange={e=>setForm({...form,lim:{...form.lim,pdf_pages:e.target.value}})}/><small>0 = no limit</small></label>
     </div>
@@ -82,10 +83,9 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    <div className="actions"><button className="primary" disabled={saving}>{saving?'Saving…':form.mode==='create'?'Create user':'Save changes'}</button><button type="button" className="secondary" onClick={()=>setForm(null)}>Cancel</button></div>
   </form>}
   {users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
-   {bar}
-   <div className="plantable-wrap"><table className="plantable"><thead><tr><th><input type="checkbox" checked={allOn} disabled={!pickable.length} onChange={e=>setSel(e.target.checked?pickable.map((u:any)=>u.id):[])} aria-label="Select all users in this table"/></th><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
+   <div className="plantable-wrap"><table className="plantable"><thead><tr><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
    {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={calls:'Calls',ai_per_month:'AI summaries',booking_pages:'Booking pages',commbox:'Commbox',open_room:'Open room',recording:'Recording',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
-    return <tr key={u.id}><td>{canPick(u)&&<input type="checkbox" checked={sel.includes(u.id)} onChange={()=>flip(u.id)} aria-label={`Select ${u.email}`}/>}</td><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
+    return <tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
      <td><span className={`badge ${p.plan&&p.plan!=='basic'?'green':''}`}>{adm?'Administrator':p.plan_name||'Basic'}</span></td>
      <td>{p.plan==='basic'||adm?'\u2013':day(p.start)}</td><td>{p.plan==='basic'||adm?'\u2013':day(p.end)}</td>
      <td>{adm?'\u2013':p.plan==='basic'?'Free':p.paid?'Yes':'No'}</td><td>{adm||p.plan==='basic'?'\u2013':day(p.paid_on)}</td>

@@ -320,3 +320,18 @@ The Admin setup checklist shows "TURN relay" as ready once one is set. Also in t
 ## Sign-up codes that do not arrive
 
 Many hosts (Northflank, Render, Railway and others) block outgoing SMTP, so the verification email never leaves the server. Under Admin settings > Email sent by the app, either fix SMTP or, simpler, paste a **Resend API key** (resend.com, free tier) and set the **From address** to an address on a domain you verified there. Mail then goes over HTTPS; the same account sends booking emails, support mail and test emails (press *Send test email* to check). Logging in with an email whose sign-up was never finished now says "Your sign-up is not complete yet" and opens the code screen, where *Send a new code* works; if the code expired it says so and opens the sign-up form.
+
+
+## Big meetings (Cloudflare SFU)
+
+Meetings of up to 8 people connect browser to browser. A meeting of 9 or more switches **automatically** to the Cloudflare video server (an SFU) when it is set up, so each person sends their video once instead of once per other person.
+
+1. Cloudflare dashboard > **Realtime** > **SFU** > **Create application**. Copy the **App ID** and **App Secret**.
+2. iSift > Admin settings > Meeting platforms > **Video meetings**: paste **Cloudflare SFU application ID** and **secret**, and save. The Admin setup checklist shows "Video server for big meetings" as ready.
+3. Optional: **People shown and heard at once** (default 8) is how many tiles a big meeting shows. The current speakers, anyone sharing a screen and the host are shown; everyone else stays in the Participants list and takes the place of a quiet speaker when they start talking.
+
+Notes: the secret stays on the server (browsers talk to iSift, iSift talks to Cloudflare). Cloudflare charges per GB sent to people (first 1,000 GB a month free, shared with TURN). Discussion groups are not available in big meetings. Plan limits on people in a meeting: Basic 25, paid plans 100, up to 300 when an administrator raises it for a customer (Users > edit > "People in one meeting"). Without the SFU set up, bigger meetings still work but each browser sends video to everyone, which is only comfortable up to about 8 people.
+
+## Recording ready email
+
+When a host keeps a recording **in the cloud**, iSift emails them a download link as soon as it is stored. The link downloads the file without signing in (so the email should be kept private), is signed so it cannot be guessed or edited, and expires after 7 days, or sooner when a Basic plan's cloud copy is removed (2 days). It needs the app's email account to be set up (Admin settings > Email and calendar, or Resend); without it the recording is still saved and the host sees a note saying no email was sent. The recording also stays under Meetings > Recordings.

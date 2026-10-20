@@ -37,10 +37,12 @@ export class BgProcessor{
     try{if(this.c.width!==this.v.videoWidth&&this.v.videoWidth){this.c.width=this.v.videoWidth;this.c.height=this.v.videoHeight}await this.seg.send({image:this.v})}catch{}
     this.busy=false;
   }
+  private mc=document.createElement('canvas');
+  private softMask(mask:any,w:number,h:number){const m=this.mc;if(m.width!==256){m.width=256;m.height=Math.max(1,Math.round(256*h/w))}const g=m.getContext('2d')!;g.clearRect(0,0,m.width,m.height);g.imageSmoothingEnabled=true;g.drawImage(mask,0,0,m.width,m.height);this.x.imageSmoothingEnabled=true;this.x.imageSmoothingQuality='high';this.x.drawImage(m,0,0,w,h)}
   setMode(m:BgMode){this.mode=m;if(m.kind==='image'&&m.url!==this.imgUrl){this.imgUrl=m.url;const i=new Image();i.onload=()=>{this.img=i};i.src=m.url}}
   private draw(r:any){
     const {x,c}=this,w=c.width,h=c.height;x.save();x.clearRect(0,0,w,h);
-    x.filter='blur(3px)';x.drawImage(r.segmentationMask,0,0,w,h);x.filter='none';
+    this.softMask(r.segmentationMask,w,h);      // soft edges from a small, smoothed copy of the mask: far cheaper than blurring the full-size picture every frame
     x.globalCompositeOperation='source-in';x.drawImage(r.image,0,0,w,h);
     x.globalCompositeOperation='destination-over';
     if(this.mode.kind==='image'&&this.img){const iw=this.img.width,ih=this.img.height,k=Math.max(w/iw,h/ih);x.drawImage(this.img,(w-iw*k)/2,(h-ih*k)/2,iw*k,ih*k)}
