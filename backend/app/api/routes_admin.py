@@ -152,6 +152,29 @@ async def update_user(user_id: str, data: UserPatch, admin: User = Depends(requi
     await db.commit(); await db.refresh(u)
     return await _row(db, u, {})
 
+async def _drop(db, key: str) -> None:           # like store.drop, but the caller commits, so the whole deletion is one step
+    from app.models import IntegrationSetting
+    row = await db.get(IntegrationSetting, key)
+    if row: await db.delete(row)
+
+async def _forget(db, u: User) -> None:
+    """Remove what is stored about a person outside their rows: profile and limits, plan record, usage counters, and their place in a company."""
+    from app.services import store
+    em = (u.email or "").strip().lower()
+    link = await store.get(db, store.hkey("memberof", em), {})
+    cid = link.get("company_id")
+    if cid:
+        c = await store.get(db, f"company:{cid}", {})
+        if c:
+            c["members"] = [m for m in c.get("members", []) if (m.get("email") or "").lower() != em]
+            if c["members"]:
+                if not any(m.get("role") == "owner" for m in c["members"]): c["members"][0]["role"] = "owner"      # the company always keeps an owner
+                await store.put(db, f"company:{cid}", c, commit=False)
+            else:
+                await _drop(db, f"company:{cid}"); await _drop(db, f"billing:co:{cid}")
+    for prefix in ("profile", "billing", "memberof", "docs-usage", "ai-usage", "meet-usage", "pendingsignup"):
+        await _drop(db, store.hkey(prefix, em))
+
 @router.delete("/admin/users/{user_id}")
 async def delete_user(user_id: str, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     u = await _get(db, user_id)
@@ -169,7 +192,9 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db: As
     await db.execute(delete(Briefing).where(Briefing.user_id == u.id))
     acct = await _account(db, u) if settings.is_local_demo else None
     if acct: await db.delete(acct)
-    email = u.email; await db.delete(u)
+    email = u.email
+    await _forget(db, u)                                  # per-person records kept outside the user table
+    await db.delete(u)
     db.add(AuditLog(actor=admin.email, action="user.delete", resource_type="user", resource_id=user_id, safe_metadata={"email_domain": email.split("@")[-1], "meetings_removed": len(ids)}))
     await db.commit()
     return {"deleted": True, "meetings_removed": len(ids)}

@@ -374,3 +374,26 @@ def test_login_before_finishing_signup_says_so_and_resend_mail_works(client, mon
     import httpx; monkeypatch.setattr(httpx, "AsyncClient", C)
     asyncio.run(mail.send(acct, ["a@b.com"], "Hi", "Code 123456"))
     assert sent["url"] == "https://api.resend.com/emails" and sent["auth"] == "Bearer re_test" and sent["body"]["to"] == ["a@b.com"] and sent["body"]["from"] == "hello@isift.au"
+
+def test_admin_can_delete_users_and_their_records(client):
+    ah, _ = login(client); client.get("/api/v1/account", headers=ah)
+    made = []
+    for who in ("zed", "yan"):
+        r = client.post("/api/v1/admin/users", json={"email": f"{who}@del.com", "display_name": who, "password": "Password123", "role": "user"}, headers=ah); assert r.status_code == 201, r.text
+        made.append(r.json()["id"])
+    t = client.post("/api/v1/auth/local-login", json={"username": "zed@del.com", "password": "Password123"}).json()["access_token"]
+    zh = {"Authorization": "Bearer " + t}; client.get("/api/v1/account", headers=zh)
+    assert client.post("/api/v1/notes", json={"kind": "doc", "content": "hello"}, headers=zh).status_code == 200
+    assert client.post("/api/v1/account/company", json={"name": "ZedCo"}, headers=zh).status_code == 201
+    uid = user_id(client, ah, "zed@del.com")
+    assert client.delete(f"/api/v1/admin/users/{uid}", headers=ah).json()["deleted"] is True
+    emails = [u["email"] for u in client.get("/api/v1/admin/users", headers=ah).json()]
+    assert "zed@del.com" not in emails and "yan@del.com" in emails
+    assert client.post("/api/v1/auth/local-login", json={"username": "zed@del.com", "password": "Password123"}).status_code == 401
+    # cannot delete yourself or the built-in administrator
+    me = user_id(client, ah, "admin@isift.au")
+    assert client.delete(f"/api/v1/admin/users/{me}", headers=ah).status_code == 409
+    # an ordinary member cannot delete anyone
+    t2 = client.post("/api/v1/auth/local-login", json={"username": "yan@del.com", "password": "Password123"}).json()["access_token"]
+    assert client.delete(f"/api/v1/admin/users/{made[1]}", headers={"Authorization": "Bearer " + t2}).status_code in (401, 403)
+    assert client.delete(f"/api/v1/admin/users/{made[1]}", headers=ah).status_code == 200
