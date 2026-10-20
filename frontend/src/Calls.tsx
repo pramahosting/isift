@@ -27,7 +27,7 @@ export function PhonePage({request,canCall}:{request:any;canCall:boolean}){
   const list=contacts.filter(c=>!q.trim()||`${c.name||''} ${c.email}`.toLowerCase().includes(q.trim().toLowerCase())).slice(0,60);
   const ok=/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q.trim());
   return <div className="phone-page">
-    {!canCall&&<div className="panel pad"><p className="muted">Calling other people is part of the Individual and Business plans. You can still receive calls here. Upgrade your plan, or ask an administrator to allow it for you.</p></div>}
+    {!canCall&&<div className="panel pad"><p className="muted">Calling other people is part of the Personal Pro and Business plans. You can still receive calls here. Upgrade your plan, or ask an administrator to allow it for you.</p></div>}
     <section className="panel"><div className="panelhead"><h2><Phone size={18}/> Call someone</h2></div>
       <p className="muted pad small">Type an iSift email address or pick a contact. They must be signed in to iSift right now; they get a ringing pop-up and, when they accept, you both land in a private two-person room.</p>
       <div className="phone-dial pad"><input type="search" placeholder="Search contacts or type an email" value={q} onChange={e=>setQ(e.target.value)} aria-label="Search contacts or type an email"/><button className="primary" disabled={!canCall||!ok} onClick={()=>ring(q.trim())}><Phone size={15}/> Call</button></div></section>
@@ -76,11 +76,11 @@ export function CallLayer({token,request,api,canCall,children}:{token:string;req
   const answer=async(accept:boolean)=>{const c=inc;setInc(null);if(!c)return;try{const r=await request(`/calls/${c.id}/answer`,{method:'POST',body:JSON.stringify({accept})});if(accept&&r.code)go(r.code)}catch(x:any){setNote(x.message||'This call has ended.')}};
 
   return <>
-    <button type="button" className="callbtn" title={canCall?'Call someone':'Calling is part of the Individual and Business plans'} aria-label="Call someone" onClick={()=>{setErr('');setOpen(true)}}><Phone size={16}/> <span>Call</span></button>
+    <button type="button" className="callbtn" title={canCall?'Call someone':'Calling is part of the Personal Pro and Business plans'} aria-label="Call someone" onClick={()=>{setErr('');setOpen(true)}}><Phone size={16}/> <span>Call</span></button>
     {children}
     {open&&<div className="call-modal" role="dialog" aria-label="Call someone"><form className="call-card" onSubmit={place}>
       <div className="call-head"><b>Call someone</b><button type="button" className="iconbtn" aria-label="Close" onClick={()=>setOpen(false)}><X size={16}/></button></div>
-      {!canCall?<p className="muted">Calling other people is part of the Individual and Business plans. You can still receive calls. Upgrade your plan, or ask an administrator to allow it for you.</p>:<>
+      {!canCall?<p className="muted">Calling other people is part of the Personal Pro and Business plans. You can still receive calls. Upgrade your plan, or ask an administrator to allow it for you.</p>:<>
       <label>Their iSift email<input type="email" list="call-sugg" value={to} onChange={e=>setTo(e.target.value)} placeholder="name@company.com" autoFocus required/></label>
       <datalist id="call-sugg">{sugg.map(s=><option key={s} value={s}/>)}</datalist>
       <p className="muted small">They must be signed in to iSift right now. The call opens a private two-person room.</p>

@@ -5,7 +5,7 @@ import {AddinsTab} from './Addins';
 import {allZones,deviceTz,currentTz,tzLabel,saveTz} from './timezone';
 
 const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const PLAN_NAME:Record<string,string>={basic:'Basic',individual:'Individual',business:'Business'};
+const PLAN_NAME:Record<string,string>={basic:'Basic',individual:'Personal Pro',business:'Business'};
 const ROLE_NAME:Record<string,string>={owner:'Owner',admin:'Administrator',member:'Member'};
 
 export function AccountPage({request,notify,onChanged,goPricing,goBilling}:{request:any;notify:(m:string)=>void;onChanged:()=>void;goPricing:()=>void;goBilling:()=>void}){
