@@ -48,7 +48,7 @@ The landing page opens with no sign-in window. Login, Sign up, or clicking any c
 iSift/
   app.cmd  app-stop.cmd  app-logs.cmd   Windows launchers (double-click)
   start-local.ps1  stop-local.ps1       used by the launchers
-  .env.example  docker-compose.yml      configuration / Docker example
+  Dockerfile  .env.example              deployment image and configuration names
   README.md  docs/                      manuals, plus runtime docs/data and docs/logs
   backend/                              FastAPI app, worker, tests, alembic migrations
   frontend/                             React web app
@@ -93,7 +93,7 @@ Many people can use the app together. Each person signs in with their own accoun
 
 - **Sessions:** each browser tab holds its own sign-in, so different people can be signed in side by side.
 - **Calendar:** every person is refreshed from their own mailbox (their sign-in email). The built-in demo `admin` uses the "Calendar user" set in Admin Console. A problem with one person's calendar does not affect anyone else.
-- **Database:** the local SQLite file runs in WAL mode so people read while others write; writers wait briefly instead of failing. For a larger group use PostgreSQL (`docker-compose.yml`); set `DB_POOL_SIZE` if needed.
+- **Database:** the local SQLite file runs in WAL mode so people read while others write; writers wait briefly instead of failing. For a larger group use PostgreSQL (for example Neon) by setting `DATABASE_URL`; set `DB_POOL_SIZE` if needed.
 - **Background jobs:** jobs are claimed atomically, so you can run more than one worker without a job being processed twice.
 - **Double clicks and parallel requests** (first sign-in in two tabs, sign-up of the same email twice, repeated "Load mock data") are handled without errors.
 
