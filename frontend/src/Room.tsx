@@ -154,6 +154,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const setShape=(v:'rect'|'round')=>{setShapeState(v);try{localStorage.setItem('isift.shape',v)}catch{}};
   const [wide,setWide]=useState(()=>typeof window==='undefined'||window.innerWidth>=720);
   useEffect(()=>{const f=()=>setWide(window.innerWidth>=720);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f)},[]);
+  const isSmall=()=>{try{return window.innerHeight<600||(window.matchMedia('(pointer: coarse)').matches&&Math.min(window.innerWidth,window.innerHeight)<700)}catch{return window.innerHeight<600}};const [small,setSmall]=useState(isSmall);useEffect(()=>{const f=()=>setSmall(isSmall());window.addEventListener('resize',f);window.addEventListener('orientationchange',f);return()=>{window.removeEventListener('resize',f);window.removeEventListener('orientationchange',f)}},[]);       // phones, also when turned sideways, always get the straight gallery: the angled table is too small there
   const [speaking,setSpeaking]=useState('');const peersRef=useRef<Record<string,Peer>>({});const localRef=useRef<MediaStream|null>(null);const seatIds=useRef<string[]>([]);
   const [gCount,setGCount]=useState(2);const [gMinutes,setGMinutes]=useState('');const [gHosts,setGHosts]=useState(false);const [announce,setAnnounce]=useState('');const [, tickClock]=useState(0);
 
@@ -455,6 +456,8 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     {bgOpen&&bgPanel}<div className="rm-lobbyctl"><button type="button" className={`secondary${!mic?' off':''}`} onClick={toggleMic} disabled={!local.current.audio}>{mic?<Mic size={16}/>:<MicOff size={16}/>} {mic?'Mic on':'Mic off'}</button><button type="button" className={`secondary${!cam?' off':''}`} onClick={toggleCam} disabled={!local.current.cam}>{cam?<Video size={16}/>:<VideoOff size={16}/>} {cam?'Camera on':'Camera off'}</button><button type="button" className={`secondary${bg.kind!=='none'?' on':''}`} onClick={openBg} disabled={!local.current.raw}><ImageIcon size={16}/> Background</button></div>
     <p className="muted small">The host may record this meeting. You will see a clear “Recording” banner if they do, and you can leave at any time.</p>
     {err&&<p className="syncerr" role="alert">{err}</p>}
+    {info.access==='passcode'&&!info.you_are_host&&passcode.trim().length<4&&<p className="rm-need" role="status">This meeting needs a passcode. Type the passcode from your invitation (at least 4 characters) to enable the join button.</p>}
+    {!name.trim()&&<p className="rm-need" role="status">Type your name to enable the join button.</p>}
     <button className={`primary join${joining?' busy':''}`} aria-busy={joining} onClick={join} disabled={joining||!name.trim()||(info.access==="passcode"&&!info.you_are_host&&passcode.trim().length<4)||(info.access==="signed_in"&&!info.signed_in)}>{joining?"Joining…":!info.signed_in&&!info.you_are_host&&info.access!=='signed_in'?(info.waiting_room?"Ask to join as guest":"Join as guest"):(info.waiting_room&&!info.you_are_host?"Ask to join":"Join meeting")}</button>
   </div></div>;
   if(phase==='waiting')return <div className="rm-center"><div className="rm-card"><h1>Waiting for the host</h1><p>The host will let you in shortly. You can leave this page at any time.</p><button className="secondary" onClick={()=>{ws.current?.close();onLeave()}}>Cancel</button></div></div>;
@@ -469,7 +472,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const selfStream=screen&&screenStream?screenStream:localStream;const togglePin=(id:string)=>setPin(p=>p===id?'':id);
   const spotTile=(r:Row)=>r.self?<VideoTile stream={selfStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen} speaking={speaking==='__me'} onDouble={()=>togglePin('__me')}/>:<VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===r.id} onDouble={()=>togglePin(r.id)}/>;
   const autoT=tiles<=1?.5:tiles===2?.58:tiles===3?.68:tiles===4?.76:tiles===5?.84:tiles<=7?.92:1;                  // the table grows with the number of people
-  const tableOk=vrOn&&!sfuOn&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
+  const tableOk=vrOn&&!sfuOn&&!small&&tiles<=TABLE_MAX&&!sharing&&wide;const mode:'table'|'gallery'=tableOk?'table':'gallery';
   {const here=new Set(list.map(p=>p.id));seatIds.current=seatIds.current.filter(id=>here.has(id));list.forEach(p=>{if(!seatIds.current.includes(p.id))seatIds.current.push(p.id)})}
   const seatRows:Row[]=[ordered.find(r=>r.self)!,...seatIds.current.map(id=>ordered.find(r=>r.id===id)).filter(Boolean) as Row[]];
   const seats=seatPoints(seatRows.length,shape);const seatW=seatWidth(tiles);

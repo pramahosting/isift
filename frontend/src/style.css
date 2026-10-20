@@ -1458,3 +1458,14 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
   .rm-spot-strip{width:auto!important;height:64px!important;flex-direction:row!important;overflow-x:auto!important;overflow-y:hidden!important;order:1!important}
   .rm-spot-strip .rm-wrap{width:96px!important;height:100%!important}
 }
+/* a phone turned sideways: tiles side by side in a grid that uses the whole width, every one a straight 16:9 picture */
+@media (max-width:900px) and (max-height:520px){
+  .rm-grid:not(.big){--ah:calc(100vh - 150px);gap:6px;padding:6px}
+  .rm-grid.n1{--cols:1;--rows:1}.rm-grid.n2{--cols:2;--rows:1}.rm-grid.n3{--cols:3;--rows:1}.rm-grid.n4{--cols:2;--rows:2}.rm-grid.n5,.rm-grid.n6{--cols:3;--rows:2}.rm-grid.n7,.rm-grid.n8,.rm-grid.n9{--cols:3;--rows:3}
+  .rm-grid.n1:not(.big)>*{width:min(70%,calc(var(--ah)*16/9))}
+}
+@media (max-width:640px) and (orientation:portrait){.rm-grid:not(.big){--ah:calc(100vh - 330px);overflow-y:auto;align-content:flex-start}}
+.rm-need{margin:0;padding:8px 10px;border-radius:10px;background:#fff4d6;color:#7a5200;font-size:.9rem;line-height:1.35}
+.rm-card.lobby{padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+.rm-card.lobby .primary.join:disabled{opacity:.55;cursor:not-allowed}
+@media (max-width:640px){.rm-center{align-items:flex-start;padding-bottom:90px}}
