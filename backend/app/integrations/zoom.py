@@ -1,6 +1,6 @@
 """Zoom (Server-to-Server OAuth): create meetings and fetch official cloud-recording transcripts.
 
-Settings come from Admin settings > Zoom. Nothing is recorded or joined by this app; it only reads a transcript
+Settings come from Admin Console > Zoom. Nothing is recorded or joined by this app; it only reads a transcript
 Zoom has already produced and creates scheduled meetings through Zoom's own API.
 """
 import time
@@ -18,7 +18,7 @@ def configured() -> bool:
     return bool(settings.zoom_account_id and settings.zoom_client_id and settings.zoom_client_secret)
 
 async def _token() -> str:
-    if not configured(): raise ZoomUnavailable("Zoom is not configured. An administrator can add it in Admin settings > Zoom.")
+    if not configured(): raise ZoomUnavailable("Zoom is not configured. An administrator can add it in Admin Console > Zoom.")
     key = (settings.zoom_account_id, settings.zoom_client_id)
     if _tok["v"] and _tok["k"] == key and time.time() < _tok["exp"] - 60: return _tok["v"]
     async with httpx.AsyncClient(timeout=15) as c:

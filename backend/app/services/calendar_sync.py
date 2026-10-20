@@ -189,7 +189,7 @@ async def sync_calendar(db: AsyncSession, user_id: str, mailbox: str | None = No
             source = "machine" if "machine" in used else ("link" if "link" in used else "upload")
         elif feed_errors: raise GraphUnavailable("; ".join(feed_errors)[:300])
         elif graph_err: raise graph_err
-        else: raise GraphUnavailable("No calendar is connected. Add a calendar link (Google, Yahoo, Outlook.com, iCloud) or upload a calendar (.ics) file under Connections, allow the calendar on this computer, or connect Microsoft 365 in Admin settings.")
+        else: raise GraphUnavailable("No calendar is connected. Add a calendar link (Google, Yahoo, Outlook.com, iCloud) or upload a calendar (.ics) file under Connections, allow the calendar on this computer, or connect Microsoft 365 in Admin Console.")
     return await apply_events(db, user_id, raw, start, end, source)
 
 async def apply_events(db: AsyncSession, user_id: str, raw: list[dict], start: datetime, end: datetime, source: str, mark_stale: bool = True, account: str = "") -> dict:

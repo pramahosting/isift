@@ -33,7 +33,7 @@ def _clean(text: str, limit: int) -> str: return re.sub(r"\s+", " ", str(text or
 async def draft(host: str, title: str, minutes: int, description: str = "", purpose: str = "", recipient: str = "", tone: str = "friendly") -> tuple[dict, bool, str]:
     """Returns (draft, written_by_ai, note). The body always contains {{LINK}} exactly where the link belongs."""
     base = template(host, title, minutes, purpose)
-    if not configured(): return base, False, "Groq is not set up, so a standard message was used. The administrator can add a Groq key in Admin settings."
+    if not configured(): return base, False, "Groq is not set up, so a standard message was used. The administrator can add a Groq key in Admin Console."
     tone = tone if tone in ("friendly", "formal", "brief") else "friendly"
     system = ("You write short, natural emails that invite someone to book a meeting through a scheduling link. "
               "Write in plain English, no emojis, no markdown, under 120 words. Use the exact marker {{LINK}} once, on its own line, where the booking link goes. "
@@ -47,8 +47,8 @@ async def draft(host: str, title: str, minutes: int, description: str = "", purp
                              json={"model": (settings.groq_model or "llama-3.3-70b-versatile").strip(), "temperature": 0.6, "max_tokens": 500,
                                    "response_format": {"type": "json_object"}, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
         if r.status_code in (401, 403):
-            return base, False, f"Groq did not accept the API key ({r.status_code}{': ' + _why(r) if _why(r) else ''}). Create a new key at console.groq.com, API Keys, paste it again in Admin settings without spaces or quotes, and press Write again. A standard message was used."
-        if r.status_code in (400, 404): return base, False, f"Groq refused the request ({r.status_code}{': ' + _why(r) if _why(r) else ''}). Check the model name in Admin settings, for example llama-3.3-70b-versatile. A standard message was used."
+            return base, False, f"Groq did not accept the API key ({r.status_code}{': ' + _why(r) if _why(r) else ''}). Create a new key at console.groq.com, API Keys, paste it again in Admin Console without spaces or quotes, and press Write again. A standard message was used."
+        if r.status_code in (400, 404): return base, False, f"Groq refused the request ({r.status_code}{': ' + _why(r) if _why(r) else ''}). Check the model name in Admin Console, for example llama-3.3-70b-versatile. A standard message was used."
         if r.status_code == 429: return base, False, "Groq is busy right now (rate limit). A standard message was used. Try Write again in a minute."
         r.raise_for_status()
         data = json.loads(r.json()["choices"][0]["message"]["content"])
@@ -62,7 +62,7 @@ async def draft(host: str, title: str, minutes: int, description: str = "", purp
 
 
 async def ping() -> tuple[bool, str]:
-    """Used by Admin settings, Connection tests: asks Groq for its model list with the saved key. Returns (ok, plain-words detail)."""
+    """Used by Admin Console, Connection tests: asks Groq for its model list with the saved key. Returns (ok, plain-words detail)."""
     if not configured(): return False, "No Groq key is saved."
     try:
         async with httpx.AsyncClient(timeout=15) as c:

@@ -23,7 +23,7 @@ BUILTIN_ADMIN = "admin@isift.au"
 async def mock_guard(db: AsyncSession = Depends(get_db)):
     from app.api.routes_modules import disabled
     if not settings.mock_data_enabled or "mockdata" in await disabled(db):
-        raise HTTPException(403, "Mock data is switched off. An administrator can turn it on in Admin settings (the setting, and Modules).")
+        raise HTTPException(403, "Mock data is switched off. An administrator can turn it on in Admin Console (the setting, and Modules).")
 
 @router.get("/features")
 async def features(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -248,7 +248,7 @@ async def export_users(admin: User = Depends(require_admin), db: AsyncSession = 
 
 @router.get("/admin/setup-status")
 async def setup_status(user: User = Depends(require_admin)):
-    """Plain checklist of what is and is not configured, for the Admin settings page."""
+    """Plain checklist of what is and is not configured, for the Admin Console page."""
     from app.services.llm import ai_configured, transcription_configured
     from app.services.calendar_sync import graph_configured
     from app.integrations import zoom
@@ -259,13 +259,13 @@ async def setup_status(user: User = Depends(require_admin)):
         {"key": "password", "title": "Administrator password", "required": True, "ok": not default_pw,
          "detail": "Still the built-in sample password. Set LOCAL_ADMIN_PASSWORD in the .env file, then restart." if default_pw else "Changed from the sample password."},
         {"key": "ai", "title": "AI for minutes and briefings (Groq)", "required": True, "ok": ai_configured(),
-         "detail": "Add the Groq API key and model under Admin settings > Groq AI." if not ai_configured() else "Ready."},
+         "detail": "Add the Groq API key and model under Admin Console > Groq AI." if not ai_configured() else "Ready."},
         {"key": "transcription", "title": "Speech-to-text for recordings", "required": False, "ok": transcription_configured(),
          "detail": "Needs the Groq key. Recordings up to 25 MB are transcribed with Groq Whisper." if not transcription_configured() else "Ready."},
         {"key": "calendar", "title": "Calendar source", "required": False, "ok": bool(graph_configured() or settings.machine_calendar_allowed),
          "detail": "Each person adds their calendar under Connections (links, CalDAV, .ics), or enable Microsoft 365 / this computer's calendar."},
         {"key": "zoom", "title": "Zoom (create Zoom meetings, fetch recordings)", "required": False, "ok": zoom.configured(),
-         "detail": "Optional. Add the Server-to-Server OAuth app under Admin settings > Zoom." if not zoom.configured() else "Ready."},
+         "detail": "Optional. Add the Server-to-Server OAuth app under Admin Console > Zoom." if not zoom.configured() else "Ready."},
         {"key": "turn", "title": "TURN relay for video meetings", "required": False, "ok": has_turn,
          "detail": "Strongly recommended. Without a relay, video and sound do not reach people on company networks, phone data or some home routers, and calls get slow. Easiest: paste a Cloudflare TURN key ID and token under Video meetings." if not has_turn else "Ready."},
         {"key": "sfu", "title": "Video server for big meetings (Cloudflare SFU)", "required": False, "ok": bool(settings.cf_sfu_app_id and settings.cf_sfu_app_secret),
@@ -274,7 +274,7 @@ async def setup_status(user: User = Depends(require_admin)):
          "ok": bool(settings.frontend_origin.startswith("https://") or "localhost" in settings.frontend_origin or "127.0.0.1" in settings.frontend_origin),
          "detail": "Other computers need https to use camera/microphone. Set MI_LISTEN=lan (or MI_HTTPS=true) in .env."},
         {"key": "mail", "title": "Email sent by the app (sign-up codes)", "required": False, "ok": bool((settings.smtp_host and settings.error_email_to) or (settings.resend_api_key and settings.smtp_from)),
-         "detail": "Needed for sign-up verification codes, booking emails and alerts. If codes never arrive, your host probably blocks SMTP: use a Resend API key instead (Admin settings > Email sent by the app). Then press Send test email."},
+         "detail": "Needed for sign-up verification codes, booking emails and alerts. If codes never arrive, your host probably blocks SMTP: use a Resend API key instead (Admin Console > Email sent by the app). Then press Send test email."},
     ]
     return {"items": items, "ready": all(i["ok"] for i in items if i["required"])}
 

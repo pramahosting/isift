@@ -179,7 +179,7 @@ async def share_type(tid: str, payload: dict, user: User = Depends(principal), d
     if link in note: body = note + "\n\n- sent with iSift"          # the written message already carries the link
     else: body = (note + "\n\n" if note else f"Hello,\n\n{host} would like to meet with you.\n\n") + f"Pick a time that suits you ({bt.duration_minutes} minutes):\n{link}\n\nYou do not need an account. You will get a confirmation with the video link.\n\n- {host}, sent with iSift"
     senders = await _senders(db, user)
-    if not senders: raise HTTPException(409, "No email account is set up for sending. Copy the link instead, or ask the administrator to fill in Email sent by the app in Admin settings.")
+    if not senders: raise HTTPException(409, "No email account is set up for sending. Copy the link instead, or ask the administrator to fill in Email sent by the app in Admin Console.")
     failed = []; why = ""; via = {}
     for addr in to:
         for acct in senders:
@@ -187,7 +187,7 @@ async def share_type(tid: str, payload: dict, user: User = Depends(principal), d
             except Exception as exc:
                 why = str(exc) if isinstance(exc, mailer.MailError) else f"{type(exc).__name__}"
                 if acct.get("platform") and "gmail" in (acct.get("smtp_host") or "").lower() and "refused" in why:
-                    why += " For Gmail, the SMTP password in Admin settings must be a 16-letter app password (Google Account, Security, 2-Step Verification, App passwords), not the normal Gmail password."
+                    why += " For Gmail, the SMTP password in Admin Console must be a 16-letter app password (Google Account, Security, 2-Step Verification, App passwords), not the normal Gmail password."
                 continue
         else: failed.append(addr)
     db.add(AuditLog(actor=user.email, action="booking.share", resource_type="booking_type", safe_metadata={"count": len(to), "failed": len(failed)})); await db.commit()
@@ -307,7 +307,7 @@ from app.services.identity import routable as _routable, shown_email, reply_emai
 def host_email(owner: User) -> str: return reply_email(owner.email)
 
 async def _senders(db: AsyncSession, owner: User) -> list[dict]:
-    """Where booking emails are sent from: the app's own email account (Admin settings, Email sent by the app) first, then the host's Commbox mailboxes, then the older single mailbox. Guest replies go to the host."""
+    """Where booking emails are sent from: the app's own email account (Admin Console, Email sent by the app) first, then the host's Commbox mailboxes, then the older single mailbox. Guest replies go to the host."""
     from app.api import routes_mailbox as mb
     from app.services import calendar_sync as cal
     out = []

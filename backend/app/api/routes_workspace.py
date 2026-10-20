@@ -423,5 +423,5 @@ async def share_note(nid: str, payload: dict, user: User = Depends(principal), d
             try: await mailer.send(acct, [addr], f"{me} shared a {what}: {title}", body, attachments=[(fname, pdf, "application/pdf")]); ok = True; break
             except Exception: continue
         (sent if ok else failed).append(addr)
-    if not sent: raise HTTPException(502, "The email could not be sent. Check the sending account in Commbox or Admin settings.")
+    if not sent: raise HTTPException(502, "The email could not be sent. Check the sending account in Commbox or Admin Console.")
     return {"ok": True, "sent": sent, "failed": failed, "file": fname}

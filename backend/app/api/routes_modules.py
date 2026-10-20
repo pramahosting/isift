@@ -1,4 +1,4 @@
-"""Which parts of the app are switched on. Administrators tick modules in Admin settings; unticked modules disappear from the app and the landing page."""
+"""Which parts of the app are switched on. Administrators tick modules in Admin Console; unticked modules disappear from the app and the landing page."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db

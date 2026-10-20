@@ -1,7 +1,7 @@
 """Groq client for minutes, action items, briefings and speech-to-text.
 
 Groq speaks the OpenAI wire format, so this uses plain HTTPS and adds no dependency. The chat model is
-always the one saved in Admin settings (Groq model). Structured output is requested as JSON and checked
+always the one saved in Admin Console (Groq model). Structured output is requested as JSON and checked
 with pydantic; the schema is put in the prompt because not every Groq model supports server-side schemas.
 """
 import asyncio, json, logging, re
@@ -37,7 +37,7 @@ def _safe_error(resp: httpx.Response) -> str:
 
 async def chat_json(messages: list[dict], model: type[BaseModel], timeout: int = 60, retries: int = 2) -> BaseModel:
     """Call the Groq chat model and return a validated pydantic object."""
-    if not ai_configured(): raise AIUnavailable("Groq is not set up. The administrator can add a Groq key under Admin settings.")
+    if not ai_configured(): raise AIUnavailable("Groq is not set up. The administrator can add a Groq key under Admin Console.")
     schema = model.model_json_schema()
     msgs = [*messages, {"role": "system", "content": "Respond only with one JSON object that matches this JSON schema. No other text. " + json.dumps(schema)}]
     body = {"model": chat_model(), "messages": msgs, "response_format": {"type": "json_object"}, "temperature": 0}

@@ -4,7 +4,7 @@
   2. Picks up the calendar on this computer for the built-in administrator (the person starting the app)
      and does a first sync, so Today, at a glance is filled in from the very first screen.
 
-Both steps can be switched off in Admin settings (Startup) or .env (LOAD_MOCK_ON_START, CALENDAR_ON_START).
+Both steps can be switched off in Admin Console (Startup) or .env (LOAD_MOCK_ON_START, CALENDAR_ON_START).
 Run on its own with:  python -m app.startup
 """
 import asyncio, logging
@@ -85,7 +85,7 @@ async def run() -> None:
             elif not info["available"] and not cal.graph_configured(): say("Calendar: none found on this computer (add a .ics file to docs/calendar, or connect Microsoft 365).")
             if cal.graph_configured() or await cal.machine_usable(db, admin.id):
                 r = await cal.sync_one_safely(admin.id)
-                say("Calendar: " + (f"synced {r['eligible']} meeting(s) from {r['source']}." if r else "first sync did not complete (see Admin settings > Calendar)."))
+                say("Calendar: " + (f"synced {r['eligible']} meeting(s) from {r['source']}." if r else "first sync did not complete (see Admin Console > Calendar)."))
 
     await engine.dispose()      # the app serves from a fresh event loop; do not carry connections across
 

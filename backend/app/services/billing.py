@@ -31,7 +31,7 @@ for _p in PLANS.values(): _p["available"] = True
 DEFAULT_ROWS = [{"id": f"default-{k}", "plan": k, "label": "Standard", "monthly": PLANS[k]["monthly"], "yearly": PLANS[k]["yearly"], "active": True} for k in PAID]
 
 async def price_rows(db) -> list[dict]:
-    """The price list the administrator edits (Admin settings > Pricing). Seeded once with the standard prices."""
+    """The price list the administrator edits (Admin Console > Pricing). Seeded once with the standard prices."""
     d = await store.get(db, PRICE_KEY, None)
     if not d or "rows" not in d:
         d = {"rows": [dict(r) for r in DEFAULT_ROWS]}; await store.put(db, PRICE_KEY, d)
@@ -148,7 +148,7 @@ async def _payer(db, key, user, company) -> tuple[str, str]:
 async def save_card(db, user, source_id: str) -> dict:
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the card.", 403)
-    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin settings.", 503)
+    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)
     if not source_id: raise BillingError("The card could not be read. Please try again.")
     r = await record(db, key, c); email, name = await _payer(db, key, user, c)
     ref = hashlib.sha1(key.encode()).hexdigest()[:16]
@@ -246,7 +246,7 @@ async def subscribe(db, user, plan: str, period: str, immediate: bool = False, t
         if not r.get("period_end") or date.fromisoformat(r["period_end"]) < today or r["plan"] == "basic": r.update(plan="basic", status="active", period_end=None)
         await store.put(db, key, r); return {"status": "cancelled", "plan": r["plan"], "period_end": r.get("period_end")}
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
-    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin settings.", 503)
+    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)
     paid_up = r["plan"] == plan and r.get("status") == "active" and r.get("period_end") and date.fromisoformat(r["period_end"]) > today
     auto, ends_on = terms_of(period, terms, today)
     before = {k: r.get(k) for k in ("plan", "period", "status", "period_end", "auto_renew", "ends_on")}
@@ -332,7 +332,7 @@ async def change_plan(db, user, plan: str, period: str, terms: dict | None = Non
     r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period); auto, ends_on = terms_of(period, terms, today)
     if q["kind"] != "change": raise BillingError("Nothing to change.")
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
-    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin settings.", 503)
+    if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)
     old = (r["plan"], r.get("period")); paid_now = None
     if q["charge_cents"] > 0:
         res = await _charge_extra(db, key, r, q["charge_cents"], f"iSift change {PLANS[old[0]]['name']} to {PLANS[plan]['name']} ({period}): difference after {q['credit_cents']/100:.2f} credit", f"{r.get('period_end')}-{plan}-{period}-{today.isoformat()}")

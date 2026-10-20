@@ -1,6 +1,6 @@
 """Google Meet through the Google Calendar API, using a service account with domain-wide delegation.
 
-Settings come from Admin settings > Meeting platforms > Google Meet. The service account books the event as the person
+Settings come from Admin Console > Meeting platforms > Google Meet. The service account books the event as the person
 (or as the configured calendar user for the demo administrator) and Google returns the Meet link.
 """
 import json, time, uuid
@@ -28,7 +28,7 @@ def subject_for(email: str) -> str | None:
 
 async def _token(subject: str) -> str:
     k = _key()
-    if not k: raise GoogleUnavailable("Google Meet is not configured. An administrator can add it in Admin settings > Meeting platforms.")
+    if not k: raise GoogleUnavailable("Google Meet is not configured. An administrator can add it in Admin Console > Meeting platforms.")
     now = int(time.time()); aud = k.get("token_uri") or "https://oauth2.googleapis.com/token"
     try: assertion = jwt.encode({"iss": k["client_email"], "sub": subject, "scope": SCOPE, "aud": aud, "iat": now, "exp": now + 3000}, k["private_key"], algorithm="RS256")
     except Exception: raise GoogleUnavailable("The Google service account key could not be used. Paste the full JSON key again.")

@@ -1,6 +1,6 @@
 """Is the virtual room (boardroom table view) switched on for a meeting?
 
-It must be on in all three places: for the whole service (Admin settings), for the host's account (My account, or an administrator
+It must be on in all three places: for the whole service (Admin Console), for the host's account (My account, or an administrator
 in Admin > Users) and for the meeting itself (the checkbox in the meeting options). Off anywhere means everyone sees the plain gallery.
 """
 from app.core.config import settings

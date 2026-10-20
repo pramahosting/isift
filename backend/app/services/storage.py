@@ -1,4 +1,4 @@
-"""Recording storage: Cloudflare R2 (or any S3-compatible bucket) when set up in Admin settings,
+"""Recording storage: Cloudflare R2 (or any S3-compatible bucket) when set up in Admin Console,
 otherwise the database (blob) for modest files, otherwise the local data folder.
 Settings are read live from `settings`, so a change in Admin takes effect on the next recording."""
 import asyncio, shutil, subprocess, tempfile, uuid

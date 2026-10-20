@@ -1,4 +1,4 @@
-"""Plans, the card on file and subscription payments (Square). The Square keys are set by an administrator in Admin settings > Payments."""
+"""Plans, the card on file and subscription payments (Square). The Square keys are set by an administrator in Admin Console > Payments."""
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db
@@ -14,10 +14,10 @@ async def _do(coro):
 
 @router.get("/billing/plans")
 async def plans(response: Response, db: AsyncSession = Depends(get_db)):
-    response.headers["Cache-Control"] = "no-store, max-age=0"       # prices change in Admin settings: no browser or CDN (Cloudflare) may keep an old copy
+    response.headers["Cache-Control"] = "no-store, max-age=0"       # prices change in Admin Console: no browser or CDN (Cloudflare) may keep an old copy
     return await B.plans_view(db)
 
-# ---------------- price list (Admin settings > Pricing) ----------------
+# ---------------- price list (Admin Console > Pricing) ----------------
 def _clean_price(d: dict, base: dict | None = None) -> dict:
     out = dict(base or {})
     for k in ("plan", "label", "monthly", "yearly", "active"):

@@ -32,7 +32,7 @@ def validate(p: dict) -> dict:
     return {"first": first, "last": last, "email": email, "password": pw, "country": country, "phone": phone}
 
 def app_sender() -> dict | None:
-    """The app's own email account (Admin settings > Email and calendar). A user name and password are optional for servers that do not need them."""
+    """The app's own email account (Admin Console > Email and calendar). A user name and password are optional for servers that do not need them."""
     if settings.resend_api_key and (settings.smtp_from or settings.smtp_user):      # HTTPS mail: works where the host blocks SMTP
         frm = settings.smtp_from or settings.smtp_user
         return {"address": frm, "from": frm, "resend_key": settings.resend_api_key, "smtp_host": "api.resend.com"}
@@ -44,7 +44,7 @@ async def send_code(db, email: str, name: str, code: str) -> bool:
     """Email the code from the app's own email account. Returns False when no email account is set up."""
     acct = app_sender()
     if not acct:
-        log.warning("Sign-up code for %s is %s (no email account is set up in Admin settings, so it was not emailed).", email, code); return False
+        log.warning("Sign-up code for %s is %s (no email account is set up in Admin Console, so it was not emailed).", email, code); return False
     from app.integrations import mail
     await mail.send(acct, [email], "Your iSift verification code", f"Hi {name},\n\nYour iSift verification code is {code}.\nIt works for 15 minutes. If you did not sign up, ignore this email.\n\n— iSift")
     return True

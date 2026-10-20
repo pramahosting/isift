@@ -1,7 +1,7 @@
 """Customer chat assistant: answers questions about iSift on the public pages.
 
 It only talks about iSift, answers from the facts below (never guesses prices or promises), and hands anything else
-to a person at the support address. With a Groq key it uses the model chosen in Admin settings; without one (or if Groq
+to a person at the support address. With a Groq key it uses the model chosen in Admin Console; without one (or if Groq
 fails) it answers from the fixed answers below, so the chat icon always works. Messages are not stored.
 """
 import re, time

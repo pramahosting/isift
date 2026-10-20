@@ -1,7 +1,7 @@
 """Real, deliverable addresses for the host.
 
 The built-in local administrator is stored with the placeholder admin@isift.au, which no mail server accepts. These helpers
-put a real address from Admin settings in its place wherever an address is shown or emailed.
+put a real address from Admin Console in its place wherever an address is shown or emailed.
 """
 from app.core.config import settings
 

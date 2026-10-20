@@ -171,13 +171,13 @@ PLATFORM_NAMES = {"zoom": "Zoom", "teams": "Microsoft Teams", "meet": "Google Me
 
 @router.get("/meeting-platforms")
 async def platforms(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    """Which meeting platforms can book for this person right now (checked from Admin settings)."""
+    """Which meeting platforms can book for this person right now (checked from Admin Console)."""
     await rs.apply_overrides(db)
     teams_ok = cal.graph_configured() and bool(mailbox_for(user.email))
     meet_ok = google.configured() and bool(google.subject_for(user.email))
-    teams_why = "" if teams_ok else ("Add the Microsoft client ID, secret and tenant ID in Admin settings." if not cal.graph_configured() else "Set the Microsoft calendar user in Admin settings.")
-    meet_why = "" if meet_ok else ("Add the Google service account key in Admin settings." if not google.configured() else "Set the Google calendar user in Admin settings.")
-    return {"isift": {"ready": True}, "zoom": {"ready": zoom.configured(), "why": "" if zoom.configured() else "Add the Zoom account ID, client ID and client secret in Admin settings."},
+    teams_why = "" if teams_ok else ("Add the Microsoft client ID, secret and tenant ID in Admin Console." if not cal.graph_configured() else "Set the Microsoft calendar user in Admin Console.")
+    meet_why = "" if meet_ok else ("Add the Google service account key in Admin Console." if not google.configured() else "Set the Google calendar user in Admin Console.")
+    return {"isift": {"ready": True}, "zoom": {"ready": zoom.configured(), "why": "" if zoom.configured() else "Add the Zoom account ID, client ID and client secret in Admin Console."},
             "teams": {"ready": teams_ok, "why": teams_why}, "meet": {"ready": meet_ok, "why": meet_why}, "is_admin": user.role == "admin"}
 
 @router.post("/connections/zoom/test")
@@ -211,11 +211,11 @@ async def create_meeting(payload: dict, user: User = Depends(principal), db: Asy
         try:
             if plat == "teams":
                 mb = mailbox_for(user.email)
-                if not (cal.graph_configured() and mb): raise HTTPException(409, "Microsoft Teams is not set up yet. An administrator can add it in Admin settings > Meeting platforms.")
+                if not (cal.graph_configured() and mb): raise HTTPException(409, "Microsoft Teams is not set up yet. An administrator can add it in Admin Console > Meeting platforms.")
                 z = await GraphClient().create_teams_meeting(mb, title, start, end, agenda)
             else:
                 sub = google.subject_for(user.email)
-                if not (google.configured() and sub): raise HTTPException(409, "Google Meet is not set up yet. An administrator can add it in Admin settings > Meeting platforms.")
+                if not (google.configured() and sub): raise HTTPException(409, "Google Meet is not set up yet. An administrator can add it in Admin Console > Meeting platforms.")
                 z = await google.create_meet(sub, title, start, end, str(tz), agenda)
         except (GraphUnavailable, google.GoogleUnavailable) as exc: raise HTTPException(502, str(exc))
         join, ext = z["join_url"], f"{plat}:{z['id']}"

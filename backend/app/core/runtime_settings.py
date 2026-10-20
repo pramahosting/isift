@@ -1,6 +1,6 @@
 """Admin-editable integration settings.
 
-Values saved from the Admin settings page are stored in the database (secrets are
+Values saved from the Admin Console page are stored in the database (secrets are
 encrypted at rest) and applied on top of the environment/.env defaults for both the
 API and the background worker. Removing a saved value falls back to the environment.
 """
@@ -96,7 +96,7 @@ def _dec(v:str,name:str="")->str:
     except InvalidToken:
         if name not in _WARNED:          # once per setting, not on every request
             _WARNED.add(name)
-            log.warning("The saved secret '%s' was encrypted with a different key and cannot be read; using the environment value. Enter it again in Admin settings to fix this.",name or "?")
+            log.warning("The saved secret '%s' was encrypted with a different key and cannot be read; using the environment value. Enter it again in Admin Console to fix this.",name or "?")
         return ""
 
 def _coerce(f,raw):

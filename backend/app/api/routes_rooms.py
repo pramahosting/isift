@@ -67,7 +67,7 @@ def room_url(base_url: str, code: str) -> str:
 ACCESS = ("open", "passcode", "signed_in")
 
 def clean_access(value, passcode=None) -> tuple[str, str | None]:
-    """Return (access, passcode) with defaults from Admin settings. A passcode is made when one is needed."""
+    """Return (access, passcode) with defaults from Admin Console. A passcode is made when one is needed."""
     access = str(value or "").strip().lower()
     if access not in ACCESS: access = settings.room_default_access if settings.room_default_access in ACCESS else "open"
     if access != "passcode": return access, None
@@ -184,7 +184,7 @@ async def invite_people(code: str, payload: dict, user: User = Depends(principal
         if err: failed.append({"to": to, "reason": err})
     db.add(AuditLog(actor=user.email, action="room.invite", resource_type="room", safe_metadata={"people": len(emails)})); await db.commit()
     msg = f"Invited {len(emails)} {'person' if len(emails) == 1 else 'people'}. They see an alert in iSift if they have an account"
-    msg += (f" and {len(emailed)} got an email." if emailed else ".") if senders else ". No email account is set up (Admin settings, Email sent by the app), so no email was sent."
+    msg += (f" and {len(emailed)} got an email." if emailed else ".") if senders else ". No email account is set up (Admin Console, Email sent by the app), so no email was sent."
     return {"alerted": alerted, "emailed": emailed, "failed": failed, "message": msg}
 
 @router.get("/rooms/{code}/host")
@@ -760,7 +760,7 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
         except Exception as exc:
             log.exception("Could not store recording")
             audio_path.unlink(missing_ok=True); keep.unlink(missing_ok=True)
-            raise HTTPException(502, "The recording could not be saved to cloud storage: " + str(exc)[:160] + " Check Admin settings > Recording storage and press Connection test. Your own computer's copy is not affected.")
+            raise HTTPException(502, "The recording could not be saved to cloud storage: " + str(exc)[:160] + " Check Admin Console > Recording storage and press Connection test. Your own computer's copy is not affected.")
         size = placed.pop("size_bytes")
         plan = await billing.plan_of(db, user)
         expires = datetime.now(timezone.utc) + timedelta(days=storage.BASIC_DAYS) if plan == "basic" else None
@@ -773,7 +773,7 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
         meeting.transcript_status = "queued"; note += " The transcript is being prepared and will appear under Transcripts."
     else:
         audio_path.unlink(missing_ok=True)
-        note += " To get a transcript, an administrator must add a transcription model in Admin settings."
+        note += " To get a transcript, an administrator must add a transcription model in Admin Console."
     db.add(AuditLog(actor=user.email, action="room.recording.saved", resource_type="room", safe_metadata={"bytes": size, "video": has_video}))
     await db.commit()
     if cloud:
@@ -781,7 +781,7 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
         if emailed:
             asyncio.create_task(_email_recording_link(user.email, user.display_name or "", room.title, rid, has_video, expires, _public_base(request)))
             note += " An email with a download link is on its way to you."
-        else: note += " (Email is not set up in Admin settings, so no download link was emailed.)"
+        else: note += " (Email is not set up in Admin Console, so no download link was emailed.)"
     await ent.bump(db, user.email, "recordings", 1)
     return {"id": rid, "message": note}
 
@@ -841,7 +841,7 @@ async def _serve_recording(db, row, disposition: str):
         from app.services import storage
         try:
             obj = storage.client().get_object(Bucket=settings.r2_bucket, Key=rec.object_key)
-        except Exception: raise HTTPException(502, "Cloud storage could not be reached. Check Admin settings > Recording storage.")
+        except Exception: raise HTTPException(502, "Cloud storage could not be reached. Check Admin Console > Recording storage.")
         ext = ".mp4" if rec.mimetype == "video/mp4" else ".webm"
         return StreamingResponse(obj["Body"].iter_chunks(1024 * 1024), media_type=rec.mimetype or "video/webm", headers={"Content-Disposition": f'{disposition}; filename="{fname}{ext}"', "Content-Length": str(obj["ContentLength"])})
     if rec.storage == "database":
