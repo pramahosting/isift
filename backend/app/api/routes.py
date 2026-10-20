@@ -43,7 +43,15 @@ async def local_login(payload:dict,db:AsyncSession=Depends(get_db)):
         if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@isift.au","Pramod Singh")
         raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     account=(await db.execute(select(LocalAccount).where(LocalAccount.email==username.lower()))).scalar_one_or_none()
-    if not account: raise HTTPException(401,{"message":"No account was found for that user ID or email.","code":"no_account"})
+    if not account:
+        from app.services import store as _st
+        pend=await _st.get(db,_st.hkey("pendingsignup",username.lower()),{})
+        if pend:         # they started signing up but never entered the emailed code
+            try: live=datetime.fromisoformat(pend["expires"])>datetime.now(timezone.utc)
+            except Exception: live=False
+            if live: raise HTTPException(401,{"message":"Your sign-up is not complete yet. Enter the 6-digit code we emailed you to finish, or press Send a new code if it did not arrive.","code":"signup_incomplete"})
+            raise HTTPException(401,{"message":"Your sign-up was never completed and its code has expired. Please sign up again.","code":"signup_expired"})
+        raise HTTPException(401,{"message":"No account was found for that user ID or email.","code":"no_account"})
     if not verify_password(password,account.password_hash): raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     row=(await db.execute(select(User).where(User.entra_subject==account.id))).scalar_one_or_none()
     if row and row.is_active is False: raise HTTPException(403,{"message":"This account is disabled. Contact an administrator.","code":"disabled"})

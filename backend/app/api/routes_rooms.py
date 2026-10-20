@@ -28,13 +28,35 @@ router = APIRouter(prefix="/api/v1")
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 WEBM = bytes.fromhex("1A45DFA3")
 
-def ice_config() -> list[dict]:
+_TURN_CACHE: dict = {"at": 0.0, "key": "", "servers": []}
+
+async def ice_config() -> list[dict]:
+    """STUN/TURN servers handed to every browser. Without a TURN relay, people behind strict firewalls, phone data or some home routers
+    cannot send or receive video and sound, so the relay options are built here: fixed TURN, coturn short-lived passwords, or Cloudflare Realtime TURN."""
     urls = [u.strip() for u in (settings.ice_servers or "").split(",") if u.strip()]
     out = []
     for u in urls:
         e = {"urls": u}
-        if u.lower().startswith(("turn:", "turns:")) and settings.turn_username: e.update(username=settings.turn_username, credential=settings.turn_credential)
+        if u.lower().startswith(("turn:", "turns:")):
+            if settings.turn_shared_secret:
+                import base64, hashlib, hmac
+                user = f"{int(time.time()) + 6 * 3600}:isift"
+                e.update(username=user, credential=base64.b64encode(hmac.new(settings.turn_shared_secret.encode(), user.encode(), hashlib.sha1).digest()).decode())
+            elif settings.turn_username: e.update(username=settings.turn_username, credential=settings.turn_credential)
         out.append(e)
+    if settings.cf_turn_key_id and settings.cf_turn_api_token:
+        key = settings.cf_turn_key_id
+        if _TURN_CACHE["key"] != key or time.time() - _TURN_CACHE["at"] > 3000:
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=6) as c:
+                    r = await c.post(f"https://rtc.live.cloudflare.com/v1/turn/keys/{key}/credentials/generate", headers={"Authorization": f"Bearer {settings.cf_turn_api_token}"}, json={"ttl": 14400})
+                    r.raise_for_status(); j = r.json().get("iceServers")
+                    j = [j] if isinstance(j, dict) else (j or [])
+                _TURN_CACHE.update(at=time.time(), key=key, servers=j)
+            except Exception: log.exception("Could not get Cloudflare TURN credentials")
+        out.extend(_TURN_CACHE["servers"] if _TURN_CACHE["key"] == key else [])
+    if not any(str(x.get("urls")).startswith("stun:") for x in out): out.insert(0, {"urls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]})
     return out
 
 def room_url(base_url: str, code: str) -> str:
@@ -121,7 +143,7 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     if refresh_pmi_title(room, host): await db.commit()
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
-    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": ice_config(),
+    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": await ice_config(),
             "max_people": settings.room_max_people, "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
 
 @router.post("/rooms/{code}/invite")

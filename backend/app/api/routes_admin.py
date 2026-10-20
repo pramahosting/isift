@@ -189,7 +189,7 @@ async def setup_status(user: User = Depends(require_admin)):
     from app.services.calendar_sync import graph_configured
     from app.integrations import zoom
     ice = [u for u in (settings.ice_servers or "").split(",") if u.strip()]
-    has_turn = any(u.strip().lower().startswith(("turn:", "turns:")) for u in ice)
+    has_turn = any(u.strip().lower().startswith(("turn:", "turns:")) for u in ice) or bool(settings.cf_turn_key_id and settings.cf_turn_api_token)
     default_pw = settings.local_admin_password == "Meeting$1" if settings.is_local_demo else False
     items = [
         {"key": "password", "title": "Administrator password", "required": True, "ok": not default_pw,
@@ -203,12 +203,12 @@ async def setup_status(user: User = Depends(require_admin)):
         {"key": "zoom", "title": "Zoom (create Zoom meetings, fetch recordings)", "required": False, "ok": zoom.configured(),
          "detail": "Optional. Add the Server-to-Server OAuth app under Admin settings > Zoom." if not zoom.configured() else "Ready."},
         {"key": "turn", "title": "TURN relay for video meetings", "required": False, "ok": has_turn,
-         "detail": "Optional. Needed when people join from strict company networks or mobile data. Add a TURN server under Video meetings." if not has_turn else "Ready."},
+         "detail": "Strongly recommended. Without a relay, video and sound do not reach people on company networks, phone data or some home routers, and calls get slow. Easiest: paste a Cloudflare TURN key ID and token under Video meetings." if not has_turn else "Ready."},
         {"key": "https", "title": "Secure address for camera and microphone", "required": False,
          "ok": bool(settings.frontend_origin.startswith("https://") or "localhost" in settings.frontend_origin or "127.0.0.1" in settings.frontend_origin),
          "detail": "Other computers need https to use camera/microphone. Set MI_LISTEN=lan (or MI_HTTPS=true) in .env."},
-        {"key": "mail", "title": "Email sent by the app (sign-up codes)", "required": False, "ok": bool(settings.smtp_host and settings.error_email_to),
-         "detail": "Needed for sign-up verification codes, booking emails and alerts. Set under Admin settings > Email and calendar, then press Send test email."},
+        {"key": "mail", "title": "Email sent by the app (sign-up codes)", "required": False, "ok": bool((settings.smtp_host and settings.error_email_to) or (settings.resend_api_key and settings.smtp_from)),
+         "detail": "Needed for sign-up verification codes, booking emails and alerts. If codes never arrive, your host probably blocks SMTP: use a Resend API key instead (Admin settings > Email sent by the app). Then press Send test email."},
     ]
     return {"items": items, "ready": all(i["ok"] for i in items if i["required"])}
 

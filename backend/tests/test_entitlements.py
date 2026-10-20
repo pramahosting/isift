@@ -328,3 +328,49 @@ def test_host_without_hours_left_cannot_start_and_hours_are_counted(client, monk
     try:
         m = w.receive_json(); assert m["type"] == "error" and "meeting hours" in m["message"]
     finally: ws.__exit__(None, None, None)
+
+def test_ice_servers_include_relay_options(client, monkeypatch):
+    import asyncio
+    from app.core.config import settings
+    from app.api import routes_rooms as rr
+    monkeypatch.setattr(settings, "ice_servers", "stun:s.example.com:3478,turn:t.example.com:3478")
+    monkeypatch.setattr(settings, "turn_shared_secret", "s3cret")
+    ice = asyncio.run(rr.ice_config())
+    t = next(x for x in ice if str(x["urls"]).startswith("turn:")); assert t["username"].endswith(":isift") and t["credential"]        # short-lived password for coturn
+    monkeypatch.setattr(settings, "ice_servers", ""); monkeypatch.setattr(settings, "turn_shared_secret", "")
+    assert asyncio.run(rr.ice_config())[0]["urls"][0].startswith("stun:")                                                              # always at least STUN
+    ah, _ = login(client)
+    code = make(client, ah)["code"]
+    assert "ice" in client.get(f"/api/v1/rooms/{code}").json()
+
+def test_login_before_finishing_signup_says_so_and_resend_mail_works(client, monkeypatch):
+    from tests.test_room_access import SU
+    from app.services import signup as su
+    got = {}
+    async def fake(db, email, name, code): got["code"] = code; return True
+    monkeypatch.setattr(su, "send_code", fake)
+    em = "pending1@example.com"
+    assert client.post("/api/v1/auth/signup/start", json={**SU, "email": em}).status_code == 200
+    r = client.post("/api/v1/auth/local-login", json={"username": em, "password": "Password123"})
+    assert r.status_code == 401 and r.json()["detail"]["code"] == "signup_incomplete" and "not complete" in r.json()["detail"]["message"]
+    assert client.post("/api/v1/auth/local-login", json={"username": "nobody1@example.com", "password": "x"}).json()["detail"]["code"] == "no_account"
+    assert client.post("/api/v1/auth/signup/verify", json={"email": em, "code": got["code"]}).status_code == 200
+    assert client.post("/api/v1/auth/local-login", json={"username": em, "password": "Password123"}).status_code == 200
+    # mail over HTTPS (Resend) for hosts that block SMTP
+    import asyncio
+    from app.core.config import settings
+    from app.integrations import mail
+    monkeypatch.setattr(settings, "resend_api_key", "re_test"); monkeypatch.setattr(settings, "smtp_from", "hello@isift.au"); monkeypatch.setattr(settings, "smtp_host", "")
+    acct = su.app_sender(); assert acct and acct["resend_key"] == "re_test" and acct["from"] == "hello@isift.au"
+    sent = {}
+    class R:
+        status_code = 200
+        def json(s): return {}
+    class C:
+        def __init__(s, **k): pass
+        async def __aenter__(s): return s
+        async def __aexit__(s, *a): return False
+        async def post(s, url, headers=None, json=None): sent.update(url=url, auth=headers["Authorization"], body=json); return R()
+    import httpx; monkeypatch.setattr(httpx, "AsyncClient", C)
+    asyncio.run(mail.send(acct, ["a@b.com"], "Hi", "Code 123456"))
+    assert sent["url"] == "https://api.resend.com/emails" and sent["auth"] == "Bearer re_test" and sent["body"]["to"] == ["a@b.com"] and sent["body"]["from"] == "hello@isift.au"

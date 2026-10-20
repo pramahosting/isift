@@ -54,7 +54,23 @@ def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | 
         try: s.quit()
         except Exception: pass
 
+async def _send_resend(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None, attachments: list | None):
+    import httpx
+    j = {"from": acct.get("from") or acct["address"], "to": to, "subject": subject, "text": body}
+    if acct.get("reply_to"): j["reply_to"] = acct["reply_to"]
+    files = [{"filename": "invite.ics", "content": base64.b64encode(ics).decode(), "content_type": "text/calendar"}] if ics else []
+    files += [{"filename": f, "content": base64.b64encode(d).decode()} for f, d, _m in attachments or []]
+    if files: j["attachments"] = files
+    try:
+        async with httpx.AsyncClient(timeout=20) as c: r = await c.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {acct['resend_key']}"}, json=j)
+    except httpx.HTTPError as exc: raise MailError(f"Could not reach the email service ({type(exc).__name__}).")
+    if r.status_code >= 400:
+        try: why = r.json().get("message") or r.text
+        except Exception: why = r.text
+        raise MailError(f"The email service refused the message: {str(why)[:160]}")
+
 async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, attachments: list | None = None):
+    if acct.get("resend_key"): return await _send_resend(acct, to, subject, body, ics, attachments)
     await asyncio.to_thread(_send_sync, acct, to, subject, body, ics, "REQUEST", attachments)
 
 def _imap_connect(acct: dict):

@@ -33,6 +33,9 @@ def validate(p: dict) -> dict:
 
 def app_sender() -> dict | None:
     """The app's own email account (Admin settings > Email and calendar). A user name and password are optional for servers that do not need them."""
+    if settings.resend_api_key and (settings.smtp_from or settings.smtp_user):      # HTTPS mail: works where the host blocks SMTP
+        frm = settings.smtp_from or settings.smtp_user
+        return {"address": frm, "from": frm, "resend_key": settings.resend_api_key, "smtp_host": "api.resend.com"}
     if not (settings.smtp_host and (settings.smtp_from or settings.smtp_user)): return None
     frm = settings.smtp_from or settings.smtp_user
     return {"address": frm, "from": frm, "username": settings.smtp_user, "password": settings.smtp_password, "smtp_host": settings.smtp_host, "smtp_port": settings.smtp_port}

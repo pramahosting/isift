@@ -311,7 +311,9 @@ async def _senders(db: AsyncSession, owner: User) -> list[dict]:
     from app.api import routes_mailbox as mb
     from app.services import calendar_sync as cal
     out = []
-    if settings.smtp_host and settings.smtp_user and settings.smtp_password:     # the "Email sent by the app" account set by the administrator
+    if settings.resend_api_key and (settings.smtp_from or settings.smtp_user):
+        out.append({"address": settings.smtp_from or settings.smtp_user, "from": settings.smtp_from or settings.smtp_user, "reply_to": host_email(owner), "resend_key": settings.resend_api_key, "smtp_host": "api.resend.com", "platform": True})
+    elif settings.smtp_host and settings.smtp_user and settings.smtp_password:     # the "Email sent by the app" account set by the administrator
         out.append({"address": settings.smtp_from or settings.smtp_user, "from": settings.smtp_from or settings.smtp_user, "reply_to": host_email(owner),
                     "username": settings.smtp_user, "password": settings.smtp_password, "smtp_host": settings.smtp_host, "smtp_port": settings.smtp_port, "platform": True})
     try:

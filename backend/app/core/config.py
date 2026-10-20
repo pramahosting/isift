@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     ice_servers: str = "stun:stun.l.google.com:19302"
     turn_username: str = ""
     turn_credential: str = ""
+    turn_shared_secret: str = ""        # coturn "use-auth-secret": short-lived passwords are made for each person
+    cf_turn_key_id: str = ""            # Cloudflare Realtime TURN (a hosted relay), key id and API token
+    cf_turn_api_token: str = ""
     room_max_people: int = 25
     room_default_access: str = "open"
     room_default_waiting: bool = True
@@ -99,6 +102,7 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    resend_api_key: str = ""            # sends over HTTPS (port 443) through Resend: use it when the host blocks SMTP ports
     error_email_to: str = ""
     audio_storage_dir: str = "/data/audio"
     audio_max_bytes: int = 25 * 1024 * 1024
