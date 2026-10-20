@@ -128,7 +128,7 @@ async def machine_status(db: AsyncSession, user_id: str, local_request: bool) ->
     info = machine.detect()
     return {"allowed_by_admin": bool(settings.machine_calendar_allowed), "available": info["available"], "source": info["source"], "consent": await get_consent(db, user_id),
             "can_grant": bool(local_request), "in_use": await machine_usable(db, user_id), "note": info.get("note"), "outlook_accounts": machine._LAST.get("accounts", []), "uploaded": bool(await get_upload(db, user_id)),
-            "folders": [str(p) for p in machine.ics_folders()][:8]}
+            "folders": [str(p) for p in machine.ics_folders()][:8], "hosted": not bool(local_request)}
 
 def as_utc(v: datetime) -> datetime:
     return v.replace(tzinfo=timezone.utc) if v.tzinfo is None else v.astimezone(timezone.utc)

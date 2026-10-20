@@ -269,7 +269,7 @@ async def setup_status(user: User = Depends(require_admin)):
         {"key": "transcription", "title": "Speech-to-text for recordings", "required": False, "ok": transcription_configured(),
          "detail": "Needs the Groq key. Recordings up to 25 MB are transcribed with Groq Whisper." if not transcription_configured() else "Ready."},
         {"key": "calendar", "title": "Calendar source", "required": False, "ok": bool(graph_configured() or settings.machine_calendar_allowed),
-         "detail": "Each person adds their calendar under Connections (links, CalDAV, .ics), or enable Microsoft 365 / this computer's calendar."},
+         "detail": "Each person adds their own calendar under Connections (calendar link, CalDAV or an .ics file), or you can turn on Microsoft 365. A website cannot read calendars on a person's computer by itself."},
         {"key": "zoom", "title": "Zoom (create Zoom meetings, fetch recordings)", "required": False, "ok": zoom.configured(),
          "detail": "Optional. Add the Server-to-Server OAuth app under Admin Console > Zoom." if not zoom.configured() else "Ready."},
         {"key": "turn", "title": "TURN relay for video meetings", "required": False, "ok": has_turn,
