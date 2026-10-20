@@ -1,5 +1,5 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {UserPlus,Pencil,Trash2,Download,Upload,Search,Ban,CheckCircle2,X,Database,RefreshCw,Monitor,AlertTriangle,ShieldCheck} from 'lucide-react';
+import {UserPlus,Pencil,Trash2,Download,Upload,Search,Ban,CheckCircle2,X,Database,RefreshCw,Monitor,AlertTriangle,ShieldCheck,Link2,CalendarDays} from 'lucide-react';
 
 const when=v=>{if(!v)return 'Never';try{return new Date(v).toLocaleString(undefined,{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})}catch{return '—'}};
 
@@ -164,6 +164,7 @@ export function DataImport({request,download,isAdmin,onDone}){
 }
 
 /* ---------------- Calendar on this computer ---------------- */
+import {canLinkFile,linkCalendarFile} from './linkedCalendar';
 export function MachinePrompt({machine,onChoose}){
  const [busy,setBusy]=useState(false);
  if(!machine||!machine.allowed_by_admin||!machine.available)return null;
@@ -178,9 +179,20 @@ export function MachinePrompt({machine,onChoose}){
   </div></div>;
 }
 
-export function CalendarFinder({machine,onSearch,onUpload}){
+export function CalendarFinder({machine,onSearch,onUpload,onConnect}:any){
  const [busy,setBusy]=useState(false);
- const run=async f=>{setBusy(true);try{await f()}finally{setBusy(false)}};
+ const run=async (f:any)=>{setBusy(true);try{await f()}finally{setBusy(false)}};
+ const hosted=!!machine?.hosted;
+ if(hosted)return <div className="cal-connect">
+  <div className="cc-head"><span className="cc-ico"><CalendarDays size={22}/></span><div><b>Connect your calendar</b><p>Your meetings for today will appear here. Pick the way that suits you.</p></div></div>
+  <div className="cc-opts">
+   <div className="cc-opt best"><span className="cc-tag">Recommended</span><span className="cc-oi"><Link2 size={20}/></span><b>Calendar link</b><small>Paste your private Google, Outlook or iCloud link once. It then stays up to date by itself.</small>{onConnect&&<button type="button" className="primary" onClick={onConnect}>Add a link</button>}</div>
+   <div className="cc-opt"><span className="cc-oi"><Upload size={20}/></span><b>Calendar file</b><small>Choose an .ics file exported from Outlook, Google or Apple Calendar. Refresh by exporting again.</small>
+    <div className="cc-btns"><label className="secondary cal-up">{busy?'Reading…':'Choose .ics file'}<input type="file" accept=".ics,.ical,text/calendar" hidden disabled={busy} onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)run(()=>onUpload(f))}}/></label>
+    {canLinkFile()&&<button type="button" className="textbtn" disabled={busy} title="Chrome and Edge remember the file and re-read it each time you open iSift" onClick={()=>run(async()=>{const f=await linkCalendarFile();if(f)await onUpload(f)})}>Keep it linked</button>}</div></div>
+  </div>
+  <small className="cc-note"><ShieldCheck size={13}/> Private to your account. A website can’t read the calendar on your computer by itself, so iSift never searches your files.</small>
+ </div>;
  return <div className="cal-finder">
   <b>{machine?.available?'Or choose a calendar file yourself':'No calendar found on this computer yet'}</b>
   <p>{machine?.available?'':'The app looked in Downloads, Documents, Desktop, OneDrive and docs/calendar. '}Export your calendar as an .ics file (Outlook: File → Save Calendar; Google or Apple Calendar: Export) and upload it here. It is read on this computer only and stays private to your account.</p>
