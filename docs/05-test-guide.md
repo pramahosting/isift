@@ -31,7 +31,7 @@ The Windows demo runs Vite directly. Docker Compose remains available for deploy
 5. Open Briefings and click **Preview**. It must say preview only and remain below 250 words.
 6. Open Minutes from Product planning. Edit the executive summary JSON and click **Save as reviewed**. Confirm a new reviewed version appears.
 7. Open Action items. Change one to In progress and refresh to verify persistence.
-8. Open Admin settings. Change a harmless preference and save. Confirm secret status is visible but no value is exposed.
+8. Open Admin Console. Change a harmless preference and save. Confirm secret status is visible but no value is exposed.
 9. Open Run history and confirm the sample run.
 10. Stop with `app-stop.cmd`, start again with `app.cmd`, and confirm records remain in `docs/data/isift.db`.
 

@@ -6,7 +6,7 @@ iSift ships as **one container** (web app + API + background worker). The `Docke
 - A Git repository containing this project (GitHub, GitLab or Bitbucket), connected to Northflank.
 - A PostgreSQL database: a **Northflank PostgreSQL add-on** or **Neon**. Use its connection string as `DATABASE_URL` (both `postgresql://…` and `postgresql+asyncpg://…` are accepted).
 - Your public address, e.g. `https://meet.yourcompany.com` (a Northflank `*.code.run` address works for a first test).
-- Optional, set later in the Admin settings screen: Cloudflare R2, Square, email (SMTP), AI keys, TURN server.
+- Optional, set later in the Admin Console screen: Cloudflare R2, Square, email (SMTP), AI keys, TURN server.
 
 ## 2. Create the service
 1. New **Combined service** from your repository. Build type: **Dockerfile**, Dockerfile path `/Dockerfile`, build context `/`.
@@ -22,14 +22,14 @@ iSift ships as **one container** (web app + API + background worker). The `Docke
 | `FRONTEND_ORIGIN` | the public address, `https://…`, no trailing slash |
 | `LOCAL_AUTH_SECRET` | a random string of 40+ characters (signs sessions; keep it stable, changing it signs everyone out) |
 | `LOCAL_ADMIN_PASSWORD` | the first administrator password (10+ characters). User name is `admin`. Change it afterwards under My account > Password |
-| `SETTINGS_ENCRYPTION_KEY` | another random string; encrypts secrets saved in Admin settings (do not lose it) |
+| `SETTINGS_ENCRYPTION_KEY` | another random string; encrypts secrets saved in Admin Console (do not lose it) |
 
 `HOSTED=true`, `APP_ENV=production`, `AUTH_MODE=local`, `RUN_WORKER=true` are already set in the image. In HOSTED mode the service **refuses to start** (and prints why in the log) if the secret is short, the admin password is the demo one, the database is the demo one, or `FRONTEND_ORIGIN` is still localhost. Sample data and the computer-calendar import are switched off.
 
 Database tables are created and upgraded automatically each time the container starts.
 
 ## 4. After it is running
-1. Open the address, sign in as `admin`, and go to **Admin settings**. Work down the Setup checklist.
+1. Open the address, sign in as `admin`, and go to **Admin Console**. Work down the Setup checklist.
 2. **Email (SMTP)** first: sign-up codes cannot be delivered without it. Use **Send a test email**.
 3. **Recording storage (Cloudflare R2)** then **Connection test**.
 4. **Payments (Square)**: start in sandbox, switch to production only when ready.

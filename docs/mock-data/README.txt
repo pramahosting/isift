@@ -4,7 +4,7 @@ Load everything with one click: Dashboard or Meetings -> "Load mock data", or th
 Upload your own file for one table on the "Data import" page (download a template there first).
 
 Files, in load order: users, meetings, transcripts, transcript_segments, minutes, action_items, briefings, workflow_runs, jobs, audit_logs.
-(Sign-in accounts are part of users.csv. Integration settings and secrets are never imported - use Admin settings.)
+(Sign-in accounts are part of users.csv. Integration settings and secrets are never imported - use Admin Console.)
 
 How rows link together (no internal ids needed)
   owner_email           the person who owns the row (blank = you; members always load into their own account)

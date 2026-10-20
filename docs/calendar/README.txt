@@ -2,7 +2,7 @@ Calendar files (.ics)
 ---------------------
 iSift can read the calendar of the computer it runs on, after each person allows it
 (Dashboard -> "Calendar found on this computer" -> Allow). An administrator can switch this off in
-Admin settings -> Calendar.
+Admin Console -> Calendar.
 
 Sources it looks for, in this order:
   1. .ics files in this folder (docs\calendar), in the folder set by MACHINE_CALENDAR_DIR, and in
@@ -15,4 +15,4 @@ Sources it looks for, in this order:
 Daily, weekly, monthly and yearly repeats, exceptions, private and cancelled events are handled.
 Private, cancelled and all-day events are skipped, like everywhere else in the app.
 Only the computer running the app can allow this; people using the app from another computer cannot.
-Microsoft 365 (Admin settings -> Microsoft Entra and Graph) is used first when it is configured.
+Microsoft 365 (Admin Console -> Microsoft Entra and Graph) is used first when it is configured.

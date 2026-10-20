@@ -18,7 +18,7 @@ Microsoft Teams delivery and the 06:55 weekday recurrence are configured through
 1. Extract the full ZIP pack to a writable folder.
 2. Double-click `app.cmd`. It creates a private Python environment, installs Python and npm packages on first run, creates the local SQLite database, then starts the API, worker, and Vite frontend. It opens `http://localhost:5173` only after all three processes are running and the API confirms its database is healthy. First launch may take several minutes.
 3. Sign in with admin user ID `admin` and password `Meeting$1`. This fixed credential is for single-computer local evaluation only; never expose or deploy demo mode.
-4. In **Admin settings**, adjust the Sydney briefing time, lookback window, transcript/minutes retention, and human-review requirement. The local SQLite database is created automatically; startup does not ask for a database URL or other setup values.
+4. In **Admin Console**, adjust the Sydney briefing time, lookback window, transcript/minutes retention, and human-review requirement. The local SQLite database is created automatically; startup does not ask for a database URL or other setup values.
 5. Open Meetings and select **Load mock data**. The fictional dataset adds two eligible meetings, one transcript with timestamps, draft minutes, two action items and a mock briefing.
 
 Use `app-logs.cmd` to view logs and `app-stop.cmd` to stop the API, worker, and frontend. Stopping preserves `docs/data/isift.db`. To erase local demo records, stop the app and delete that database file.
@@ -45,7 +45,7 @@ See `.env.example` for variable names. Never put secret values in this manual, s
 - **Action items:** inspect owner/date evidence and update status.
 - **Briefings:** create a preview or local manual record. Preview does not send a Teams message. Scheduled runs need Power Automate configuration.
 - **Run history:** inspect durable processing jobs.
-- **Admin settings:** update app preferences. Secret values are never returned to the UI.
+- **Admin Console:** update app preferences. Secret values are never returned to the UI.
 
 ## Mock data
 

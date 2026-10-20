@@ -10,7 +10,7 @@ The built-in meeting rooms (camera, microphone, screen share, chat, host control
 |---|---|
 | Calendars from Google/Gmail, Yahoo, Outlook.com, iCloud | **Done through each calendar's private .ics link** (Connections page), plus .ics upload and the computer's own calendar |
 | Join buttons for Zoom, Teams, Google Meet, Webex | **Done** - links are recognised in the event |
-| Create a Zoom meeting from the app | **Done** (Admin settings > Zoom, Server-to-Server OAuth); tested with simulated Zoom answers only - needs a real Zoom account to confirm |
+| Create a Zoom meeting from the app | **Done** (Admin Console > Zoom, Server-to-Server OAuth); tested with simulated Zoom answers only - needs a real Zoom account to confirm |
 | Zoom official transcript into minutes | **Done** (reads the cloud-recording transcript after the meeting) - same caveat |
 | Read Gmail / Yahoo *email* | Not built (see Phase 2) |
 | Our own audio/video meetings and recording | Not built (see Phase 3) |
