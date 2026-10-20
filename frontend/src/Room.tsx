@@ -187,7 +187,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     let retried=0,t:any=null;
     const restart=async()=>{if(retried++>=3||pc.signalingState!=='stable')return;try{const o=await pc.createOffer({iceRestart:true});await pc.setLocalDescription(o);send({type:'signal',to:id,data:{sdp:pc.localDescription}})}catch{}};
     pc.oniceconnectionstatechange=()=>{clearTimeout(t);if(pc.iceConnectionState==='disconnected')t=setTimeout(restart,4000);else if(pc.iceConnectionState==='failed')restart();else if(pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed'){retried=0;tuneSenders()}};
-    pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')setNotice('Could not connect video and sound to another person on this network. Ask the administrator to set up a TURN relay (Admin settings, Video meetings).')};
+    pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')setNotice('Could not connect video and sound to another person on this network. Ask the administrator to set up a TURN relay (Admin Console, Video meetings).')};
     return pc;
   };
   const tuneSenders=()=>{      // fewer bits per person as the room grows, so everyone's video and sound stay smooth

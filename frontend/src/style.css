@@ -1482,13 +1482,19 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 .rm-wbapps{flex:1;min-height:0;width:100%;border:0;background:#fff}
 .rm-newtab{text-decoration:none;padding:8px 12px;border-radius:10px}
 @media (max-width:700px){.rm-wbhint{display:none}}
-.ut{margin:18px 0}.ut-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}.ut-head b{font-size:1.1rem}
-.ut-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
-.ut-tile{background:var(--card,#fff);border:1px solid #e1e6f0;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;min-width:0}
-.ut-tile.off{opacity:.65}.ut-top{display:flex;align-items:center;gap:8px}.ut-ic{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#e8efff;color:#2b62f0;flex:none}
-.ut-title{font-size:.85rem;color:#5b6784;line-height:1.2}.ut-num{font-size:2rem;font-weight:700;line-height:1.1}.ut-num small{font-size:1rem;font-weight:600;color:#5b6784}
-.ut-meter{height:6px;border-radius:99px;background:#e6ebf5;overflow:hidden}.ut-meter i{display:block;height:100%;background:#2b62f0}
-.ut-foot{font-size:.8rem;min-height:1.1em}.ut-d.up{color:#16794a}.ut-d.down{color:#b4452f}
-.ut-bars{width:100%;height:40px;margin-top:2px}.ut-bars rect{fill:#c9d6f5}.ut-bars rect.now{fill:#2b62f0}.ut-bars text{font-size:7px;fill:#7a869f}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ut-tile{background:#172033;border-color:#2a3550}:root:not([data-theme="light"]) .ut-title,:root:not([data-theme="light"]) .ut-num small{color:#9fb0d0}:root:not([data-theme="light"]) .ut-ic{background:#22345e;color:#8fb0ff}}
-@media (max-width:520px){.ut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ut-num{font-size:1.6rem}}
+.ut{margin:16px 0;background:var(--card,#fff);border:1px solid #e1e6f0;border-radius:14px;overflow:hidden}
+.ut-bar{display:flex;align-items:center;gap:14px;width:100%;padding:10px 14px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.ut-bar:hover{background:rgba(43,98,240,.05)}.ut-barl{display:flex;align-items:center;gap:8px;color:#2b62f0}.ut-barl b{color:inherit}.ut-barl .muted{color:#7a869f}
+.ut-sum{display:flex;gap:16px;flex-wrap:wrap;flex:1;justify-content:flex-end;font-size:.84rem;color:#5b6784}.ut-sum b{color:#172033}
+.ut-chev{display:grid;place-items:center;color:#7a869f}
+.ut-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px;padding:2px 12px 12px}
+.ut-tile{--c:#2b62f0;--bg:#e8efff;position:relative;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:8px;align-items:center;padding:9px 10px;border-radius:12px;background:linear-gradient(135deg,var(--bg),#fff 85%);border:1px solid color-mix(in srgb,var(--c) 18%,#fff);min-width:0}
+.ut-tile.off{opacity:.55}
+.ut-ic{grid-row:1/3;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--c);color:#fff}
+.ut-num{font-size:1.25rem;font-weight:700;line-height:1.1;white-space:nowrap}.ut-num small{font-size:.7rem;font-weight:600;color:#7a869f;margin-left:3px}
+.ut-title{font-size:.72rem;color:#5b6784;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ut-title em{font-style:normal;color:var(--c);margin-left:3px}
+.t-blue{--c:#2b62f0;--bg:#e8efff}.t-violet{--c:#7c4dff;--bg:#efe9ff}.t-rose{--c:#e0446a;--bg:#ffe8ee}.t-amber{--c:#d98a00;--bg:#fff3d9}.t-green{--c:#1c9a5b;--bg:#e2f6ec}.t-teal{--c:#0f9aa8;--bg:#dff5f7}.t-sky{--c:#2a8fd6;--bg:#e3f2fc}.t-orange{--c:#ef6a2f;--bg:#ffece2}.t-indigo{--c:#4a55d8;--bg:#e9ebff}.t-pink{--c:#c026d3;--bg:#f9e6fc}.t-slate{--c:#5b6784;--bg:#eef1f7}
+.ut-note{margin:0;padding:0 14px 10px}.ut-load{padding:0 14px 12px;margin:0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ut{background:#172033;border-color:#2a3550}:root:not([data-theme="light"]) .ut-tile{background:linear-gradient(135deg,color-mix(in srgb,var(--c) 22%,#172033),#172033 85%);border-color:color-mix(in srgb,var(--c) 35%,#172033)}:root:not([data-theme="light"]) .ut-sum b{color:#e8eefc}:root:not([data-theme="light"]) .ut-sum,:root:not([data-theme="light"]) .ut-title,:root:not([data-theme="light"]) .ut-num small{color:#9fb0d0}}
+@media (max-width:520px){.ut-sum{display:none}.ut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tabs{flex-wrap:wrap}.tabs button{white-space:nowrap}

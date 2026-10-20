@@ -11,7 +11,7 @@ const SYMBOL:Record<string,string>={USD:'US$',AUD:'A$',GBP:'£',EUR:'€',CAD:'C
 export const money=(n:number,cur='USD')=>`${SYMBOL[cur]||cur+' '}${n.toFixed(2)}`;
 export type LivePlan={id:PlanId;name:string;monthly:number;yearly:number;per_month_yearly:number;available:boolean};
 const API=()=>import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
-/** The price list the administrator keeps in Admin settings > Pricing. Re-read each time a page that shows prices opens, so a change shows at once. */
+/** The price list the administrator keeps in Admin Console > Pricing. Re-read each time a page that shows prices opens, so a change shows at once. */
 export function useLivePlans(){
   const [d,setD]=useState<{currency:string;plans:LivePlan[]}|null>(null);
   useEffect(()=>{let on=true;const get=()=>fetch(API()+'/billing/plans?t='+Date.now(),{cache:'no-store'}).then(r=>r.json()).then(x=>on&&x.plans&&setD(x)).catch(()=>{});get();const t=setInterval(get,30000);return()=>{on=false;clearInterval(t)}},[]);

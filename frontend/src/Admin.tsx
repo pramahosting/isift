@@ -4,7 +4,7 @@ import {UserPlus,Pencil,Trash2,Download,Upload,Search,Ban,CheckCircle2,X,Databas
 const when=v=>{if(!v)return 'Never';try{return new Date(v).toLocaleString(undefined,{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})}catch{return '—'}};
 
 /* ---------------- Users ---------------- */
-export function UsersPage({request,download,me,canCreate,onChanged}){
+export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:any){
  const [users,setUsers]=useState<any[]|null>(null),[q,setQ]=useState(''),[err,setErr]=useState(''),[msg,setMsg]=useState('');
  const [form,setForm]=useState<any>(null),[formErr,setFormErr]=useState(''),[saving,setSaving]=useState(false),[del,setDel]=useState<any>(null);
  const [sel,setSel]=useState<string[]>([]),[bulk,setBulk]=useState(false),[bulkBusy,setBulkBusy]=useState(false);
@@ -45,11 +45,11 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
  const toggle=async u=>{setMsg('');try{await request(`/admin/users/${u.id}`,{method:'PATCH',body:JSON.stringify({is_active:!u.is_active})});setMsg(`${u.email} ${u.is_active?'disabled':'enabled'}.`);await refresh(q.trim())}catch(ex){setErr(ex.message);setTimeout(()=>setErr(''),6000)}};
  const remove=async()=>{const u=del;setDel(null);setMsg('');try{const r=await request(`/admin/users/${u.id}`,{method:'DELETE'});setMsg(`Deleted ${u.email}${r.meetings_removed?` and ${r.meetings_removed} meeting(s) with their transcripts, minutes and actions`:''}.`);await refresh(q.trim());onChanged&&onChanged()}catch(ex){setErr(ex.message);setTimeout(()=>setErr(""),20000)}};
  return <>
-  <div className="pagehead"><div><p className="eyebrow">ADMINISTRATION</p><h1>Users</h1><p>Create, update, disable or delete the people who can use this workspace.</p></div>
-   <div className="headactions"><button className="secondary" onClick={()=>download('/admin/users/export','users.csv')}><Download size={16}/> Export CSV</button>{canCreate&&<button className="primary" onClick={openCreate}><UserPlus size={16}/> Add user</button>}</div></div>
+  {view==='list'&&<div className="pagehead"><div><p className="eyebrow">ADMINISTRATION</p><h1>Users</h1><p>Create, update, disable or delete the people who can use this workspace.</p></div>
+   <div className="headactions"><button className="secondary" onClick={()=>download('/admin/users/export','users.csv')}><Download size={16}/> Export CSV</button>{canCreate&&<button className="primary" onClick={openCreate}><UserPlus size={16}/> Add user</button>}</div></div>}
   {msg&&<div className="okmsg" role="status"><CheckCircle2 size={16}/> {msg}</div>}
   {err&&<div className="alert" role="alert">{err}</div>}
-  {!canCreate&&<div className="hint" style={{marginBottom:14}}>People sign in with Microsoft in this mode and appear here after their first sign-in. You can change their role, disable or remove them here.</div>}
+  {view==='list'&&!canCreate&&<div className="hint" style={{marginBottom:14}}>People sign in with Microsoft in this mode and appear here after their first sign-in. You can change their role, disable or remove them here.</div>}
   {form&&<form className="panel userform" onSubmit={save} aria-label={form.mode==='create'?'Add user':'Edit user'}>
    <div className="panelhead"><h2>{form.mode==='create'?'Add user':`Edit ${form.email}`}</h2><button type="button" className="iconbtn" aria-label="Close" onClick={()=>setForm(null)}><X size={18}/></button></div>
    <div className="formgrid">
@@ -82,7 +82,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    {formErr&&<div className="alert" role="alert">{formErr}</div>}
    <div className="actions"><button className="primary" disabled={saving}>{saving?'Saving…':form.mode==='create'?'Create user':'Save changes'}</button><button type="button" className="secondary" onClick={()=>setForm(null)}>Cancel</button></div>
   </form>}
-  {users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
+  {view==='permissions'&&users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
    <div className="plantable-wrap"><table className="plantable"><thead><tr><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
    {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={calls:'Calls',ai_per_month:'AI summaries',booking_pages:'Booking pages',commbox:'Commbox',open_room:'Open room',recording:'Recording',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
     return <tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
@@ -95,7 +95,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
      <td>{adm?'\u2013':ks.length?<span className="badge amber" title={ks.map(k=>`${lab[k]||k}: ${typeof cu[k]==='boolean'?(cu[k]?'allowed':'not allowed'):cu[k]===0?'no limit':cu[k]}`).join(', ')}>Yes: {ks.map(k=>lab[k]||k).join(', ')}</span>:'None'}</td>
      <td>{!adm&&<button className="textbtn" onClick={()=>openEdit(u)} aria-label={`Edit permissions of ${u.email}`}><Pencil size={14}/> Edit</button>}</td></tr>})}
    </tbody></table></div></section>}
-  <section className="panel">
+  {view==='list'&&<section className="panel">
    <div className="searchbar"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by name or email" aria-label="Search users"/></div>
    {users===null?<div className="empty">Loading users…</div>:!users.length?<div className="empty">No users match.</div>:
    <>{bar}<div className="utable" role="table" aria-label="Users">
@@ -114,8 +114,8 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
      </span>
     </div>)}
    </div></>}
-  </section>
-  {bulk&&<div className="modal-backdrop" onClick={()=>!bulkBusy&&setBulk(false)}><div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm delete selected users" onClick={e=>e.stopPropagation()}>
+  </section>}
+  {view==='list'&&<>{bulk&&<div className="modal-backdrop" onClick={()=>!bulkBusy&&setBulk(false)}><div className="confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Confirm delete selected users" onClick={e=>e.stopPropagation()}>
    <AlertTriangle size={22}/><h2>Delete {sel.length} user{sel.length===1?'':'s'}?</h2>
    <ul className="bulklist">{sel.slice(0,12).map(id=>{const u=(users||[]).find((x:any)=>x.id===id);return <li key={id}>{u?.display_name||u?.email} <small className="muted">{u?.email}</small></li>})}{sel.length>12&&<li>and {sel.length-12} more</li>}</ul>
    <p>This permanently removes these accounts and their meetings, transcripts, minutes, action items, documents and booking pages. It cannot be undone. To keep the data and only block sign-in, choose Disable instead.</p>
@@ -125,7 +125,7 @@ export function UsersPage({request,download,me,canCreate,onChanged}){
    <AlertTriangle size={22}/><h2>Delete {del.display_name||del.email}?</h2>
    <p>This permanently removes the account{del.meetings?` and ${del.meetings} meeting(s) with their transcripts, minutes and action items`:''}. It cannot be undone. To keep the data and only block sign-in, choose Disable instead.</p>
    <div className="actions"><button className="primary danger-btn" onClick={remove}>Delete user</button><button className="secondary" onClick={()=>setDel(null)}>Cancel</button></div>
-  </div></div>}
+  </div></div>}</>}
  </>;
 }
 
