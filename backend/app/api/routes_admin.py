@@ -101,7 +101,13 @@ async def list_users(q: str = Query("", max_length=100), admin: User = Depends(r
     if q.strip(): stmt = stmt.where(func.lower(User.email).contains(q.strip().lower()) | func.lower(User.display_name).contains(q.strip().lower()))
     users = (await db.execute(stmt.limit(1000))).scalars().all()
     counts = dict((await db.execute(select(Meeting.owner_id, func.count()).group_by(Meeting.owner_id))).all())
-    return [await _row(db, u, counts) for u in users]
+    from app.core.db import SessionLocal
+    async def one(u):
+        async with SessionLocal() as s:           # each person on their own connection, a few at a time: the slow database is asked in parallel
+            return await _row(s, u, counts)
+    out = []
+    for i in range(0, len(users), 6): out += await asyncio.gather(*[one(u) for u in users[i:i + 6]])
+    return out
 
 @router.post("/admin/users", status_code=201)
 async def create_user(data: UserCreate, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):

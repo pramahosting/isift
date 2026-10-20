@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     briefing_time: str = "06:55"
     calendar_sync_minutes: int = 30
     db_pool_size: int = 10
+    enable_api_docs: bool = False           # ENABLE_API_DOCS=true brings back the public /docs and /openapi.json pages (off by default: they describe every endpoint to strangers)
     mock_data_enabled: bool = True
     load_mock_on_start: bool = True
     calendar_on_start: bool = True

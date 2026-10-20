@@ -66,9 +66,10 @@ async def principal(request: HTTPConnection, credentials: HTTPAuthorizationCrede
     claim_admin = is_local_admin or settings.entra_admin_role in role_names or email in settings.admins
     result = await db.execute(select(User).where(User.entra_subject == subject))
     user = result.scalar_one_or_none()
+    fresh = False
     if not user:
         user = User(entra_subject=subject, email=email, display_name=claims.get("name", email), role="admin" if claim_admin else "user")
-        db.add(user)
+        db.add(user); fresh = True
     else:
         user.email=email; user.display_name=user.display_name or claims.get("name", email)
         if user.display_name in ("Local Demo Administrator", "Administrator") and user.entra_subject == "local-admin": user.display_name = "Pramod Singh"     # older installs used this name
@@ -84,7 +85,7 @@ async def principal(request: HTTPConnection, credentials: HTTPAuthorizationCrede
         # Two requests from the same new user arrived together; the other one created the row first.
         await db.rollback()
         user = (await db.execute(select(User).where(User.entra_subject == subject))).scalar_one()
-    await db.refresh(user)
+    if fresh or db.is_modified(user): await db.refresh(user)       # one query less on every request: an existing person was just read
     return user
 
 def require_admin(user: User = Depends(principal)) -> User:

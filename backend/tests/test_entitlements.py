@@ -586,3 +586,8 @@ def test_password_guessing_is_slowed_down(client):
     for i in range(10): assert client.post("/api/v1/auth/local-login", json={"username": "admin", "password": f"bad{i}"}).status_code == 401
     r = client.post("/api/v1/auth/local-login", json={"username": "admin", "password": "still-bad"}); assert r.status_code == 429
     assert client.post("/api/v1/auth/local-login", json={"username": "someoneelse@x.com", "password": "x"}).status_code == 401   # other IDs are not affected
+
+
+def test_api_docs_pages_are_not_public(client):
+    assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404 and client.get("/redoc").status_code == 404
+    assert client.get("/api/v1/health").status_code == 200

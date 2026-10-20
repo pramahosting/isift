@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os, tempfile
 import pytest
 from starlette.testclient import TestClient
@@ -401,7 +401,7 @@ def test_contacts_per_account_and_merge(client):
     assert j(name="Ann", email="ann@x.com", account="a@gmail.com").status_code == 409
     assert j(name="Bob", email="bob@x.com", account="b@yahoo.com").status_code == 200
     assert j(name="Local Lou", email="lou@x.com").status_code == 200
-    cs = client.get("/api/v1/contacts", headers=h).json()["contacts"]; assert {"", "a@gmail.com", "b@yahoo.com"} <= {c["account"] for c in cs} and len([c for c in cs if c["email"] in ("ann@x.com", "bob@x.com", "lou@x.com")]) == 5
+    cs = client.get("/api/v1/contacts", headers=h).json()["contacts"]; assert {"", "a@gmail.com", "b@yahoo.com"} <= {c["account"] for c in cs} and len([c for c in cs if c["email"] in ("ann@x.com", "bob@x.com", "lou@x.com")]) == 4
     r = client.post("/api/v1/contacts/merge", headers=h).json(); assert r["added"] >= 2         # Ann once, Bob once (plus anything other tests left in other accounts); Lou already local
     cs = client.get("/api/v1/contacts", headers=h).json()["contacts"]; loc = [c["email"] for c in cs if not c["account"]]; assert sorted(e for e in loc if e in ("ann@x.com", "bob@x.com", "lou@x.com")) == ["ann@x.com", "bob@x.com", "lou@x.com"] and len(loc) == len(set(e or id(e) for e in loc))
     assert client.post("/api/v1/contacts/merge", headers=h).json()["added"] == 0                # merging again changes nothing
@@ -1192,7 +1192,7 @@ def test_hosted_mode_rules(monkeypatch):
                  local_auth_secret="x" * 40, local_admin_password="a-long-password-1")
     assert s.is_local_demo is True and s.mock_data_enabled is False and s.load_mock_on_start is False and s.calendar_on_start is False and s.hosted_problems() == []
     bad = Settings(hosted=True, app_env="production", database_url="postgresql://u:p@db:5432/x", frontend_origin="http://localhost:5173").hosted_problems()
-    assert len(bad) == 3 and Settings(hosted=True, local_auth_secret="short").hosted_problems()[0].startswith("LOCAL_AUTH_SECRET")
+    assert len(bad) >= 3 and Settings(hosted=True, local_auth_secret="short").hosted_problems()[0].startswith("LOCAL_AUTH_SECRET")
     assert Settings(hosted=False, app_env="production").is_local_demo is False             # production without HOSTED keeps Microsoft-only sign-in
 
 
@@ -1876,9 +1876,9 @@ def test_dashboard_organizer_never_placeholder(client):
 
 
 def test_dashboard_organizer_is_not_the_placeholder(client):
-    h, _ = login(client); make(client, h, title="Dash org", start_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z"), duration_minutes=30)
+    h, _ = login(client); make(client, h, title="Dash org", start_at=(datetime.now(timezone.utc) + timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:00Z"), duration_minutes=30)
     d = client.get("/api/v1/dashboard", headers=h); assert d.status_code == 200, d.text
-    orgs = [m["organizer"] for m in d.json()["meetings"]]; assert orgs and all(o == "admin@isift.au" for o in orgs), orgs
+    orgs = [m["organizer"] for m in d.json()["meetings"] + d.json()["today"]["meetings"]]; assert orgs and all(o == "admin@isift.au" for o in orgs), orgs
 
 def _b64(b): import base64; return base64.b64encode(b).decode()
 

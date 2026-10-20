@@ -23,7 +23,7 @@ _bad = settings.hosted_problems()
 if _bad: raise RuntimeError("iSift will not start in HOSTED mode until this is fixed:\n - " + "\n - ".join(_bad))
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(name)s %(message)s")
-app=FastAPI(title=settings.app_name,version="1.0.0",description="Meeting preparation, transcript processing and human-reviewed minutes")
+app=FastAPI(title=settings.app_name,version="1.0.0",description="Meeting preparation, transcript processing and human-reviewed minutes",**({} if settings.enable_api_docs else {"docs_url":None,"redoc_url":None,"openapi_url":None}))
 @app.middleware("http")
 async def keep_errors_readable(request: Request, call_next):
     # Unhandled errors would otherwise skip the CORS headers and the browser would only say "Failed to fetch".
@@ -91,4 +91,4 @@ if _web and (Path(_web)/"index.html").is_file():
     app.mount("/",StaticFiles(directory=_web,html=True),name="web")
 else:
     @app.get("/")
-    async def root(): return {"name":settings.app_name,"version":"1.0.0","docs":"/docs"}
+    async def root(): return {"name":settings.app_name,"version":"1.0.0"}
