@@ -2,7 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {canLinkFile,linkCalendarFile} from './linkedCalendar';
 import {downloadWindowsHelper} from './winHelper';
 import {Modal} from './Workspace';
-import {Link2,Trash2,RefreshCw,Video,CalendarPlus,CheckCircle2,AlertTriangle,Upload,Plus,Mail,LogIn,Download,Monitor} from 'lucide-react';
+import {Link2,Trash2,RefreshCw,Video,CalendarPlus,CheckCircle2,AlertTriangle,Upload,Plus,Mail,LogIn,Download,Monitor,CalendarDays,ShieldCheck} from 'lucide-react';
 
 export const PROVIDER_LABEL:Record<string,string>={room:'Meeting room',zoom:'Zoom',teams:'Teams',meet:'Google Meet',webex:'Webex',calcom:'Cal.com video'};
 export function providerOf(url?:string|null){
@@ -69,6 +69,18 @@ export function ConnectionsPage({request,isAdmin,onChanged,goSettings,onUploadIc
       :await request('/connections/calendar-links',{method:'POST',body:JSON.stringify({provider:pid,label:label||email,url})});
     setUrl('');setPw('');setLabel('');setEmail('');return r})};
   return <div className="conn">
+    <section className="cal-connect">
+      <div className="cc-head"><span className="cc-ico"><CalendarDays size={22}/></span><div><b>Connect your calendar</b><p>Your meetings for today will appear on the dashboard. Pick the way that suits you.</p></div></div>
+      <div className="cc-opts">
+        <div className="cc-opt best"><span className="cc-tag">Recommended</span><span className="cc-oi"><Link2 size={20}/></span><b>Calendar link</b><small>Paste your private Google, Outlook or iCloud link once. It then stays up to date by itself.</small>
+          <button type="button" className="primary" onClick={()=>{const f=document.querySelector('.conn-form') as HTMLElement|null;f?.scrollIntoView({behavior:'smooth',block:'center'});(f?.querySelector('input') as HTMLInputElement|null)?.focus()}}>Add a link</button></div>
+        <div className="cc-opt"><span className="cc-oi"><Upload size={20}/></span><b>Calendar file</b><small>Choose an .ics file exported from Outlook, Google or Apple Calendar. Refresh by exporting again.</small>
+          <div className="cc-btns"><label className="secondary cal-up">{busy?'Reading…':'Choose .ics file'}<input type="file" accept=".ics,.ical,text/calendar" hidden disabled={busy} onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)run(async()=>{await onUploadIcs(f)})}}/></label>
+            {canLinkFile()&&<button type="button" className="textbtn" disabled={busy} title="Chrome and Edge remember the file and re-read it each time you open iSift" onClick={()=>run(async()=>{const f=await linkCalendarFile();if(f)await onUploadIcs(f)})}>Keep it linked</button>}
+            {/windows/i.test(navigator.userAgent)&&<button type="button" className="textbtn" title="Finds .ics files on this laptop and, only if you agree, adds them to your calendar" onClick={()=>downloadWindowsHelper(window.location.origin)}>Windows helper</button>}</div></div>
+      </div>
+      <small className="cc-note"><ShieldCheck size={13}/> Private to your account. A website can’t read the calendar on your computer by itself, so iSift never searches your files.</small>
+    </section>
     <OutlookCard o={info.outlook||{}} request={request} isAdmin={isAdmin} goSettings={goSettings} notify={notify} busy={busy} run={run}/>
     {(comp.note||comp.outlook_accounts?.length>0||comp.in_use)&&<section className="panel">
       <div className="panelhead"><h2>Outlook on this computer</h2></div>
@@ -96,8 +108,7 @@ export function ConnectionsPage({request,isAdmin,onChanged,goSettings,onUploadIc
         </>:<label className="span2">Calendar link<input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://… or webcal://…" inputMode="url" autoComplete="off" required/></label>}
         {preset?.how&&<p className="muted span2"><b>Where to find it:</b> {preset.how}</p>}
         <div className="actions span2"><button className="primary" disabled={busy||(caldav?!(user&&pw):!url.trim())}><Plus size={15}/> {busy?'Checking…':'Add calendar'}</button>
-          <label className="secondary cal-up"><Upload size={15}/> Upload .ics file instead<input type="file" accept=".ics,.ical,text/calendar" hidden disabled={busy} onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)run(async()=>{await onUploadIcs(f)})}}/></label>{canLinkFile()&&<button type="button" className="secondary" disabled={busy} title="Chrome and Edge remember the file and re-read it each time you open iSift" onClick={()=>run(async()=>{const f=await linkCalendarFile();if(f)await onUploadIcs(f)})}><Monitor size={15}/> Keep a file linked</button>}</div>
-        {/windows/i.test(navigator.userAgent)&&<p className="muted span2 small"><b>Windows laptop?</b> <button type="button" className="textbtn inline" onClick={()=>downloadWindowsHelper(window.location.origin)}>Download the calendar helper</button> It looks for .ics files on your computer, shows you what it found, and only adds them to your calendar if you say yes. Right-click the downloaded file and choose Run with PowerShell.</p>}
+          </div>
         <p className="muted span2 small">Links and passwords work like keys: they are stored encrypted, never shown again, and only used to read your calendar. Remove them any time. Use an app password, never your main account password.</p>
       </form>
       {err&&<p className="syncerr" role="alert">{err}</p>}
