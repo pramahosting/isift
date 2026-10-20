@@ -25,9 +25,21 @@ from app.demo import seed_demo
 api=APIRouter(prefix="/api/v1")
 log=logging.getLogger("isift")
 
+# Signed in until the person presses Log out: the page renews this each time it opens, so it only lapses after this many idle days.
+SESSION_DAYS=30
+
 def _local_token(sub:str,email:str,name:str)->dict:
-    token=jwt.encode({"sub":sub,"oid":sub,"preferred_username":email,"name":name,"roles":[],"aud":"isift-api","exp":datetime.now(timezone.utc)+timedelta(hours=8)},settings.local_auth_secret,algorithm="HS256")
-    return {"access_token":token,"token_type":"bearer","expires_in":28800}
+    token=jwt.encode({"sub":sub,"oid":sub,"preferred_username":email,"name":name,"roles":[],"aud":"isift-api","exp":datetime.now(timezone.utc)+timedelta(days=SESSION_DAYS)},settings.local_auth_secret,algorithm="HS256")
+    return {"access_token":token,"token_type":"bearer","expires_in":SESSION_DAYS*86400}
+
+@api.post("/auth/refresh")
+async def refresh_session(request:Request,user:User=Depends(principal)):
+    """Hands back a fresh sign-in token so the person stays signed in until they press Log out."""
+    if not settings.is_local_demo: raise HTTPException(404,"Not found")
+    raw=(request.headers.get("authorization") or "")[7:]
+    try: c=jwt.decode(raw,settings.local_auth_secret,algorithms=["HS256"],audience="isift-api")
+    except jwt.PyJWTError: raise HTTPException(401,"Invalid session")
+    return _local_token(c.get("sub") or "",c.get("preferred_username") or user.email,c.get("name") or user.display_name or user.email)
 
 @api.get("/auth/options")
 async def auth_options():

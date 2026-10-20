@@ -591,3 +591,16 @@ def test_password_guessing_is_slowed_down(client):
 def test_api_docs_pages_are_not_public(client):
     assert client.get("/docs").status_code == 404 and client.get("/openapi.json").status_code == 404 and client.get("/redoc").status_code == 404
     assert client.get("/api/v1/health").status_code == 200
+
+
+def test_session_is_renewed_and_lasts_weeks(client):
+    import jwt as _jwt, time as _t
+    from app.core.config import settings as _s
+    from app.api import routes as _r; _r._LOGIN_FAILS.clear()      # an earlier guessing test may have used up the allowance
+    tok = client.post("/api/v1/auth/local-login", json={"username": "admin", "password": "Meeting$1"}).json()["access_token"]
+    c = _jwt.decode(tok, _s.local_auth_secret, algorithms=["HS256"], audience="isift-api")
+    assert c["exp"] - _t.time() > 20 * 86400                      # stays signed in for weeks, not hours
+    r = client.post("/api/v1/auth/refresh", headers={"Authorization": f"Bearer {tok}"}); assert r.status_code == 200
+    new = r.json()["access_token"]
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {new}"}).status_code == 200
+    assert client.post("/api/v1/auth/refresh").status_code == 401   # needs a valid session
