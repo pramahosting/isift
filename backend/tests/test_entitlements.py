@@ -401,7 +401,7 @@ def test_admin_can_delete_users_and_their_records(client):
 
 def test_participant_caps_by_plan(client, monkeypatch):
     ah, _ = login(client); bh = basic_user(client, monkeypatch); tok = bh["Authorization"].split()[1]
-    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 25
+    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 100
     uid = user_id(client, ah, client.email)
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": 2}}, headers=ah)     # small cap so the test stays quick
     code = make(client, bh)["code"]
@@ -508,3 +508,23 @@ def test_cloud_recording_emails_the_host_a_download_link(client, monkeypatch, tm
     r2 = make(client, h)
     client.post(f"/api/v1/rooms/{r2['code']}/recording", headers=h, data={"consent_acknowledged": "true", "cloud": "false"}, files={"audio": ("a.webm", webm, "audio/webm")})
     time.sleep(0.4); assert sent == []
+
+
+def test_administrator_sets_limits_and_modules_for_a_whole_plan(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch)
+    cfg = client.get("/api/v1/admin/plan-config", headers=ah).json()
+    assert [p["id"] for p in cfg["plans"]] == ["basic", "individual", "business"] and cfg["plans"][0]["defaults"]["max_participants"] == 100 and any(m["id"] == "chat" for m in cfg["modules"])
+    r = client.put("/api/v1/admin/plan-config", json={"plan": "basic", "limits": {"recording": True, "max_participants": 5, "storage_mb": 250}, "modules_off": ["chat", "whiteboard", "nonsense"]}, headers=ah)
+    assert r.status_code == 200, r.text
+    me = client.get("/api/v1/me/limits", headers=bh).json()
+    assert me["recording"] is True and me["max_participants"] == 5 and me["storage_mb"] == 250 and me["meeting_minutes"] == 70      # changed fields move, the rest stay
+    assert sorted(me["modules_off"]) == ["chat", "whiteboard"]
+    uid = user_id(client, ah, client.email)                                     # one person's special permission still wins over the plan
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": 12}}, headers=ah)
+    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 12
+    assert client.put("/api/v1/admin/plan-config", json={"plan": "gold"}, headers=ah).status_code == 422
+    assert client.put("/api/v1/admin/plan-config", json={"plan": "basic"}, headers=bh).status_code in (401, 403)             # only administrators
+    client.put("/api/v1/admin/plan-config", json={"plan": "basic", "limits": {"recording": None, "max_participants": None, "storage_mb": None}, "modules_off": []}, headers=ah)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": None}}, headers=ah)
+    back = client.get("/api/v1/me/limits", headers=bh).json()
+    assert back["recording"] is False and back["max_participants"] == 100 and back["storage_mb"] == 100 and back["modules_off"] == []

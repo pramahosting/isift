@@ -6,7 +6,7 @@ The administrator can raise or lower any of these for a single person (Admin > U
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25}
+BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 100}
 OPEN = {"calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0}
 PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Individual and Business (5 GB, 300 hours)
 WARN_MINUTES = 10
@@ -29,13 +29,44 @@ async def set_overrides(db, email: str, changes: dict) -> dict:
     await store.put(db, _key(email), p)
     return cur
 
+PLAN_IDS = ("basic", "individual", "business")
+PLAN_KEY = "plan-config"
+
+def plan_defaults(plan: str) -> dict:
+    """The built-in limits of a plan, before the administrator's changes for the plan or for one person."""
+    base = dict(BASIC if plan == "basic" else {**OPEN, **PAID_DEFAULT})
+    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"; base["calls"] = plan != "basic"
+    return base
+
+async def plan_config(db) -> dict:
+    return await store.get(db, PLAN_KEY, {})
+
+async def set_plan_config(db, plan: str, limits_changes: dict, modules_off: list | None = None) -> dict:
+    """limits_changes: field -> value, or None to go back to the built-in value. modules_off: ids of modules this plan does not include."""
+    cfg = await plan_config(db); cur = dict(cfg.get(plan, {})); lim = dict(cur.get("limits") or {})
+    for k, v in (limits_changes or {}).items():
+        if k not in FIELDS: continue
+        if v is None: lim.pop(k, None)
+        else: lim[k] = bool(v) if FIELDS[k] is bool else max(0, min(int(v), 10000000))
+    cur["limits"] = lim
+    if modules_off is not None: cur["modules_off"] = sorted({str(m) for m in modules_off})
+    cfg[plan] = cur
+    await store.put(db, PLAN_KEY, cfg)
+    return cur
+
+async def modules_off(db, user) -> list[str]:
+    """Modules this person's plan does not include (the ones switched off for everyone are handled separately)."""
+    if user is None or user.role == "admin": return []
+    plan = await billing.plan_of(db, user)
+    return list((await plan_config(db)).get(plan, {}).get("modules_off") or [])
+
 async def limits(db, user) -> dict:
     """The person's effective limits. 0 for a count means unlimited."""
     if user is None: return dict(BASIC)
     if user.role == "admin": return {**OPEN, "plan": "admin", "custom": {}}
     plan = await billing.plan_of(db, user)
-    base = dict(BASIC if plan == "basic" else {**OPEN, **PAID_DEFAULT})
-    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"; base["calls"] = plan != "basic"
+    base = plan_defaults(plan)
+    base.update({k: v for k, v in (await plan_config(db)).get(plan, {}).get("limits", {}).items() if k in FIELDS})         # what the administrator set for the whole plan
     custom = await overrides(db, user.email)
     base.update({k: v for k, v in custom.items() if k in FIELDS})
     return {**base, "plan": plan, "custom": custom}
@@ -117,4 +148,4 @@ async def minutes_left(db, user) -> int | None:
 
 async def summary(db, user) -> dict:
     L = await limits(db, user)
-    return {**L, "docs_used_today": await docs_used(db, user), "ai_used_month": await ai_used(db, user), "storage_used_mb": round(await storage_used(db, user) / 1048576, 1), "hours_used_month": await hours_used(db, user), "warn_minutes": WARN_MINUTES}
+    return {**L, "docs_used_today": await docs_used(db, user), "ai_used_month": await ai_used(db, user), "storage_used_mb": round(await storage_used(db, user) / 1048576, 1), "hours_used_month": await hours_used(db, user), "warn_minutes": WARN_MINUTES, "modules_off": await modules_off(db, user)}

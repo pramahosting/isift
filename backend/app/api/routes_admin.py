@@ -175,6 +175,29 @@ async def _forget(db, u: User) -> None:
     for prefix in ("profile", "billing", "memberof", "docs-usage", "ai-usage", "meet-usage", "pendingsignup"):
         await _drop(db, store.hkey(prefix, em))
 
+@router.get("/admin/plan-config")
+async def get_plan_config(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """For each plan: the built-in limits, what the administrator changed, and the modules it leaves out."""
+    from app.api.routes_modules import MODULES
+    cfg = await ent.plan_config(db)
+    return {"fields": list(ent.FIELDS.keys()),
+            "modules": [{"id": i, "label": l} for i, l, _d in MODULES],
+            "plans": [{"id": pid, "name": billing.PLANS[pid]["name"], "defaults": ent.plan_defaults(pid), "limits": (cfg.get(pid) or {}).get("limits", {}),
+                       "modules_off": (cfg.get(pid) or {}).get("modules_off", [])} for pid in ent.PLAN_IDS]}
+
+@router.put("/admin/plan-config")
+async def put_plan_config(payload: dict, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    plan = payload.get("plan")
+    if plan not in ent.PLAN_IDS: raise HTTPException(422, "Choose Basic, Individual or Business.")
+    from app.api.routes_modules import IDS
+    off = payload.get("modules_off")
+    if off is not None: off = [m for m in off if m in IDS]
+    try: await ent.set_plan_config(db, plan, payload.get("limits") or {}, off)
+    except (TypeError, ValueError): raise HTTPException(422, "Limits must be whole numbers, or ticked for yes/no options.")
+    db.add(AuditLog(actor=admin.email, action="plan.config", resource_type="plan", resource_id=plan, safe_metadata={"modules_off": off, "limits": sorted((payload.get("limits") or {}).keys())}))
+    await db.commit()
+    return await get_plan_config(admin, db)
+
 @router.delete("/admin/users/{user_id}")
 async def delete_user(user_id: str, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     u = await _get(db, user_id)
