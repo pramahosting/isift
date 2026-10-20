@@ -782,6 +782,7 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
             asyncio.create_task(_email_recording_link(user.email, user.display_name or "", room.title, rid, has_video, expires, _public_base(request)))
             note += " An email with a download link is on its way to you."
         else: note += " (Email is not set up in Admin settings, so no download link was emailed.)"
+    await ent.bump(db, user.email, "recordings", 1)
     return {"id": rid, "message": note}
 
 def resolve_recording(path: str, rid: str) -> Path | None:

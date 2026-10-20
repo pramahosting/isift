@@ -48,6 +48,12 @@ async def account(user: User = Depends(principal), db: AsyncSession = Depends(ge
             "profile": await _profile(db, user.email), "company": await _company_view(db, await _company_of(db, user.email), user),
             "password": {"can_change": bool(acct) or _builtin(user), "why": "" if (acct or _builtin(user)) else "You sign in with Microsoft, so your password is managed there."}}
 
+@router.get("/me/usage")
+async def my_usage(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """This person's own numbers for the dashboard tiles: this month, last month and the last six months."""
+    from app.services import entitlements as ent
+    return await ent.usage_stats(db, user)
+
 @router.get("/me/limits")
 async def my_limits(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     """What this person's plan allows (recording, open room, meeting length, documents a day, PDF pages)."""

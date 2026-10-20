@@ -59,6 +59,7 @@ async def place_call(payload: dict, user: User = Depends(principal), db: AsyncSe
     call_id = uuid.uuid4().hex[:12]; RINGING[call_id] = {"from": user.id, "to": callee.id, "code": room.code, "at": time.time()}
     await _tell(callee.id, {"type": "incoming", "call_id": call_id, "code": room.code, "from": _who(user), "seconds": RING_SECONDS})
     asyncio.create_task(_ring_timeout(call_id))
+    await ent.bump(db, user.email, "calls", 1)
     return {"call_id": call_id, "code": room.code, "to": _who(callee)}
 
 @router.post("/calls/{call_id}/answer")

@@ -33,8 +33,23 @@ def _local_token(sub:str,email:str,name:str)->dict:
 async def auth_options():
     return {"local":settings.is_local_demo,"signup":settings.is_local_demo and settings.allow_signup}
 
+_LOGIN_FAILS:dict[str,list[float]]={}
 @api.post("/auth/local-login")
 async def local_login(payload:dict,db:AsyncSession=Depends(get_db)):
+    """Password sign-in with a brake on guessing: 10 wrong passwords for one user ID in 10 minutes pauses that ID for the rest of the window."""
+    if not settings.is_local_demo: raise HTTPException(404,"Not found")
+    import time as _t
+    key=str(payload.get("username","")).strip().lower()[:200]; now=_t.time()
+    tries=[t for t in _LOGIN_FAILS.get(key,[]) if now-t<600]
+    if len(tries)>=10:
+        _LOGIN_FAILS[key]=tries; raise HTTPException(429,{"message":"Too many wrong passwords for this user ID. Wait 10 minutes and try again, or use Forgot password.","code":"too_many"})
+    try: out=await _local_login_inner(payload,db)
+    except HTTPException as ex:
+        if ex.status_code==401: _LOGIN_FAILS[key]=tries+[now]; (len(_LOGIN_FAILS)>20000 and _LOGIN_FAILS.clear())
+        raise
+    _LOGIN_FAILS.pop(key,None); return out
+
+async def _local_login_inner(payload:dict,db:AsyncSession):
     if not settings.is_local_demo: raise HTTPException(404,"Not found")
     username=str(payload.get("username","")).strip(); password=str(payload.get("password",""))
     if username.lower()=="admin":

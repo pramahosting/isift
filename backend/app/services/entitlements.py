@@ -97,6 +97,7 @@ async def use_ai(db, user) -> None:
     if lim and n >= lim:
         raise HTTPException(403, f"You have used your {lim} AI minutes summaries for this month. The Basic plan includes {lim} a month. Upgrade your plan, or ask an administrator for more.")
     await store.put(db, store.hkey("ai-usage", user.email), {"month": date.today().strftime("%Y-%m"), "n": n + 1})
+    await bump(db, user.email, "ai_summaries", 1)
 
 async def check_booking_pages(db, user, have: int) -> None:
     from fastapi import HTTPException
@@ -139,6 +140,7 @@ async def hours_used(db, user) -> float:
 async def add_meeting_minutes(db, email: str, minutes: float) -> None:
     d = await store.get(db, store.hkey("meet-usage", email), {}); m = float(d.get("minutes", 0)) if d.get("month") == _month() else 0.0
     await store.put(db, store.hkey("meet-usage", email), {"month": _month(), "minutes": round(m + max(0.0, minutes), 2)})
+    await bump(db, email, "minutes", max(0.0, float(minutes))); await bump(db, email, "meetings", 1)
 
 async def minutes_left(db, user) -> int | None:
     """Minutes of hosting left this month, or None when there is no monthly limit."""
@@ -149,3 +151,46 @@ async def minutes_left(db, user) -> int | None:
 async def summary(db, user) -> dict:
     L = await limits(db, user)
     return {**L, "docs_used_today": await docs_used(db, user), "ai_used_month": await ai_used(db, user), "storage_used_mb": round(await storage_used(db, user) / 1048576, 1), "hours_used_month": await hours_used(db, user), "warn_minutes": WARN_MINUTES, "modules_off": await modules_off(db, user)}
+
+
+# ---- monthly usage report (the dashboard tiles) ----
+STAT_KEYS = ("meetings", "minutes", "recordings", "pdf_edited", "pdf_signed", "docs_created", "boards_created", "docs_edited", "calls", "ai_summaries")
+_STAT_KEEP = 13           # months of history kept per person
+
+def _stat_key(email: str) -> str: return store.hkey("usage-stats", email)
+
+async def bump(db, email: str, counter: str, n: float = 1, ref: str | None = None) -> None:
+    """Count one thing for this person this month. With `ref`, the same thing is counted once a month (e.g. the same document edited again)."""
+    if not email or counter not in STAT_KEYS: return
+    try:
+        d = await store.get(db, _stat_key(email), {}); months = dict(d.get("months") or {})
+        cur = dict(months.get(_month()) or {})
+        if ref is not None:
+            seen = list(cur.get("_seen_" + counter) or [])
+            if ref in seen: return
+            cur["_seen_" + counter] = (seen + [ref])[-500:]
+        cur[counter] = round(float(cur.get(counter, 0)) + n, 2) if isinstance(n, float) else int(cur.get(counter, 0)) + int(n)
+        months[_month()] = cur
+        for old in sorted(months)[:-_STAT_KEEP]: months.pop(old, None)
+        await store.put(db, _stat_key(email), {"months": months})
+    except Exception:
+        import logging; logging.getLogger("isift").exception("Could not count usage")
+
+def _clean(m: dict) -> dict:
+    out = {k: m.get(k, 0) for k in STAT_KEYS}
+    out["hours"] = round(float(out.pop("minutes") or 0) / 60, 1)
+    return out
+
+async def usage_stats(db, user) -> dict:
+    d = await store.get(db, _stat_key(user.email), {}); months = d.get("months") or {}
+    now = date.today(); keys = []
+    y, m = now.year, now.month
+    for _ in range(6):
+        keys.append(f"{y:04d}-{m:02d}"); m -= 1
+        if m == 0: y, m = y - 1, 12
+    keys.reverse()
+    L = await limits(db, user)
+    return {"month": _month(), "current": _clean(months.get(_month()) or {}), "previous": _clean(months.get(keys[-2]) or {}),
+            "history": [{"month": k, **_clean(months.get(k) or {})} for k in keys],
+            "caps": {"hours": L["meeting_hours_per_month"], "ai_summaries": L["ai_per_month"], "recording": L["recording"], "calls": L["calls"], "storage_mb": L["storage_mb"]},
+            "storage_used_mb": round(await storage_used(db, user) / 1048576, 1)}

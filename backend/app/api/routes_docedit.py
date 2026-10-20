@@ -30,7 +30,7 @@ async def inspect(payload: dict, user: User = Depends(principal), db: AsyncSessi
     return out
 
 @router.post("/apply")
-async def apply(payload: dict, user: User = Depends(principal)):
+async def apply(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     try: raw = de.b64_in(payload.get("data")); kind = de.kind_of(payload.get("name"), raw)
     except de.EditError as e: raise HTTPException(400, str(e))
     ops = payload.get("ops")
@@ -39,6 +39,8 @@ async def apply(payload: dict, user: User = Depends(principal)):
         raise HTTPException(400, "This PDF is digitally signed, so editing it would break the signature. Use Revert changes to go back to the unsigned file.")
     out = await _run(de.pdf_apply if kind == "pdf" else de.docx_apply, raw, ops)
     out, warnings = out if kind == "pdf" else (out, [])
+    from app.services import entitlements as ent
+    await ent.bump(db, user.email, "pdf_edited" if kind == "pdf" else "docs_edited", 1, ref="file:" + str(payload.get("name") or "")[:120])
     return {"name": payload.get("name"), "data": base64.b64encode(out).decode(), "warnings": warnings}
 
 @router.post("/certificate")
@@ -48,7 +50,7 @@ async def create_certificate(payload: dict, user: User = Depends(principal)):
     return {"name": "isift-signing-certificate.p12", "data": base64.b64encode(p12).decode()}
 
 @router.post("/certify")
-async def certify(payload: dict, user: User = Depends(principal)):
+async def certify(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     """Add a certified digital signature to a PDF using the person's own certificate. The certificate and password are used once and not kept."""
     try: raw = de.b64_in(payload.get("data")); kind = de.kind_of(payload.get("name"), raw); p12 = de.b64_in(payload.get("p12"), 200_000)
     except de.EditError as e: raise HTTPException(400, str(e))
@@ -56,6 +58,8 @@ async def certify(payload: dict, user: User = Depends(principal)):
     if await asyncio.to_thread(de.pdf_signatures, raw): raise HTTPException(400, "This PDF already has a digital signature. Revert to the unsigned file to sign it again.")
     out = await _run(de.pdf_certify, raw, p12, str(payload.get("password") or ""), str(payload.get("reason") or ""), str(payload.get("location") or ""), str(payload.get("contact") or ""),
                      bool(payload.get("visible", True)), int(payload.get("page") or 0), bool(payload.get("lock", True)))
+    from app.services import entitlements as ent
+    await ent.bump(db, user.email, "pdf_signed", 1)
     return {"name": payload.get("name"), "data": base64.b64encode(out).decode(), "signatures": await asyncio.to_thread(de.pdf_signatures, out)}
 
 def _sig(s: SavedSignature): return {"id": s.id, "name": s.name, "png": s.png}

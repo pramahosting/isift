@@ -243,6 +243,7 @@ async def new_note(payload: dict, user: User = Depends(principal), db: AsyncSess
     await ent.use_document(db, user)                    # Basic: 5 new files (Docs modules and whiteboards together) a day
     await ent.check_storage(db, user, len(str(payload.get("content") or "")))
     n = Note(owner_id=user.id, kind=kind, title=(str(payload.get("title") or "").strip() or "Untitled")[:200], content=_check_content(kind, payload.get("content"))); db.add(n); await db.commit()
+    await ent.bump(db, user.email, "boards_created" if kind == "board" else "docs_created", 1)
     return _note_out(n)
 
 async def _own_note(db, user, nid) -> Note:
@@ -269,17 +270,19 @@ async def get_note(nid: str, user: User = Depends(principal), db: AsyncSession =
 async def save_note(nid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     """Editors and the owner save. If the file changed since the copy the caller opened (someone else saved first), the save is refused so no one's work is silently overwritten."""
     from app.services import sharing as sh
+    from app.services import entitlements as ent
     n, lvl = await _note_for(db, user, nid, 3)
     base = payload.get("base")
     if base and base != _utc(n.updated_at): raise HTTPException(409, "Someone else saved changes to this file after you opened it. Reload to see their changes.")
     if "title" in payload: n.title = (str(payload["title"] or "").strip() or "Untitled")[:200]
     if "content" in payload:
         new = _check_content(n.kind, payload["content"])
-        from app.services import entitlements as ent
         from app.models import User as _U
         await ent.check_storage(db, await db.get(_U, n.owner_id), len(new) - len(n.content or ""))     # the owner's storage pays for edits by others
         n.content = new
-    n.updated_at = datetime.now(timezone.utc); await db.commit(); return _note_out(n, False, sh.NAMES[lvl])
+    n.updated_at = datetime.now(timezone.utc); await db.commit()
+    await ent.bump(db, user.email, "docs_edited", 1, ref=n.id)       # the same file edited again this month counts once
+    return _note_out(n, False, sh.NAMES[lvl])
 
 @router.delete("/notes/{nid}")
 async def delete_note(nid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

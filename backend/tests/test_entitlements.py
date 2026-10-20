@@ -560,3 +560,29 @@ def test_host_ending_personal_room_does_not_close_it(client):
     hs, host = join(client, code, token=tok); m = host.receive_json(); assert m["type"] == "welcome"
     with contextlib.suppress(Exception): hs.__exit__(None, None, None)
     time.sleep(0.6)
+
+
+def test_monthly_usage_tiles_count_things(client):
+    ah, _ = login(client)
+    u0 = client.get("/api/v1/me/usage", headers=ah).json()
+    assert u0["current"]["docs_created"] == 0 and len(u0["history"]) == 6 and u0["month"] == u0["history"][-1]["month"]
+    n = client.post("/api/v1/notes", json={"kind": "doc", "title": "A", "content": ""}, headers=ah).json()
+    client.post("/api/v1/notes", json={"kind": "board", "title": "B", "content": ""}, headers=ah)
+    for _ in range(3): assert client.put(f"/api/v1/notes/{n['id']}", json={"title": "A2"}, headers=ah).status_code == 200
+    import asyncio
+    from app.core.db import SessionLocal
+    from app.services import entitlements as ent
+    async def go():
+        async with SessionLocal() as db:
+            await ent.add_meeting_minutes(db, "admin@isift.au", 90)
+            await ent.bump(db, "admin@isift.au", "calls", 2)
+    asyncio.run(go())
+    u = client.get("/api/v1/me/usage", headers=ah).json()["current"]
+    assert u["docs_created"] == 1 and u["boards_created"] == 1 and u["docs_edited"] == 1     # edited three times, still one document
+    assert u["hours"] == 1.5 and u["meetings"] == 1 and u["calls"] == 2
+
+
+def test_password_guessing_is_slowed_down(client):
+    for i in range(10): assert client.post("/api/v1/auth/local-login", json={"username": "admin", "password": f"bad{i}"}).status_code == 401
+    r = client.post("/api/v1/auth/local-login", json={"username": "admin", "password": "still-bad"}); assert r.status_code == 429
+    assert client.post("/api/v1/auth/local-login", json={"username": "someoneelse@x.com", "password": "x"}).status_code == 401   # other IDs are not affected
