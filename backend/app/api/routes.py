@@ -406,4 +406,4 @@ async def test_integrations(user:User=Depends(require_admin)):
 async def health(db:AsyncSession=Depends(get_db)):
     try: await db.execute(select(func.count()).select_from(User)); db_ok=True
     except Exception: db_ok=False
-    return {"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","integrations":integration_status()}
+    return {"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","build":"2026-10-20-sfu-recording-email","integrations":integration_status()}

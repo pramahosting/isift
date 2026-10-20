@@ -73,7 +73,11 @@ class Settings(BaseSettings):
     turn_shared_secret: str = ""        # coturn "use-auth-secret": short-lived passwords are made for each person
     cf_turn_key_id: str = ""            # Cloudflare Realtime TURN (a hosted relay), key id and API token
     cf_turn_api_token: str = ""
-    room_max_people: int = 25
+    cf_sfu_app_id: str = ""             # Cloudflare Realtime SFU (carries video for big meetings), application id and secret
+    cf_sfu_app_secret: str = ""
+    sfu_from_people: int = 9            # meetings with this many people or more use the SFU (when it is set up)
+    sfu_on_stage: int = 8               # how many people are shown and heard at once in a big meeting
+    room_max_people: int = 300
     room_default_access: str = "open"
     room_default_waiting: bool = True
     room_virtual_enabled: bool = True     # the virtual room (boardroom table view) is available at all

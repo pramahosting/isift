@@ -12,7 +12,7 @@ import asyncio, hmac, json, logging, os, secrets, shutil, time, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Header, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -144,7 +144,7 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
     return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": await ice_config(),
-            "max_people": settings.room_max_people, "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
+            "max_people": min(settings.room_max_people, HUB.get(code, {}).get("max_people") or settings.room_max_people), "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
 
 @router.post("/rooms/{code}/invite")
 async def invite_people(code: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -243,7 +243,78 @@ def _rank(p: dict) -> int:
     """2 = the host, 1 = a co-host, 0 = everyone else."""
     return 0 if not p.get("host") else (1 if p.get("cohost") else 2)
 
-def _pub(i: str, p: dict) -> dict: return {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
+def _pub(i: str, p: dict) -> dict:
+    d = {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
+    if p.get("sfu"): d["sfu"] = p["sfu"]; d["screen"] = bool(p.get("screen"))
+    return d
+
+
+# ---- big meetings: video carried by the Cloudflare SFU ----
+def _stage_ids(state: dict) -> list[str]:
+    """Who is shown and heard in a big meeting: screen sharers, the latest speakers, the host and co-hosts, then the newest arrivals."""
+    n = max(2, min(16, settings.sfu_on_stage)); peers = state["peers"]; now = time.time(); order: list[str] = []
+    def add(i):
+        if i in peers and peers[i].get("sfu") and i not in order: order.append(i)
+    for i, p in peers.items():
+        if p.get("screen"): add(i)
+    for i, p in sorted(peers.items(), key=lambda kv: -kv[1].get("spoke", 0)):
+        if p.get("spoke") and now - p["spoke"] < 90: add(i)
+    for i, p in peers.items():
+        if _rank(p) >= 1: add(i)
+    for i in reversed(list(peers)): add(i)
+    return order[:n]
+
+async def _stage_update(state: dict):
+    ids = _stage_ids(state)
+    if ids == state.get("stage"): return
+    wait = 3.0 - (time.time() - state.get("stage_at", 0))
+    if wait > 0:                                   # change at most every few seconds so the picture does not jump about
+        t = state.get("stage_task")
+        if not t or t.done():
+            async def later():
+                await asyncio.sleep(wait); state["stage_task"] = None; await _stage_update(state)
+            state["stage_task"] = asyncio.create_task(later())
+        return
+    state["stage"] = ids; state["stage_at"] = time.time()
+    for p in list(state["peers"].values()): await _send(p["ws"], {"type": "sfu-active", "ids": ids})
+
+async def _sfu_op(state: dict, pid: str, msg: dict):
+    from app.services import sfu
+    me = state["peers"][pid]; req = str(msg.get("req") or "")[:40]; t = msg.get("type")
+    async def fail(text): await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": False, "message": text})
+    try:
+        if t == "sfu-push":
+            kinds = [x for x in (msg.get("tracks") or [])[:2] if isinstance(x, dict) and x.get("kind") in ("audio", "video") and isinstance(x.get("mid"), str) and 0 < len(x["mid"]) <= 16]
+            sdp = msg.get("sdp")
+            if not kinds or not isinstance(sdp, str) or len(sdp) > 60000: return await fail("Could not start sending your video.")
+            if not me.get("sfu_pub"): me["sfu_pub"] = await sfu.new_session()
+            j = await sfu.push(me["sfu_pub"], sdp, [{"mid": k["mid"], "name": f"{pid}-{k['kind']}"} for k in kinds])
+            me["sfu"] = {"session": me["sfu_pub"], "tracks": {k["kind"]: f"{pid}-{k['kind']}" for k in kinds}}
+            await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": True, "sdp": (j.get("sessionDescription") or {}).get("sdp")})
+            for i, p in list(state["peers"].items()):
+                if i != pid: await _send(p["ws"], {"type": "sfu-pub", "id": pid, "sfu": me["sfu"], "screen": bool(me.get("screen"))})
+            await _stage_update(state)
+        elif t == "sfu-pull":
+            wanted, meta = [], {}
+            for i in [str(x) for x in (msg.get("ids") or [])[:16]]:
+                p = state["peers"].get(i)
+                if i == pid or not p or not p.get("sfu"): continue
+                for kind, name in p["sfu"]["tracks"].items():
+                    wanted.append({"session": p["sfu"]["session"], "name": name}); meta[name] = {"id": i, "kind": kind}
+            if not wanted: return await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": True, "session": None, "tracks": []})
+            sess = await sfu.new_session(); me.setdefault("sfu_subs", set()).add(sess)
+            j = await sfu.pull(sess, wanted)
+            await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": True, "session": sess, "sdp": (j.get("sessionDescription") or {}).get("sdp"),
+                                   "tracks": [{"mid": x.get("mid"), **meta[x["trackName"]]} for x in (j.get("tracks") or []) if x.get("trackName") in meta and x.get("mid") is not None]})
+        elif t == "sfu-answer":
+            sess, sdp = msg.get("session"), msg.get("sdp")
+            if sess not in me.get("sfu_subs", set()) or not isinstance(sdp, str): return await fail("That video session is not yours.")
+            await sfu.renegotiate(sess, sdp)
+            await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": True})
+    except sfu.SfuError as ex:
+        await fail(str(ex))
+    except Exception:
+        log.exception("big-meeting video step failed"); await fail("The video server had a problem. Try again in a moment.")
 
 # ---- discussion groups ----
 MAX_GROUPS = 30
@@ -325,6 +396,7 @@ def _split(ids: list[str], count: int) -> list[list[str]]:
 
 async def _groups_start(state: dict, pid: str, msg: dict):
     me = state["peers"][pid]
+    if state.get("sfu"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are not available in big meetings."}); return
     if state.get("groups"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are already open. Bring everyone back first to start again."}); return
     include_hosts = bool(msg.get("include_hosts"))
     ids = [i for i, p in state["peers"].items() if p.get("group") is None and (include_hosts or _rank(p) == 0)]
@@ -352,13 +424,23 @@ async def _groups_move(state: dict, pid: str, msg: dict):
     await _regroup(state, {target: gid}, "moved"); await _roster_to_hosts(state)
 
 async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_host: bool, room_options: dict | None = None, user_id: str | None = None, cohost: bool = False) -> bool:
-    if len(state["peers"]) >= max(2, settings.room_max_people):
-        await _send(ws, {"type": "error", "message": "This meeting is full."}); return False
+    cap = max(2, min(settings.room_max_people, state.get("max_people") or settings.room_max_people))
+    if len(state["peers"]) >= cap:
+        await _send(ws, {"type": "error", "message": f"This meeting is full ({cap} people is the limit for the host's plan)."}); return False
     peers_before = [_pub(i, p) for i, p in _view(state, None)]           # a newcomer starts in the main room
     state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None}
+    from app.services import sfu as _sfu
+    switching = bool(not state.get("sfu") and _sfu.configured() and len(state["peers"]) >= settings.sfu_from_people)
+    if switching:
+        if state.get("groups"): await _close_groups(state, "closed")
+        state["sfu"] = True                      # from now on this meeting uses the Cloudflare video server
     await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
-                     "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None})
+                     "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
+                     "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"])})
+    if switching:
+        for i, p in list(state["peers"].items()):
+            if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
     await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
     await _roster_to_hosts(state)
     return True
@@ -397,7 +479,7 @@ async def room_socket(ws: WebSocket, code: str):
         if left is not None and left <= 0:
             await _send(ws, {"type": "error", "message": "The host has used all of this month's meeting hours. Ask them to upgrade their plan or contact an administrator."}); await ws.close(); return
         if left is not None: host_lim = {**host_lim, "meeting_minutes": min(host_lim["meeting_minutes"] or left, left)}     # the meeting cannot run past the hours left this month
-        state = HUB.setdefault(code, {"host_email": host_user.email, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
+        state = HUB.setdefault(code, {"host_email": host_user.email, "max_people": host_lim.get("max_participants") or 0, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         client = str(first.get("client") or "")[:40]
@@ -446,8 +528,12 @@ async def room_socket(ws: WebSocket, code: str):
                     name = new; state["peers"][pid]["name"] = new
                     for _i, _p in list(state["peers"].items()): await _send(_p["ws"], {"type": "renamed", "id": pid, "name": new})
                     await _roster_to_hosts(state)
+            elif t in ("sfu-push", "sfu-pull", "sfu-answer") and state.get("sfu"): await _sfu_op(state, pid, msg)
+            elif t == "talk" and state.get("sfu"):
+                state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
-                me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam"))
+                me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); me["screen"] = bool(msg.get("screen"))
+                if state.get("sfu"): asyncio.create_task(_stage_update(state))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
                     if mic and not state["policy"]["audio"]: mic = False; await _send(ws, {"type": "force", "mic": False, "reason": "policy"})
                     if cam and not state["policy"]["video"]: cam = False; await _send(ws, {"type": "force", "cam": False, "reason": "policy"})
@@ -544,10 +630,12 @@ async def room_socket(ws: WebSocket, code: str):
                 gone = state["peers"].pop(pid, None)
                 await _to_view(state, gone.get("group") if gone else None, {"type": "peer-left", "id": pid})
                 await _roster_to_hosts(state)
+                if state.get("sfu"): await _stage_update(state)
             if not state["peers"] and not state["waiting"]:
                 task = (state.get("groups") or {}).get("task")
                 if task: task.cancel()
                 if state.get("timer") and not state.get("ending"): state["timer"].cancel()
+                if state.get("stage_task"): state["stage_task"].cancel()
                 HUB.pop(code, None)
                 if state.get("host_email"):
                     try:
@@ -641,7 +729,7 @@ async def _save_upload(f: UploadFile, dest: Path, limit: int) -> int:
 
 @router.post("/rooms/{code}/recording")
 async def save_recording(code: str, consent_acknowledged: bool = Form(...), cloud: bool = Form(False), audio: UploadFile = File(...), video: UploadFile | None = File(None),
-                         user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+                         request: Request = None, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     if not consent_acknowledged: raise HTTPException(400, "Confirm that participants were told the meeting was recorded.")
     room = await _host_room(db, code, user)
     from app.services import entitlements as ent
@@ -685,6 +773,12 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
         note += " To get a transcript, an administrator must add a transcription model in Admin settings."
     db.add(AuditLog(actor=user.email, action="room.recording.saved", resource_type="room", safe_metadata={"bytes": size, "video": has_video}))
     await db.commit()
+    if cloud:
+        emailed = bool(_mail_app_sender())
+        if emailed:
+            asyncio.create_task(_email_recording_link(user.email, user.display_name or "", room.title, rid, has_video, expires, _public_base(request)))
+            note += " An email with a download link is on its way to you."
+        else: note += " (Email is not set up in Admin settings, so no download link was emailed.)"
     return {"id": rid, "message": note}
 
 def resolve_recording(path: str, rid: str) -> Path | None:
@@ -703,25 +797,70 @@ async def my_recordings(user: User = Depends(principal), db: AsyncSession = Depe
     rows = (await db.execute(select(RoomRecording, Room).join(Room, Room.id == RoomRecording.room_id).where(Room.host_id == user.id).order_by(RoomRecording.created_at.desc()).limit(100))).all()
     return [{"id": r.id, "title": room.title, "created_at": (r.created_at.replace(tzinfo=timezone.utc) if r.created_at.tzinfo is None else r.created_at).isoformat(), "size_bytes": r.size_bytes, "has_video": r.has_video, "storage": r.storage, "expires_at": (r.expires_at.replace(tzinfo=timezone.utc) if r.expires_at is not None and r.expires_at.tzinfo is None else r.expires_at).isoformat() if r.expires_at else None, "available": r.storage in ("r2", "database") or resolve_recording(r.path, r.id) is not None} for r, room in rows]
 
-@router.get("/recordings/{rid}/file")
-async def recording_file(rid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    row = (await db.execute(select(RoomRecording, Room).join(Room, Room.id == RoomRecording.room_id).where(RoomRecording.id == rid))).first()
-    if not row or row[1].host_id != user.id: raise HTTPException(404, "Recording not found")
-    rec = row[0]; fname = f"{row[1].title[:40] or 'meeting'}"
+def _mail_app_sender():
+    from app.services import signup
+    return signup.app_sender()
+
+def _public_base(request: Request | None) -> str:
+    """The web address people use to reach this app, for links in emails."""
+    o = (settings.frontend_origin or "").rstrip("/")
+    if o and not o.startswith(("http://localhost", "http://127.")): return o
+    return str(request.base_url).rstrip("/") if request else o
+
+def _dl_sig(rid: str, exp: int) -> str:
+    return hmac.new(settings.local_auth_secret.encode(), f"recording-download:{rid}:{exp}".encode(), "sha256").hexdigest()[:40]
+
+def recording_download_url(base: str, rid: str, expires_at: datetime | None) -> tuple[str, datetime]:
+    """A link that downloads one recording without signing in. It stops working after 7 days, or sooner when the cloud copy expires."""
+    end = datetime.now(timezone.utc) + timedelta(days=7)
+    if expires_at is not None:
+        e = expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
+        end = min(end, e)
+    exp = int(end.timestamp())
+    return f"{base}/api/v1/recordings/{rid}/download?exp={exp}&sig={_dl_sig(rid, exp)}", end
+
+async def _email_recording_link(to: str, name: str, title: str, rid: str, has_video: bool, expires_at, base: str) -> None:
+    from app.integrations import mail
+    acct = _mail_app_sender()
+    if not acct: return
+    url, end = recording_download_url(base, rid, expires_at)
+    kind = "video" if has_video else "audio"
+    body = (f"Hi {name or 'there'},\n\nYour {kind} recording of \"{title}\" has been saved to the cloud and is ready.\n\n"
+            f"Download it here (no sign-in needed, so keep this email private):\n{url}\n\n"
+            f"The link works until {end.strftime('%d %b %Y')}. You can also find the recording under Meetings > Recordings in iSift.\n\n— iSift")
+    try: await mail.send(acct, [to], f"Your recording is ready: {title}", body)
+    except Exception: log.exception("Could not email the recording link")
+
+async def _serve_recording(db, row, disposition: str):
+    rec = row[0]; fname = f"{row[1].title[:40] or 'meeting'}"; rid = rec.id
     if rec.storage == "r2":
         from app.services import storage
         try:
             obj = storage.client().get_object(Bucket=settings.r2_bucket, Key=rec.object_key)
         except Exception: raise HTTPException(502, "Cloud storage could not be reached. Check Admin settings > Recording storage.")
         ext = ".mp4" if rec.mimetype == "video/mp4" else ".webm"
-        return StreamingResponse(obj["Body"].iter_chunks(1024 * 1024), media_type=rec.mimetype or "video/webm", headers={"Content-Disposition": f'inline; filename="{fname}{ext}"', "Content-Length": str(obj["ContentLength"])})
+        return StreamingResponse(obj["Body"].iter_chunks(1024 * 1024), media_type=rec.mimetype or "video/webm", headers={"Content-Disposition": f'{disposition}; filename="{fname}{ext}"', "Content-Length": str(obj["ContentLength"])})
     if rec.storage == "database":
         blob = (await db.execute(select(RoomRecording.data).where(RoomRecording.id == rid))).scalar_one_or_none()
         if not blob: raise HTTPException(410, "This recording is no longer stored.")
-        return Response(bytes(blob), media_type=rec.mimetype or "video/webm", headers={"Content-Disposition": f'inline; filename="{fname}.webm"'})
-    found = resolve_recording(row[0].path, row[0].id)
+        return Response(bytes(blob), media_type=rec.mimetype or "video/webm", headers={"Content-Disposition": f'{disposition}; filename="{fname}.webm"'})
+    found = resolve_recording(rec.path, rec.id)
     if not found: raise HTTPException(410, "The recording file is no longer in the recordings folder. If you moved the app, copy its docs/data/audio folder across too.")
-    return FileResponse(found, media_type="video/webm" if row[0].has_video else "audio/webm", filename=f"{row[1].title[:40] or 'meeting'}.webm")
+    return FileResponse(found, media_type="video/webm" if rec.has_video else "audio/webm", filename=f"{fname}.webm", content_disposition_type=disposition)
+
+@router.get("/recordings/{rid}/download")
+async def recording_download(rid: str, exp: int, sig: str, db: AsyncSession = Depends(get_db)):
+    """The link in the 'recording is ready' email: the signature proves the host was sent it, and it expires."""
+    if exp < time.time() or not hmac.compare_digest(sig, _dl_sig(rid, exp)): raise HTTPException(403, "This download link is not valid or has expired. Sign in to iSift and open Meetings > Recordings.")
+    row = (await db.execute(select(RoomRecording, Room).join(Room, Room.id == RoomRecording.room_id).where(RoomRecording.id == rid))).first()
+    if not row: raise HTTPException(404, "Recording not found")
+    return await _serve_recording(db, row, "attachment")
+
+@router.get("/recordings/{rid}/file")
+async def recording_file(rid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(RoomRecording, Room).join(Room, Room.id == RoomRecording.room_id).where(RoomRecording.id == rid))).first()
+    if not row or row[1].host_id != user.id: raise HTTPException(404, "Recording not found")
+    return await _serve_recording(db, row, "inline")
 
 @router.delete("/recordings/{rid}")
 async def delete_recording(rid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

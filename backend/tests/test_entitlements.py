@@ -397,3 +397,114 @@ def test_admin_can_delete_users_and_their_records(client):
     t2 = client.post("/api/v1/auth/local-login", json={"username": "yan@del.com", "password": "Password123"}).json()["access_token"]
     assert client.delete(f"/api/v1/admin/users/{made[1]}", headers={"Authorization": "Bearer " + t2}).status_code in (401, 403)
     assert client.delete(f"/api/v1/admin/users/{made[1]}", headers=ah).status_code == 200
+
+
+def test_participant_caps_by_plan(client, monkeypatch):
+    ah, _ = login(client); bh = basic_user(client, monkeypatch); tok = bh["Authorization"].split()[1]
+    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 25
+    uid = user_id(client, ah, client.email)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": 2}}, headers=ah)     # small cap so the test stays quick
+    code = make(client, bh)["code"]
+    a, wa = join(client, code, name="Ben", token=tok); b, wb = join(client, code, name="Cy", token=tok)
+    try:
+        assert wa.receive_json()["type"] == "welcome"
+        c, wc = join(client, code, name="Di", token=tok)
+        try:
+            m = wc.receive_json(); assert m.get("type") == "error" and "full" in m["message"]
+        finally: c.__exit__(None, None, None)
+    finally: a.__exit__(None, None, None); b.__exit__(None, None, None)
+    from app.services import entitlements as ent
+    assert ent.PAID_DEFAULT["max_participants"] == 100
+
+
+def test_big_meeting_switches_to_the_cloudflare_video_server(client, monkeypatch):
+    from app.core.config import settings
+    from app.services import sfu
+    seen = []
+    async def fake(method, path, body=None):
+        seen.append((method, path))
+        if path.endswith("/sessions/new"): return {"sessionId": f"S{len(seen)}"}
+        if path.endswith("/tracks/new") and body["tracks"][0]["location"] == "local":
+            return {"sessionDescription": {"type": "answer", "sdp": "ANSWER"}, "tracks": [{"mid": t["mid"], "trackName": t["trackName"]} for t in body["tracks"]]}
+        if path.endswith("/tracks/new"):
+            return {"requiresImmediateRenegotiation": True, "sessionDescription": {"type": "offer", "sdp": "OFFER"}, "tracks": [{"mid": str(k), "trackName": t["trackName"]} for k, t in enumerate(body["tracks"])]}
+        return {}
+    monkeypatch.setattr(sfu, "_call", fake)
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False); code = r["code"]
+    monkeypatch.setattr(settings, "cf_sfu_app_id", "app1"); monkeypatch.setattr(settings, "cf_sfu_app_secret", "sec")      # after the room is made: creating a room reloads the saved settings
+    monkeypatch.setattr(settings, "sfu_from_people", 3)
+    seen_msgs = {}
+    def until(w, kind):
+        buf = seen_msgs.setdefault(id(w), [])
+        for k, m in enumerate(buf):                  # messages that arrived while waiting for something else are kept
+            if m.get("type") == kind: return buf.pop(k)
+        for _ in range(30):
+            m = w.receive_json()
+            if m.get("type") == kind: return m
+            buf.append(m)
+        raise AssertionError("never got " + kind)
+    a, wa = join(client, code, name="A", token=tok); wel_a = until(wa, "welcome"); assert wel_a["sfu"] is False
+    b, wb = join(client, code, name="B"); until(wb, "welcome")
+    try:
+        wa.send_json({"type": "sfu-push", "req": "1", "sdp": "x", "tracks": [{"mid": "0", "kind": "audio"}, {"mid": "1", "kind": "video"}]})
+        c, wc = join(client, code, name="C"); wel_c = until(wc, "welcome")
+        try:
+            assert wel_c["sfu"] is True                                              # the third person tips the meeting over
+            assert until(wb, "sfu")["on"] is True
+            wb.send_json({"type": "sfu-push", "req": "p", "sdp": "x", "tracks": [{"mid": "0", "kind": "audio"}, {"mid": "1", "kind": "video"}]})
+            res = until(wb, "sfu-res"); assert res["ok"] and res["sdp"] == "ANSWER"
+            pub = until(wa, "sfu-pub"); assert pub["sfu"]["tracks"]["video"].endswith("-video")
+            wa.send_json({"type": "sfu-pull", "req": "q", "ids": [pub["id"]]})
+            got = until(wa, "sfu-res"); assert got["ok"] and got["sdp"] == "OFFER" and {t["kind"] for t in got["tracks"]} == {"audio", "video"}
+            wa.send_json({"type": "sfu-answer", "req": "r", "session": got["session"], "sdp": "ANS"}); assert until(wa, "sfu-res")["ok"]
+            wa.send_json({"type": "sfu-answer", "req": "z", "session": "someone-elses", "sdp": "ANS"}); assert until(wa, "sfu-res")["ok"] is False      # sessions belong to the person who made them
+            act = until(wa, "sfu-active"); assert pub["id"] in act["ids"]
+            wa.send_json({"type": "groups_start", "count": 2}); assert "not available" in until(wa, "groups-error")["message"]
+            assert ("PUT", "/sessions/" + got["session"] + "/renegotiate") in seen
+        finally: c.__exit__(None, None, None)
+    finally:
+        a.__exit__(None, None, None); b.__exit__(None, None, None)
+        import time; time.sleep(0.6)             # let the server finish its clean-up before the test client shuts down
+
+
+def test_meetings_stay_direct_without_the_video_server(client, monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "cf_sfu_app_id", ""); monkeypatch.setattr(settings, "sfu_from_people", 2)
+    h, tok = login(client); code = make(client, h, access="open", waiting_room=False)["code"]
+    a, wa = join(client, code, name="A", token=tok); wa.receive_json()
+    b, wb = join(client, code, name="B")
+    try: assert wb.receive_json()["sfu"] is False
+    finally:
+        a.__exit__(None, None, None); b.__exit__(None, None, None)
+        import time; time.sleep(0.6)
+
+
+def test_cloud_recording_emails_the_host_a_download_link(client, monkeypatch, tmp_path):
+    import re, time
+    from app.core.config import settings
+    from app.api import routes_rooms as rr
+    from app.integrations import mail
+    from app.services import storage
+    monkeypatch.setattr(settings, "audio_storage_dir", str(tmp_path)); monkeypatch.setattr(storage, "DB_BLOB_LIMIT", 0)
+    sent = []
+    async def fake_send(acct, to, subject, body, ics=None, attachments=None): sent.append((to, subject, body))
+    monkeypatch.setattr(mail, "send", fake_send); monkeypatch.setattr(rr, "_mail_app_sender", lambda: {"address": "info@isift.au", "from": "info@isift.au"})
+    h, tok = login(client); r = make(client, h, title="Board call")
+    webm = bytes.fromhex("1A45DFA3") + b"x" * 3000
+    up = client.post(f"/api/v1/rooms/{r['code']}/recording", headers=h, data={"consent_acknowledged": "true", "cloud": "true"}, files={"audio": ("a.webm", webm, "audio/webm"), "video": ("v.webm", webm, "video/webm")})
+    assert up.status_code == 200 and "email" in up.json()["message"].lower()
+    time.sleep(0.6)
+    assert len(sent) == 1 and sent[0][0] == ["admin@isift.au"] and "Board call" in sent[0][1]
+    url = re.search(r"https?://\S+/api/v1/recordings/[^\s]+", sent[0][2]).group(0)
+    path = url[url.index("/api/v1"):]
+    ok = client.get(path)                                                           # no sign-in needed: the link itself is the proof
+    assert ok.status_code == 200 and "attachment" in ok.headers["content-disposition"] and ok.content.startswith(webm[:4])
+    assert client.get(path[:-3] + "abc").status_code == 403                         # a changed link does not work
+    rid = re.search(r"recordings/([^/]+)/download", path).group(1)
+    old = int(time.time()) - 5
+    assert client.get(f"/api/v1/recordings/{rid}/download?exp={old}&sig={rr._dl_sig(rid, old)}").status_code == 403      # expired
+    # nothing is sent when the host keeps the recording only on their own computer
+    sent.clear()
+    r2 = make(client, h)
+    client.post(f"/api/v1/rooms/{r2['code']}/recording", headers=h, data={"consent_acknowledged": "true", "cloud": "false"}, files={"audio": ("a.webm", webm, "audio/webm")})
+    time.sleep(0.4); assert sent == []

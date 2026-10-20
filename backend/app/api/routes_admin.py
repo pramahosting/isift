@@ -190,13 +190,29 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db: As
         await db.execute(delete(ActionItem).where(ActionItem.meeting_id.in_(ids)))
         await db.execute(delete(Meeting).where(Meeting.id.in_(ids)))
     await db.execute(delete(Briefing).where(Briefing.user_id == u.id))
+    # everything the person owns is removed here, one table at a time, so deletion never depends on the database cascading it
+    from app.models import Room, RoomRecording, Contact, ContactGroup, Note, NoteShare, NoteComment, BookingType, Booking, SavedSignature
+    rids = [x for (x,) in (await db.execute(select(Room.id).where(Room.host_id == u.id))).all()]
+    if rids: await db.execute(delete(RoomRecording).where(RoomRecording.room_id.in_(rids)))
+    await db.execute(delete(Room).where(Room.host_id == u.id))
+    nids = [x for (x,) in (await db.execute(select(Note.id).where(Note.owner_id == u.id))).all()]
+    if nids:
+        await db.execute(delete(NoteShare).where(NoteShare.note_id.in_(nids))); await db.execute(delete(NoteComment).where(NoteComment.note_id.in_(nids)))
+    await db.execute(delete(NoteShare).where(NoteShare.user_id == u.id)); await db.execute(delete(NoteComment).where(NoteComment.user_id == u.id))
+    await db.execute(delete(Note).where(Note.owner_id == u.id))
+    await db.execute(delete(Booking).where(Booking.owner_id == u.id)); await db.execute(delete(BookingType).where(BookingType.owner_id == u.id))
+    await db.execute(delete(Contact).where(Contact.owner_id == u.id)); await db.execute(delete(ContactGroup).where(ContactGroup.owner_id == u.id))
+    await db.execute(delete(SavedSignature).where(SavedSignature.user_id == u.id))
     acct = await _account(db, u) if settings.is_local_demo else None
     if acct: await db.delete(acct)
     email = u.email
     await _forget(db, u)                                  # per-person records kept outside the user table
     await db.delete(u)
     db.add(AuditLog(actor=admin.email, action="user.delete", resource_type="user", resource_id=user_id, safe_metadata={"email_domain": email.split("@")[-1], "meetings_removed": len(ids)}))
-    await db.commit()
+    try: await db.commit()
+    except Exception as ex:
+        await db.rollback(); log.exception("user delete failed")
+        raise HTTPException(409, f"This user could not be deleted because other records still depend on them ({type(ex).__name__}). Disable the account instead, and tell support which user this was.")
     return {"deleted": True, "meetings_removed": len(ids)}
 
 @router.get("/admin/users/export", response_class=PlainTextResponse)
@@ -229,6 +245,8 @@ async def setup_status(user: User = Depends(require_admin)):
          "detail": "Optional. Add the Server-to-Server OAuth app under Admin settings > Zoom." if not zoom.configured() else "Ready."},
         {"key": "turn", "title": "TURN relay for video meetings", "required": False, "ok": has_turn,
          "detail": "Strongly recommended. Without a relay, video and sound do not reach people on company networks, phone data or some home routers, and calls get slow. Easiest: paste a Cloudflare TURN key ID and token under Video meetings." if not has_turn else "Ready."},
+        {"key": "sfu", "title": "Video server for big meetings (Cloudflare SFU)", "required": False, "ok": bool(settings.cf_sfu_app_id and settings.cf_sfu_app_secret),
+         "detail": "Optional. Meetings of 8 people or fewer use direct connections. For bigger meetings (up to your plan's limit), paste the Cloudflare SFU App ID and App Secret under Video meetings so everyone sends video only once." if not (settings.cf_sfu_app_id and settings.cf_sfu_app_secret) else "Ready. Meetings of 9 or more people switch to it automatically."},
         {"key": "https", "title": "Secure address for camera and microphone", "required": False,
          "ok": bool(settings.frontend_origin.startswith("https://") or "localhost" in settings.frontend_origin or "127.0.0.1" in settings.frontend_origin),
          "detail": "Other computers need https to use camera/microphone. Set MI_LISTEN=lan (or MI_HTTPS=true) in .env."},
