@@ -21,14 +21,41 @@ LEGACY = {"free": "basic", "pro": "individual", "enterprise": "business"}
 # Monthly prices as listed. Yearly was 12 x a per-month price of 11.33 / 14.66 (13.596 / 17.592 a year); it now has a further 5% off: 129.16 / 167.12 a year. per_month_yearly is that total divided by 12 (for display).
 PLANS = {
  "basic": {"name": "Basic", "monthly": 0, "yearly": 0, "per_month_yearly": 0},
- "individual": {"name": "Personal Pro", "monthly": 1359, "yearly": 12916, "per_month_yearly": 1076},
+ "individual": {"name": "Standard", "monthly": 1359, "yearly": 12916, "per_month_yearly": 1076},
  "business": {"name": "Business", "monthly": 1759, "yearly": 16712, "per_month_yearly": 1393},
 }
 PERIODS = ("monthly", "yearly")
 PAID = ("individual", "business")
 PRICE_KEY = "pricing:rows"
+# Participant tiers: the price listed for a plan is for BASE_TIER people in a meeting; each tier is a percentage of it (the administrator can edit the table).
+BASE_TIER = 100
+DEFAULT_TIERS = [{"n": 10, "pct": 45}, {"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 100, "pct": 100}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]
+TIERS: dict[int, int] = {t["n"]: t["pct"] for t in DEFAULT_TIERS}
 for _p in PLANS.values(): _p["available"] = True
 DEFAULT_ROWS = [{"id": f"default-{k}", "plan": k, "label": "Standard", "monthly": PLANS[k]["monthly"], "yearly": PLANS[k]["yearly"], "active": True} for k in PAID]
+
+def clean_tiers(raw) -> list[dict]:
+    """A valid tier table: whole numbers of people (2 to 1000), a percentage (10 to 1000) of the base price, no repeats, the 100-person tier always present."""
+    out: dict[int, int] = {}
+    for t in raw or []:
+        try: n, p = int(t["n"]), int(round(float(t["pct"])))
+        except (KeyError, TypeError, ValueError): raise BillingError("Each tier needs a number of people and a percentage.", 422)
+        if not 2 <= n <= 1000 or not 10 <= p <= 1000: raise BillingError("Participants must be 2 to 1000 and the percentage 10 to 1000.", 422)
+        out[n] = p
+    out[BASE_TIER] = 100
+    if len(out) > 12: raise BillingError("At most 12 tiers.", 422)
+    return [{"n": n, "pct": out[n]} for n in sorted(out)]
+
+async def tier_rows(db) -> list[dict]:
+    d = await store.get(db, PRICE_KEY, None) or {}
+    t = clean_tiers(d.get("tiers")) if d.get("tiers") else [dict(x) for x in DEFAULT_TIERS]
+    TIERS.clear(); TIERS.update({x["n"]: x["pct"] for x in t}); return t
+
+def tier_ok(tier) -> int:
+    try: n = int(tier)
+    except (TypeError, ValueError): n = BASE_TIER
+    if n not in TIERS: raise BillingError("Choose one of the listed participant numbers.", 422)
+    return n
 
 async def price_rows(db) -> list[dict]:
     """The price list the administrator edits (Admin Console > Commercial > Pricing). Seeded once with the standard prices."""
@@ -48,7 +75,7 @@ def apply_prices(rows: list[dict]):
         if pick: PLANS[k].update(monthly=int(pick["monthly"]), yearly=int(pick["yearly"]), per_month_yearly=round(int(pick["yearly"]) / 12), price_id=pick["id"])
 
 async def load_prices(db) -> list[dict]:
-    rows = await price_rows(db); apply_prices(rows); return rows
+    rows = await price_rows(db); apply_prices(rows); await tier_rows(db); return rows
 
 def require_on_sale(plan: str):
     if plan != "basic" and not PLANS[plan].get("available"): raise BillingError(f"The {PLANS[plan]['name']} plan is not on sale right now.", 422)
@@ -60,7 +87,9 @@ def norm_plan(p) -> str:
     p = LEGACY.get(p, p)
     return p if p in PLANS else "basic"
 
-def cents(plan: str, period: str) -> int: return PLANS[plan]["yearly" if period == "yearly" else "monthly"]
+def cents(plan: str, period: str, tier: int = BASE_TIER) -> int:
+    base = PLANS[plan]["yearly" if period == "yearly" else "monthly"]
+    return base if tier == BASE_TIER else round(base * TIERS.get(int(tier), 100) / 100)
 def add_period(d: date, period: str) -> date:
     months = 12 if period == "yearly" else 1
     y, mo = d.year + (d.month - 1 + months) // 12, (d.month - 1 + months) % 12 + 1
@@ -90,7 +119,7 @@ def terms_of(period: str, terms: dict | None, today: date) -> tuple[bool, str | 
 
 async def plans_view(db) -> dict:
     await load_prices(db)
-    return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()]}
+    return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()], "tiers": [{"n": n, "pct": p} for n, p in sorted(TIERS.items())], "base_tier": BASE_TIER}
 
 # ------------------------------------------------------------------ who pays
 async def holder(db, user) -> tuple[str, dict | None, bool]:
@@ -112,6 +141,10 @@ async def record(db, key: str, company: dict | None = None) -> dict:
     r["plan"] = norm_plan(r.get("plan")); r.setdefault("charges", [])
     return r
 
+async def plan_tier_of(db, user) -> tuple[str, int]:
+    key, c, _ = await holder(db, user); r = await record(db, key, c)
+    return r["plan"], int(r.get("tier") or BASE_TIER)
+
 async def plan_of(db, user) -> str:
     key, c, _ = await holder(db, user)
     return (await record(db, key, c))["plan"]
@@ -122,7 +155,7 @@ async def admin_summary(db, user) -> dict:
     r = await record(db, key, c)
     paid = next((x for x in r["charges"] if x.get("status") == "paid"), None)
     cents_ = (paid or {}).get("amount_cents") or r.get("paid_cents") or 0
-    return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "period": r.get("period", "monthly") if r["plan"] != "basic" else None,
+    return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "tier": int(r.get("tier") or BASE_TIER) if r["plan"] != "basic" else None, "period": r.get("period", "monthly") if r["plan"] != "basic" else None,
             "start": r.get("period_start"), "end": r.get("ends_on") or r.get("period_end"), "status": r.get("status", "active"),
             "paid": bool(paid), "paid_on": (paid or {}).get("settled"), "amount": round(cents_ / 100, 2) if paid or r["plan"] != "basic" else 0, "currency": settings.square_currency}
 
@@ -132,7 +165,7 @@ async def view(db, user) -> dict:
     pv = await plans_view(db)
     key, c, can = await holder(db, user)
     r = await record(db, key, c)
-    return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "period": r.get("period", "monthly"), "status": r.get("status", "active"), "period_end": r.get("period_end"),
+    return {"plan": r["plan"], "plan_name": PLANS[r["plan"]]["name"], "tier": int(r.get("tier") or BASE_TIER), "period": r.get("period", "monthly"), "status": r.get("status", "active"), "period_end": r.get("period_end"),
             "auto_renew": bool(r.get("auto_renew")), "ends_on": r.get("ends_on"), "card": _card(r), "failure_count": r.get("failure_count", 0), "last_error": r.get("last_error"), "next_attempt_on": r.get("next_attempt_on"),
             "charges": r["charges"][:12], "refunds": await user_refunds(db, r), "can_manage": can, "company": c["name"] if c else None, "currency": settings.square_currency,
             "square": {"available": SQ.configured(), "applicationId": settings.square_application_id, "locationId": settings.square_location_id, "environment": SQ.env(), "sdk": SQ.SDK[SQ.env()]} if SQ.configured() else None,
@@ -191,13 +224,13 @@ async def charge_now(db, key: str, today: date | None = None) -> dict:
     r = await record(db, key)
     if not r.get("card_id") or not r.get("customer_id"): return {"status": "skipped", "reason": "no card"}
     if not SQ.configured(): return {"status": "skipped", "reason": "square not configured"}
-    plan, period = r["plan"], r.get("period", "monthly"); amt = cents(plan, period)
+    plan, period = r["plan"], r.get("period", "monthly"); tier = int(r.get("tier") or BASE_TIER); amt = cents(plan, period, tier)
     pe = date.fromisoformat(r["period_end"]) if r.get("period_end") else None
     start = today if (pe is None or pe < today) else pe
     end = add_period(start, period)
     if amt <= 0:
         r.update(status="active", period_end=end.isoformat(), failure_count=0, next_attempt_on=None); await store.put(db, key, r); return {"status": "free"}
-    idem = f"isift-{hashlib.sha1(key.encode()).hexdigest()[:12]}-{start.isoformat()}-{plan}-{period}-{r.get('failure_count', 0)}"
+    idem = f"isift-{hashlib.sha1(key.encode()).hexdigest()[:12]}-{start.isoformat()}-{plan}-{period}-{r.get('failure_count', 0)}" + ("" if tier == BASE_TIER else f"-t{tier}")
     ck = "charge:" + idem
     existing = await store.get(db, ck, {})
     if existing.get("status") == "paid": return {"status": "skipped", "reason": "already paid"}
@@ -212,7 +245,7 @@ async def charge_now(db, key: str, today: date | None = None) -> dict:
     r = await record(db, key)
     try:
         pay = await SQ.create_payment(card_id=r["card_id"], customer_id=r["customer_id"], amount_cents=amt, idempotency_key=idem, email=r.get("payer_email", ""),
-                                      note=f"iSift {PLANS[plan]['name']} ({period}) {start.isoformat()} to {end.isoformat()}", reference_id=hashlib.sha1(key.encode()).hexdigest()[:16])
+                                      note=f"iSift {PLANS[plan]['name']}{'' if tier == BASE_TIER else f' for {tier} people'} ({period}) {start.isoformat()} to {end.isoformat()}", reference_id=hashlib.sha1(key.encode()).hexdigest()[:16])
         err = None if pay.get("status") in ("COMPLETED", "APPROVED") else SQ.SquareError("payment_" + str(pay.get("status")).lower(), f"Payment status {pay.get('status')}")
     except SQ.SquareError as e: pay, err = {}, e
     now = datetime.utcnow().isoformat() + "Z"
@@ -232,25 +265,26 @@ async def charge_now(db, key: str, today: date | None = None) -> dict:
     await store.put(db, ck, row); await store.put(db, key, r)
     return {"status": "paid", "amount_cents": amt, "period_end": end.isoformat(), "receipt_url": row["receipt_url"]}
 
-async def subscribe(db, user, plan: str, period: str, immediate: bool = False, terms: dict | None = None) -> dict:
+async def subscribe(db, user, plan: str, period: str, immediate: bool = False, terms: dict | None = None, tier: int | None = None) -> dict:
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
-    if plan not in PLANS: raise BillingError("Choose Basic, Personal Pro or Business.", 422)
+    if plan not in PLANS: raise BillingError("Choose Basic, Standard or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
-    await load_prices(db); require_on_sale(plan)
+    await load_prices(db); require_on_sale(plan); tier = tier_ok(tier if tier is not None else BASE_TIER)
     r = await record(db, key, c); today = date.today()
     if plan == "basic" and immediate and term_active(r, today): return await cancel_now(db, user)
-    if plan != "basic" and term_active(r, today) and (plan, period) != (r["plan"], r.get("period", "monthly")): return await change_plan(db, user, plan, period, terms)
+    if plan != "basic" and term_active(r, today) and (plan, period, tier) != (r["plan"], r.get("period", "monthly"), int(r.get("tier") or BASE_TIER)): return await change_plan(db, user, plan, period, terms, tier)
     if plan == "basic":                                                      # leaving a paid plan: it runs to the end of the paid period
         r["auto_renew"] = False
         if not r.get("period_end") or date.fromisoformat(r["period_end"]) < today or r["plan"] == "basic": r.update(plan="basic", status="active", period_end=None)
         await store.put(db, key, r); return {"status": "cancelled", "plan": r["plan"], "period_end": r.get("period_end")}
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
     if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)
-    paid_up = r["plan"] == plan and r.get("status") == "active" and r.get("period_end") and date.fromisoformat(r["period_end"]) > today
+    paid_up = r["plan"] == plan and int(r.get("tier") or BASE_TIER) == tier and r.get("status") == "active" and r.get("period_end") and date.fromisoformat(r["period_end"]) > today
     auto, ends_on = terms_of(period, terms, today)
     before = {k: r.get(k) for k in ("plan", "period", "status", "period_end", "auto_renew", "ends_on")}
-    r.update(plan=plan, period=period, auto_renew=auto, ends_on=ends_on)
+    before["tier"] = r.get("tier")
+    r.update(plan=plan, period=period, auto_renew=auto, ends_on=ends_on, tier=tier)
     if paid_up:
         await store.put(db, key, r); return {"status": "scheduled", "period_end": r["period_end"]}
     r["period_end"] = None                                                   # a new plan starts today
@@ -279,22 +313,22 @@ def unused_credit(r: dict, today: date) -> int:
     if not term_active(r, today): return 0
     pe = date.fromisoformat(r["period_end"]); ps = date.fromisoformat(r["period_start"]) if r.get("period_start") else _sub_period(pe, r.get("period", "monthly"))
     total = max(1, (pe - ps).days); left = max(0, (pe - today).days)
-    paid = r.get("paid_cents") or next((c["amount_cents"] for c in r.get("charges", []) if c.get("status") == "paid"), 0) or cents(r["plan"], r.get("period", "monthly"))
+    paid = r.get("paid_cents") or next((c["amount_cents"] for c in r.get("charges", []) if c.get("status") == "paid"), 0) or cents(r["plan"], r.get("period", "monthly"), int(r.get("tier") or BASE_TIER))
     return min(paid, round(paid * left / total))
 
 def refundable(r: dict) -> int:
     return sum(max(0, p["amount_cents"] - p.get("refunded_cents", 0)) for p in r.get("payments", []))
 
-async def quote(db, user, plan: str, period: str) -> dict:
+async def quote(db, user, plan: str, period: str, tier: int | None = None) -> dict:
     key, c, can = await holder(db, user)
-    if plan not in PLANS: raise BillingError("Choose Basic, Personal Pro or Business.", 422)
+    if plan not in PLANS: raise BillingError("Choose Basic, Standard or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
-    await load_prices(db); require_on_sale(plan)
+    await load_prices(db); require_on_sale(plan); tier = tier_ok(tier if tier is not None else BASE_TIER)
     r = await record(db, key, c); today = date.today(); credit = unused_credit(r, today)
     if plan == "basic":
         return {"kind": "cancel" if credit else "none", "credit_cents": credit, "new_price_cents": 0, "charge_cents": 0, "refund_cents": credit, "effective": "today" if credit else None, "keeps_until": r.get("period_end")}
-    new = cents(plan, period)
-    if not credit or (plan == r["plan"] and period == r.get("period")):
+    new = cents(plan, period, tier)
+    if not credit or (plan == r["plan"] and period == r.get("period") and tier == int(r.get("tier") or BASE_TIER)):
         return {"kind": "new" if not credit else "same", "credit_cents": 0, "new_price_cents": new, "charge_cents": new if not credit else 0, "refund_cents": 0}
     return {"kind": "change", "credit_cents": credit, "new_price_cents": new, "charge_cents": max(0, new - credit), "refund_cents": max(0, credit - new), "new_period_end": add_period(today, period).isoformat()}
 
@@ -324,12 +358,12 @@ async def _charge_extra(db, key: str, r: dict, amount: int, note: str, nonce: st
     row.update(status="paid", square_payment_id=pay.get("id"), receipt_url=pay.get("receipt_url")); await store.put(db, ck, row)
     return {"payment": pay, "row": row}
 
-async def change_plan(db, user, plan: str, period: str, terms: dict | None = None) -> dict:
+async def change_plan(db, user, plan: str, period: str, terms: dict | None = None, tier: int | None = None) -> dict:
     """Move between paid plans (or monthly/yearly) in the middle of a paid term. The unused days are credited against the new price:
     the difference is charged now; if the credit is bigger than the new price the plan switches at once and the leftover becomes a REFUND REQUEST an administrator must approve."""
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
-    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period); auto, ends_on = terms_of(period, terms, today)
+    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period, tier); tier = tier_ok(tier if tier is not None else BASE_TIER); auto, ends_on = terms_of(period, terms, today)
     if q["kind"] != "change": raise BillingError("Nothing to change.")
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
     if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)
@@ -339,7 +373,7 @@ async def change_plan(db, user, plan: str, period: str, terms: dict | None = Non
         paid_now = res
     r = await record(db, key, c)
     end = add_period(today, period)
-    r.update(plan=plan, period=period, status="active", period_start=today.isoformat(), period_end=end.isoformat(), paid_cents=q["new_price_cents"], auto_renew=auto, ends_on=ends_on, failure_count=0, next_attempt_on=None, last_error=None, chg_fail=0)
+    r.update(plan=plan, period=period, tier=tier, status="active", period_start=today.isoformat(), period_end=end.isoformat(), paid_cents=q["new_price_cents"], auto_renew=auto, ends_on=ends_on, failure_count=0, next_attempt_on=None, last_error=None, chg_fail=0)
     if paid_now:
         _add_payment(r, paid_now["payment"].get("id"), q["charge_cents"], datetime.utcnow().isoformat() + "Z")
         r["charges"] = ([{"id": paid_now["row"]["id"], "status": "paid", "amount_cents": q["charge_cents"], "plan": plan, "period": period, "receipt_url": paid_now["row"].get("receipt_url"), "settled": datetime.utcnow().isoformat() + "Z", "note": "Difference after credit"}] + r.get("charges", []))[:12]

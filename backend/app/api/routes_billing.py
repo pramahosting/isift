@@ -22,7 +22,7 @@ def _clean_price(d: dict, base: dict | None = None) -> dict:
     out = dict(base or {})
     for k in ("plan", "label", "monthly", "yearly", "active"):
         if k in d: out[k] = d[k]
-    if out.get("plan") not in B.PAID: raise HTTPException(422, "Choose Personal Pro or Business. Basic is always free.")
+    if out.get("plan") not in B.PAID: raise HTTPException(422, "Choose Standard or Business. Basic is always free.")
     out["label"] = str(out.get("label") or "Standard").strip()[:60] or "Standard"
     for k in ("monthly", "yearly"):
         try: out[k] = int(round(float(out.get(k))))
@@ -38,13 +38,23 @@ async def _save_prices(db, rows: list[dict], changed_id: str | None, actor: str,
             for r in rows:
                 if r["plan"] == ch["plan"] and r["id"] != changed_id: r["active"] = False
     from app.services import store
-    await store.put(db, B.PRICE_KEY, {"rows": rows}, commit=False); B.apply_prices(rows)
+    await store.put(db, B.PRICE_KEY, {"rows": rows, "tiers": await B.tier_rows(db)}, commit=False); B.apply_prices(rows)
     db.add(AuditLog(actor=actor, action=action, resource_type="pricing", safe_metadata={})); await db.commit()
     return {"rows": rows, "plans": (await B.plans_view(db))["plans"]}
 
 @router.get("/admin/pricing")
 async def pricing_list(user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    return {"rows": await B.load_prices(db), "currency": B.settings.square_currency}
+    return {"rows": await B.load_prices(db), "currency": B.settings.square_currency, "tiers": await B.tier_rows(db), "base_tier": B.BASE_TIER}
+
+@router.put("/admin/pricing/tiers")
+async def pricing_tiers(payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """The participant tiers (people in a meeting) and what each costs as a percentage of the 100-person price."""
+    try: t = B.clean_tiers(payload.get("tiers"))
+    except B.BillingError as e: raise HTTPException(e.status, e.message)
+    rows = await B.price_rows(db); from app.services import store
+    await store.put(db, B.PRICE_KEY, {"rows": rows, "tiers": t}, commit=False); B.TIERS.clear(); B.TIERS.update({x["n"]: x["pct"] for x in t})
+    db.add(AuditLog(actor=user.email, action="pricing.tiers", resource_type="pricing", safe_metadata={})); await db.commit()
+    return {"tiers": t, "plans": (await B.plans_view(db))["plans"]}
 
 @router.post("/admin/pricing")
 async def pricing_add(payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
@@ -80,14 +90,14 @@ async def card_remove(user: User = Depends(principal), db: AsyncSession = Depend
 
 @router.post("/billing/subscribe")
 async def subscribe(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    res = await _do(B.subscribe(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly"), bool(payload.get("immediate")), {k: payload.get(k) for k in ("recurring", "months", "end_date") if k in payload}))
+    res = await _do(B.subscribe(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly"), bool(payload.get("immediate")), {k: payload.get(k) for k in ("recurring", "months", "end_date") if k in payload}, payload.get("tier")))
     db.add(AuditLog(actor=user.email, action="billing.subscribe", resource_type="billing", safe_metadata={"plan": payload.get("plan"), "period": payload.get("period"), "result": res.get("status")})); await db.commit()
     return {**res, "billing": await B.view(db, user)}
 
 @router.post("/billing/quote")
 async def quote(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     """What a plan change would cost: unused time credited, difference due now, or a refund request."""
-    return await _do(B.quote(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly")))
+    return await _do(B.quote(db, user, str(payload.get("plan") or ""), str(payload.get("period") or "monthly"), payload.get("tier")))
 
 @router.post("/billing/auto-renew")
 async def auto_renew(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

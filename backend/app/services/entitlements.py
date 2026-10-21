@@ -1,14 +1,14 @@
 """What each person may do, by plan, with the administrator's per-person changes on top.
 
 Basic: 100 MB of storage, 20 hours of hosted meetings a month, 3 AI minutes summaries a month, 1 booking page, no calls, no Commbox (mail, calendar, contacts), no open room, meetings of up to 70 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
-Personal Pro / Business: everything on. Administrators: everything on, no limits.
+Standard / Business: everything on. Administrators: everything on, no limits.
 The administrator can raise or lower any of these for a single person (Admin > Users > Limits). A count of 0 means "no limit"."""
 from datetime import date
 from app.services import billing, store
 
 BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 100}
 OPEN = {"calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0}
-PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Personal Pro and Business (5 GB, 300 hours)
+PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Standard and Business (5 GB, 300 hours)
 WARN_MINUTES = 10
 FIELDS = {"calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int, "storage_mb": int, "meeting_hours_per_month": int, "max_participants": int}
 
@@ -64,9 +64,10 @@ async def limits(db, user) -> dict:
     """The person's effective limits. 0 for a count means unlimited."""
     if user is None: return dict(BASIC)
     if user.role == "admin": return {**OPEN, "plan": "admin", "custom": {}}
-    plan = await billing.plan_of(db, user)
+    plan, tier = await billing.plan_tier_of(db, user)
     base = plan_defaults(plan)
     base.update({k: v for k, v in (await plan_config(db)).get(plan, {}).get("limits", {}).items() if k in FIELDS})         # what the administrator set for the whole plan
+    if plan != "basic": base["max_participants"] = tier                                                                      # a paid plan allows as many people as the host chose when subscribing
     custom = await overrides(db, user.email)
     base.update({k: v for k, v in custom.items() if k in FIELDS})
     return {**base, "plan": plan, "custom": custom}

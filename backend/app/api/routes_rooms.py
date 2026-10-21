@@ -8,7 +8,7 @@ secret, so guests can join without an account. Suited to small meetings (about 8
 A host can split a larger meeting into discussion groups. People in a group only see, hear and chat with that group (the server
 refuses signalling and chat across groups), so every browser connects to a handful of people instead of the whole meeting.
 """
-import asyncio, hmac, json, logging, os, secrets, shutil, time, uuid
+import asyncio, hmac, json, logging, os, re, secrets, shutil, time, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -246,6 +246,15 @@ def _rank(p: dict) -> int:
     """2 = the host, 1 = a co-host, 0 = everyone else."""
     return 0 if not p.get("host") else (1 if p.get("cohost") else 2)
 
+async def _pen_clear(state: dict, sharer: str, code: str):
+    if (state.get("pen") or {}).pop(sharer, None) is not None:
+        await _broadcast(code, {"type": "pen", "sharer": sharer, "holder": None, "name": ""})
+
+def _video_view(v: dict) -> dict:
+    """What everyone needs to join a shared video: which one, whether it plays, and where it is right now."""
+    t = v["t"] + ((time.time() - v["at"]) if v["playing"] else 0)
+    return {"vid": v["vid"], "by": v["by"], "by_id": v["by_id"], "playing": v["playing"], "t": round(t, 2)}
+
 def _pub(i: str, p: dict) -> dict:
     d = {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
     if p.get("hand"): d["hand"] = True
@@ -442,7 +451,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
-                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want"))})
+                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": bool(state.get("multi_share")), "pens": dict(state.get("pen") or {})})
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
@@ -542,9 +551,10 @@ async def room_socket(ws: WebSocket, code: str):
                 state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); want_screen = bool(msg.get("screen"))
-                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") else None
+                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not state.get("multi_share") else None
                 if rival:                                   # one person shares at a time: the second one waits until the first stops
                     await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
+                if me.get("screen") and not want_screen: await _pen_clear(state, pid, code)     # sharing stopped: the pen goes back
                 me["screen"] = want_screen
                 if state.get("sfu"): asyncio.create_task(_stage_update(state))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
@@ -558,6 +568,42 @@ async def room_socket(ws: WebSocket, code: str):
             elif t == "hand":                        # raise or lower a hand
                 me = state["peers"][pid]; me["hand"] = bool(msg.get("up"))
                 await _to_view(state, me.get("group"), {"type": "hand", "id": pid, "name": me["name"], "up": me["hand"]}, skip=pid)
+            elif t in ("pen_give", "pen_take", "pen_ask", "pointer", "draw", "draw_clear"):     # pointer and pen on someone's shared screen
+                me = state["peers"][pid]; sid = pid if t in ("pen_give", "pen_take") else str(msg.get("sharer") or "")
+                sh = state["peers"].get(sid); pens = state.setdefault("pen", {})
+                if not sh or not sh.get("screen") or sh.get("group") != me.get("group"): pass
+                elif t == "pen_give":
+                    to = str(msg.get("to") or ""); tp = state["peers"].get(to)
+                    if tp and to != pid and tp.get("group") == me.get("group"):
+                        pens[pid] = to; await _to_view(state, me.get("group"), {"type": "pen", "sharer": pid, "holder": to, "name": tp["name"]})
+                elif t == "pen_take": await _pen_clear(state, pid, code)
+                elif t == "pen_ask":
+                    if sid != pid: await _send(sh["ws"], {"type": "pen_ask", "id": pid, "name": me["name"]})
+                elif sid == pid or pens.get(sid) == pid:                  # only the sharer, or the person holding the pen, may point or draw
+                    now = time.time()
+                    if t == "pointer":
+                        if now - me.get("_pt", 0) >= 0.03:
+                            me["_pt"] = now; x, y = msg.get("x"), msg.get("y")
+                            ok = isinstance(x, (int, float)) and isinstance(y, (int, float))
+                            await _to_view(state, me.get("group"), {"type": "pointer", "sharer": sid, "by": pid, "name": me["name"], "x": max(0, min(1, x)) if ok else None, "y": max(0, min(1, y)) if ok else None}, skip=pid)
+                    elif t == "draw":
+                        pts = [[max(0.0, min(1.0, float(a))), max(0.0, min(1.0, float(b)))] for a, b in (msg.get("pts") or [])[:60] if isinstance(a, (int, float)) and isinstance(b, (int, float))]
+                        if pts: await _to_view(state, me.get("group"), {"type": "draw", "sharer": sid, "by": pid, "sid": str(msg.get("sid") or "")[:24], "pts": pts}, skip=pid)
+                    else: await _to_view(state, me.get("group"), {"type": "draw_clear", "sharer": sid, "by": pid}, skip=pid)
+            elif t == "video":                       # watch a YouTube video together: the starter (or a host) loads, plays, pauses and skips for everyone
+                me = state["peers"][pid]; op = msg.get("op"); cur = state.get("video"); vid = str(msg.get("vid") or "")
+                if op == "load" and re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) and (not cur or cur["by_id"] == pid or _rank(me) >= 1):
+                    state["video"] = cur = {"vid": vid, "by": me["name"], "by_id": pid, "playing": True, "t": 0.0, "at": time.time()}
+                    await _broadcast(code, {"type": "video", **_video_view(cur)})
+                elif cur and op in ("play", "pause", "seek", "stop") and (cur["by_id"] == pid or _rank(me) >= 1):
+                    if op == "stop":
+                        state["video"] = None; await _broadcast(code, {"type": "video", "stopped": True, "by": me["name"]})
+                    else:
+                        try: tt = max(0.0, min(float(msg.get("t") or 0), 86400.0))
+                        except (TypeError, ValueError): tt = 0.0
+                        cur["t"] = tt; cur["at"] = time.time()
+                        if op != "seek": cur["playing"] = (op == "play")
+                        await _broadcast(code, {"type": "video", **_video_view(cur)}, skip=pid)
             elif t == "captions_want":               # captions run while at least one person wants to read them
                 want = state.setdefault("captions_want", set()); before = bool(want)
                 (want.add if msg.get("on") else want.discard)(pid)
@@ -594,7 +640,7 @@ async def room_socket(ws: WebSocket, code: str):
                 await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you."})
             elif _rank(state["peers"][pid]) == 2 and t == "record":
                 state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
-            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape", "lock", "hidepics"):
+            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape", "lock", "hidepics", "multishare"):
                 me = state["peers"][pid]; target = state["peers"].get(msg.get("id"))
                 if t == "kick":
                     if target and msg.get("id") != pid and _rank(target) < _rank(me): await _send(target["ws"], {"type": "kicked"}); await target["ws"].close()
@@ -615,6 +661,8 @@ async def room_socket(ws: WebSocket, code: str):
                         await _broadcast(code, {"type": "vroom", "on": state["vroom"], "by": me["name"]})
                 elif t == "lock":                           # nobody new can join while the meeting is locked
                     state["locked"] = bool(msg.get("on")); await _broadcast(code, {"type": "locked", "on": state["locked"], "by": me["name"]})
+                elif t == "multishare":                     # allow several people to share at the same time (shown side by side)
+                    state["multi_share"] = bool(msg.get("on")); await _broadcast(code, {"type": "multishare", "on": state["multi_share"], "by": me["name"]})
                 elif t == "hidepics":                       # no profile letters or pictures on tiles without video
                     state["hide_pics"] = bool(msg.get("on")); await _broadcast(code, {"type": "hidepics", "on": state["hide_pics"], "by": me["name"]})
                 elif t == "tshape":                  # the host or a co-host flips the boardroom table between rectangular and round; everyone sees it
@@ -659,6 +707,8 @@ async def room_socket(ws: WebSocket, code: str):
             if state["waiting"].pop(pid, None) is not None: await _tell_hosts(state)
             if pid in state["peers"]:
                 gone = state["peers"].pop(pid, None)
+                for _s, _h in list((state.get("pen") or {}).items()):         # a leaving sharer or pen holder ends that pen
+                    if _s == pid or _h == pid: await _pen_clear(state, _s, code)
                 _cw = state.get("captions_want")
                 if _cw and pid in _cw:
                     _cw.discard(pid)

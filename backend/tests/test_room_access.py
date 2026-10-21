@@ -2094,3 +2094,55 @@ def test_lock_reactions_hand_and_captions(client):
     host.send_json({"type": "lock", "on": False}); assert read_until(a, lambda m: m["type"] == "locked")["on"] is False
     ws_g, g = join(client, r["code"], name="Late2"); assert read_until(g, lambda m: m["type"] in ("welcome", "error"))["type"] == "welcome"
     for x in (ws_g, ws_a, ws_h): x.__exit__(None, None, None)
+
+
+def test_watch_video_together(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    ws_h, host = join(client, r["code"], name="Host", token=tok); read_until(host, lambda m: m["type"] == "welcome")
+    ws_a, a = join(client, r["code"], name="Ann"); read_until(a, lambda m: m["type"] == "welcome")
+    a.send_json({"type": "video", "op": "load", "vid": "not a valid id"})          # bad ids are ignored
+    a.send_json({"type": "video", "op": "load", "vid": "dQw4w9WgXcQ"})
+    m = read_until(host, lambda m: m["type"] == "video"); assert m["vid"] == "dQw4w9WgXcQ" and m["by"] == "Ann" and m["playing"] is True
+    a.send_json({"type": "video", "op": "pause", "t": 12.5}); m = read_until(host, lambda m: m["type"] == "video"); assert m["playing"] is False and m["t"] == 12.5
+    host.send_json({"type": "video", "op": "seek", "t": 40}); assert read_until(a, lambda m: m["type"] == "video" and m["t"] == 40)   # a host may control it too
+    ws_b, b = join(client, r["code"], name="Bob"); w = read_until(b, lambda m: m["type"] == "welcome")                          # late joiners get the current state
+    assert w["video"]["vid"] == "dQw4w9WgXcQ" and w["video"]["t"] == 40
+    b.send_json({"type": "video", "op": "stop"}); b.send_json({"type": "video", "op": "load", "vid": "aaaaaaaaaaa"})            # a guest cannot take over
+    a.send_json({"type": "video", "op": "stop"}); assert read_until(host, lambda m: m["type"] == "video").get("stopped") is True
+    for x in (ws_b, ws_a, ws_h): x.__exit__(None, None, None)
+
+
+def test_multi_share_and_pen(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    ws_h, host = join(client, r["code"], name="Host", token=tok); read_until(host, lambda m: m["type"] == "welcome")
+    ws_a, a = join(client, r["code"], name="Ann"); wa = read_until(a, lambda m: m["type"] == "welcome"); aid = wa["id"]
+    ws_b, b = join(client, r["code"], name="Bob"); wb = read_until(b, lambda m: m["type"] == "welcome"); bid = wb["id"]
+    host.send_json({"type": "state", "mic": True, "cam": True, "screen": True})
+    a.send_json({"type": "state", "mic": True, "cam": True, "screen": True}); assert read_until(a, lambda m: m["type"] == "share-denied")   # default: one at a time
+    host.send_json({"type": "multishare", "on": True}); assert read_until(a, lambda m: m["type"] == "multishare")["on"] is True
+    b.send_json({"type": "multishare", "on": False})                                # only a host can switch it
+    a.send_json({"type": "state", "mic": True, "cam": True, "screen": True})
+    read_until(host, lambda m: m["type"] == "state" and m["id"] == aid and m["screen"] is True)     # now two people share together
+    # the pen: a viewer cannot point or draw until the sharer hands it over
+    b.send_json({"type": "pointer", "sharer": aid, "x": .5, "y": .5})
+    a.send_json({"type": "pen_give", "to": bid}); assert read_until(host, lambda m: m["type"] == "pen")["holder"] == bid
+    b.send_json({"type": "pointer", "sharer": aid, "x": .25, "y": .75}); m = read_until(a, lambda m: m["type"] == "pointer"); assert m["x"] == .25 and m["name"] == "Bob"
+    b.send_json({"type": "draw", "sharer": aid, "sid": "s1", "pts": [[.1, .1], [.2, 3]]}); m = read_until(a, lambda m: m["type"] == "draw"); assert m["pts"][1] == [.2, 1.0]
+    b.send_json({"type": "pen_ask", "sharer": aid}); assert read_until(a, lambda m: m["type"] == "pen_ask")["name"] == "Bob"
+    a.send_json({"type": "pen_take"}); read_until(b, lambda m: m["type"] == "pen" and m["holder"] is None)
+    for x in (ws_b, ws_a, ws_h): x.__exit__(None, None, None)
+
+
+def test_participant_tiers_price_and_limit(client):
+    h, tok = login(client)
+    pl = client.get("/api/v1/billing/plans").json(); assert [t["n"] for t in pl["tiers"]][:4] == [10, 25, 50, 100] and pl["plans"][1]["name"] == "Standard"
+    base = next(p for p in pl["plans"] if p["id"] == "individual")["monthly"]
+    q100 = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 100}, headers=h).json(); assert q100["new_price_cents"] == base
+    q10 = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 10}, headers=h).json(); assert q10["new_price_cents"] == round(base * 45 / 100)
+    assert client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 77}, headers=h).status_code == 422     # only listed sizes
+    r = client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 20, "pct": 50}, {"n": 500, "pct": 400}]}, headers=h); assert r.status_code == 200
+    assert [t["n"] for t in r.json()["tiers"]] == [20, 100, 500]                                                                              # 100 always stays
+    assert client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 1, "pct": 50}]}, headers=h).status_code == 422
+    q500 = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly", "tier": 500}, headers=h).json()
+    by = next(p for p in client.get("/api/v1/billing/plans").json()["plans"] if p["id"] == "business")["yearly"]; assert q500["new_price_cents"] == by * 4
+    client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 10, "pct": 45}, {"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]}, headers=h)

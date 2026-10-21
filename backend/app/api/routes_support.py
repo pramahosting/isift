@@ -30,9 +30,9 @@ BOOKING: booking pages you share by email, like Calendly, an embeddable booking 
 
 AI: minutes, action items and morning briefings are drafted by AI and must be reviewed by a person. Transcripts of recordings can be produced. AI can be wrong, so check it.
 
-PLANS (prices per user per month, shown in the website's currency; Personal Pro and Business are paid by card through Square and renew automatically):
+PLANS (prices per user per month, shown in the website's currency; Standard and Business are paid by card through Square and renew automatically):
 - Basic: free for ever. Browser video meetings with chat and screen sharing, shared notes and whiteboard, Commbox, transcripts and action items.
-- Personal Pro: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page for the current monthly and yearly price (yearly is cheaper). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
+- Standard: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page for the current monthly and yearly price (yearly is cheaper). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
 - Business: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page. Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
 You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.
 
@@ -43,13 +43,13 @@ Do not claim security certifications (such as SOC 2 or ISO 27001); iSift does no
 # fixed answers, used when Groq is not set up or does not answer
 FAQ = [
     (("price", "pricing", "cost", "how much", "plan", "free", "basic", "individual", "business", "upgrade"),
-     "iSift has three plans: Basic is free for ever, Personal Pro adds AI minutes, booking pages, recording and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows current prices in your currency, and you can cancel any time."),
+     "iSift has three plans: Basic is free for ever, Standard adds AI minutes, booking pages, recording and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows current prices in your currency, and you can cancel any time."),
     (("record", "recording"),
      "The host can record a meeting and everyone sees a clear Recording banner. The recording is saved to the host's own computer by default, and the host can tick a box to also keep a copy in the cloud (on the Basic plan cloud copies are kept for 2 days)."),
     (("group", "breakout", "discussion"),
      "In a large meeting the host can split people into discussion groups. People only see, hear and chat with their own group, the host can move people, send announcements and bring everyone back, and groups of 10 or fewer get a boardroom table view."),
     (("book", "schedule", "calendly", "booking", "outlook", "embed"),
-     "iSift has booking pages you share by email, like Calendly, a widget you can embed on your own website, and an Outlook add-in. Booking pages are part of the Personal Pro and Business plans."),
+     "iSift has booking pages you share by email, like Calendly, a widget you can embed on your own website, and an Outlook add-in. Booking pages are part of the Standard and Business plans."),
     (("minutes", "action item", "briefing", "transcript", "ai "),
      "iSift drafts minutes, action items and morning briefings with AI, and a person reviews and approves them before they are final. AI can make mistakes, so please check the drafts."),
     (("join", "guest", "link", "meeting id", "waiting"),
