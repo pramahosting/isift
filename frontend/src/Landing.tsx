@@ -1,5 +1,5 @@
 import React from 'react';
-import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,ArrowRight} from 'lucide-react';
+import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,ArrowRight,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 
 /** Landing page sections: what happens after a meeting, why iSift, an honest comparison, and how data is handled. */
@@ -24,10 +24,13 @@ const WHY=[
  {i:ShieldCheck,t:'AI-empowered, human-approved',d:'Draft minutes and actions are marked for review. Nothing is sent as final until someone checks it, which matters for clients, boards and regulated work.'},
  {i:CalendarClock,t:'Booking pages built in',d:'Share a link and let people pick a free time. Each booking lands in your calendar with a meeting room attached. No second subscription.'},
  {i:FileSignature,t:'Edit and sign PDFs in the browser',d:'Change text, add shapes, draw a signature, sign with your own certificate. The file is not stored on our servers.'},
+ {i:LayoutGrid,t:'A meeting screen that feels like Zoom',d:'A clean toolbar with only what you need, and a More menu for the rest: pin the tools you use. Reactions, raise hand, live captions with a saveable transcript, waiting room, lock meeting and hide profile pictures. On a phone you are large on the first screen and everyone else swipes in after.'},
+ {i:MonitorUp,t:'Share together, point and draw',d:'Share a whole screen, one window or one browser tab, with its sound. Let several people share at once, side by side, and hand someone the pen to point and draw on your screen, then take it back.'},
+ {i:PlayCircle,t:'Watch a video together',d:'Paste a YouTube link and everyone watches in sync on their own device, phones included. You play, pause and skip for the whole meeting.'},
  {i:Armchair,t:'Meeting rooms people enjoy',d:'A virtual boardroom with a wooden table, name plates, windows and your own background, or a simple gallery view. Switch with one button.'},
  {i:Phone,t:'Call a teammate in one click',d:'Ring another iSift user like a phone call. They accept and you are in a private room together.'},
  {i:Lock,t:'You stay in control',d:'Recordings save on the host’s own computer by default. Administrators set what each person may use: call time, recording, documents, Commbox and more.'},
- {i:BadgeDollarSign,t:'Plain, local pricing',d:'Three plans, prices in your currency, yearly saves you money. No per-feature add-ons to work out.'},
+ {i:BadgeDollarSign,t:'Plain, local pricing',d:'Free, Standard and Business. Pick how many participants you need from a dropdown, in your currency, and yearly saves you money. No per-feature add-ons to work out.'},
 ];
 export function WhySection(){
   return <section className="landing-section" id="why-isift"><p className="eyebrow">WHY ISIFT</p><h2>Everything around the meeting, in one calm place.</h2>
@@ -47,6 +50,10 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'PDF edit and sign inside the product',cells:[Y,'Separate app',N,N,'Separate app','Separate app',Y]},
  {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','No','No','Outlook, separate','Gmail, separate',N]},
  {label:'Whiteboard and documents',cells:[Y,Y,N,N,'Paid plans','Separate app',N]},
+ {label:'Reactions, raise hand and live captions',cells:[Y,Y,N,N,Y,Y,N]},
+ {label:'Several people sharing at once, with pointer and pen',cells:['Yes (paid plans)','Yes (host option)',N,N,null,null,N]},
+ {label:'Watch a YouTube video together, in sync',cells:['Yes (paid plans)',null,N,N,null,null,N]},
+ {label:'Take control of someone’s computer',cells:['Not yet (pointer and pen instead)',Y,N,N,Y,null,N]},
  {label:'Call another user inside the app',cells:['Yes (paid plans)',Y,N,N,Y,Y,N]},
  {label:'Calls to real phone numbers',cells:['Not yet','Zoom Phone (extra)',N,N,'Teams Phone (extra)','Google Voice (extra)',N]},
 ];
@@ -57,15 +64,15 @@ function Mark({v}:{v:Cell}){
   return <span className="cmp-txt">{v}</span>;
 }
 export function CompareSection(){
-  const live=useLivePlans();const ind=live.prices('individual');
-  const price:Cell[]=[`${money(ind.perMonthYearly,live.currency)} a month`,'US$14.16 (Pro)','US$10 (Standard)','US$15 (Teams)','Part of Microsoft 365','US$7 (Workspace Starter)','Varies'];
+  const live=useLivePlans();const lo=live.tiers[0]?.n||10;const ind=live.prices('individual',lo);
+  const price:Cell[]=[`${money(ind.perMonthYearly,live.currency)} a month (${lo} people)`,'US$14.16 (Pro)','US$10 (Standard)','US$15 (Teams)','Part of Microsoft 365','US$7 (Workspace Starter)','Varies'];
   return <section className="landing-section" id="compare"><p className="eyebrow">HOW ISIFT COMPARES</p><h2>Where iSift fits next to the tools you already know.</h2>
     <p className="why-lead">Zoom, Teams and Meet are strongest for large meetings. Calendly and Cal.com are strongest for scheduling. PDF editors do one job well. iSift brings the everyday parts of all of them together for one person or a small team.</p>
     <div className="cmp-wrap" role="region" aria-label="Comparison table" tabIndex={0}><table className="cmp">
       <thead><tr><th scope="col"></th>{COLS.map((c,i)=><th key={c} scope="col" className={i===0?'me':''}>{c}{SUB[i]&&<small>{SUB[i]}</small>}</th>)}</tr></thead>
       <tbody>{ROWS.map(r=><tr key={r.label}><th scope="row">{r.label}</th>{r.cells.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr>)}
-        <tr><th scope="row">Paid plan from (billed yearly)</th>{price.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr></tbody></table></div>
-    <p className="cmp-note">Based on each product’s published plans, checked in October 2026. Competitor prices are in US dollars; iSift’s price is in {live.currency}. Plans and features change, so check each vendor before you decide. “Separate app” means it is not part of the core product. iSift does not do webinars, very large meetings or calls to phone numbers yet.</p></section>;
+        <tr><th scope="row">Paid plan from (billed yearly, per host)</th>{price.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr></tbody></table></div>
+    <p className="cmp-note">Based on each product’s published plans, checked in October 2026. Competitor prices are in US dollars; iSift’s price is in {live.currency}. Plans and features change, so check each vendor before you decide. “Separate app” means it is not part of the core product. iSift does not do webinars, very large meetings, calls to phone numbers or remote control of another computer yet.</p></section>;
 }
 
 export function TrustSection(){

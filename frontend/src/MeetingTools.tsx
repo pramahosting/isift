@@ -74,13 +74,14 @@ function Switch({on,onChange,label,hint,disabled}:{on:boolean;onChange:(v:boolea
 }
 
 /** Host tools, in one place: lock the meeting, the waiting room, hide pictures, what people may switch on. */
-export function HostMenu(p:{locked:boolean;onLock:(v:boolean)=>void;waiting:boolean|null;onWaiting?:(v:boolean)=>void;hidePics:boolean;onHidePics:(v:boolean)=>void;policy:{audio:boolean;video:boolean};onPolicy:(k:'audio'|'video',v:boolean)=>void;onMuteAll:()=>void;onAdvanced:()=>void;onSecurity?:()=>void;onClose:()=>void}){
+export function HostMenu(p:{locked:boolean;onLock:(v:boolean)=>void;waiting:boolean|null;onWaiting?:(v:boolean)=>void;multi:boolean;onMulti:(v:boolean)=>void;hidePics:boolean;onHidePics:(v:boolean)=>void;policy:{audio:boolean;video:boolean};onPolicy:(k:'audio'|'video',v:boolean)=>void;onMuteAll:()=>void;onAdvanced:()=>void;onSecurity?:()=>void;onClose:()=>void}){
   useEscape(p.onClose);
   return <><div className="rm-pop-shade" onClick={p.onClose}/>
     <div className="rm-pop rm-host" role="dialog" aria-label="Host tools">
       <div className="rm-pop-head"><b><ShieldCheck size={15}/> Host tools</b></div>
       <Switch on={p.locked} onChange={p.onLock} label={p.locked?'Meeting is locked':'Lock meeting'} hint="Nobody new can join while it is locked"/>
       {p.waiting!==null&&<Switch on={!!p.waiting} onChange={v=>p.onWaiting?.(v)} disabled={!p.onWaiting} label="Waiting room" hint="New people wait until you let them in"/>}
+      <Switch on={p.multi} onChange={p.onMulti} label="Allow several people to share" hint="Shares appear side by side. Off: one share at a time"/>
       <Switch on={p.hidePics} onChange={p.onHidePics} label="Hide profile pictures" hint="No letters or pictures on tiles without video"/>
       <div className="rm-host-sub"><small>Let participants</small>
         <Switch on={p.policy.audio} onChange={v=>p.onPolicy('audio',v)} label="Unmute themselves"/>
