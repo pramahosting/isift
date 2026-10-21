@@ -1,6 +1,14 @@
 // Present a photo or a PDF from a phone: the picture is drawn on a canvas and the canvas is sent like a shared screen,
 // so everyone gets it full-size with the same zoom and pan as a screen share. Phones cannot capture their own screen.
 const W = 1920, H = 1080;
+/** The picture is sent in its own shape (an upright page stays upright), so a phone held upright shows a page full-size instead of a small strip inside a wide frame. */
+function fitSize(w: number, h: number) {
+  const a = Math.max(0.2, Math.min(5, w / h));
+  let cw = a >= 1 ? 1920 : 1920 * a, ch = a >= 1 ? 1920 / a : 1920;
+  const k = Math.min(1, Math.sqrt(2.2e6 / (cw * ch)));                 // about as many pixels as the old 1920 x 1080 frame
+  cw = Math.max(320, Math.round(cw * k / 2) * 2); ch = Math.max(320, Math.round(ch * k / 2) * 2);
+  return { cw, ch };
+}
 
 export class FileShare {
   pages = 1;
@@ -37,9 +45,10 @@ export class FileShare {
   }
 
   private draw(src: CanvasImageSource, w: number, h: number) {
-    const g = this.cv.getContext('2d')!; g.fillStyle = '#111'; g.fillRect(0, 0, W, H);
-    const k = Math.min(W / w, H / h), dw = w * k, dh = h * k;
-    g.imageSmoothingQuality = 'high'; g.drawImage(src, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    const { cw, ch } = fitSize(w, h);
+    if (this.cv.width !== cw || this.cv.height !== ch) { this.cv.width = cw; this.cv.height = ch; }
+    const g = this.cv.getContext('2d')!; g.fillStyle = '#111'; g.fillRect(0, 0, cw, ch);
+    g.imageSmoothingQuality = 'high'; g.drawImage(src, 0, 0, cw, ch);
   }
 
   async show(n: number) {
@@ -47,7 +56,7 @@ export class FileShare {
     const my = ++this.gen;
     n = Math.max(1, Math.min(this.pages, n));
     const pg = await this.pdf.getPage(n);
-    const vp0 = pg.getViewport({ scale: 1 }), k = Math.min(W / vp0.width, H / vp0.height);
+    const vp0 = pg.getViewport({ scale: 1 }), k = fitSize(vp0.width, vp0.height).cw / vp0.width;
     const vp = pg.getViewport({ scale: k });
     const off = document.createElement('canvas'); off.width = Math.ceil(vp.width); off.height = Math.ceil(vp.height);
     const ctx = off.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, off.width, off.height);

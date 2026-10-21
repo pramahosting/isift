@@ -117,7 +117,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   type ChatMsg={name:string;text:string;at:string;me?:boolean;key:string;names:Record<string,string>;g:string};const [chat,setChat]=useState<ChatMsg[]>([]);const [chatOpen,setChatOpen]=useState(false);const [chatText,setChatText]=useState('');const [chatKey,setChatKey]=useState('all');const [unread,setUnread]=useState<Record<string,number>>({});const [picking,setPicking]=useState(false);const [pickSel,setPickSel]=useState<string[]>([]);const [extraKeys,setExtraKeys]=useState<string[]>([]);const chatKeyRef=React.useRef('all'),chatOpenRef=React.useRef(false);chatKeyRef.current=chatKey;chatOpenRef.current=chatOpen;
   const [notice,setNotice]=useState('');const [canRec,setCanRec]=useState(true);const [endWarn,setEndWarn]=useState<{at:number;msg:string}|null>(null);const [endNow,setEndNow]=useState(0);const [endWhy,setEndWhy]=useState('');useEffect(()=>{if(!endWarn)return;const id=setInterval(()=>setEndNow(Date.now()),1000);return()=>clearInterval(id)},[endWarn]);const [localStream,setLocalStream]=useState<MediaStream|null>(null);const [mediaNote,setMediaNote]=useState('');
   const ws=useRef<WebSocket|null>(null);const pcs=useRef<Record<string,RTCPeerConnection>>({});const pendIce=useRef<Record<string,any[]>>({});const sigQ=useRef<Record<string,Promise<any>>>({});const myId=useRef('');
-  const local=useRef<{audio?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
+  const local=useRef<{audio?:MediaStreamTrack;mixed?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
   const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});
   const sfuRef=useRef<SfuClient|null>(null);const sfuOnRef=useRef(false);const [sfuOn,setSfuOn]=useState(false);const [stage,setStage]=useState<string[]>([]);const stageRef=useRef<string[]>([]);const sfuInfo=useRef<Record<string,any>>({});const resubT=useRef<any>(null);
   const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
@@ -164,7 +164,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   useEffect(()=>{const f=()=>setWide(window.innerWidth>=720);window.addEventListener('resize',f);return()=>window.removeEventListener('resize',f)},[]);
   const isSmall=()=>{try{return window.innerHeight<600||(window.matchMedia('(pointer: coarse)').matches&&Math.min(window.innerWidth,window.innerHeight)<700)}catch{return window.innerHeight<600}};const [small,setSmall]=useState(isSmall);useEffect(()=>{const f=()=>setSmall(isSmall());window.addEventListener('resize',f);window.addEventListener('orientationchange',f);return()=>{window.removeEventListener('resize',f);window.removeEventListener('orientationchange',f)}},[]);       // phones, also when turned sideways, always get the straight gallery: the angled table is too small there
   const [portrait,setPortrait]=useState(()=>{try{return window.innerHeight>=window.innerWidth}catch{return true}});useEffect(()=>{const f=()=>setPortrait(window.innerHeight>=window.innerWidth);window.addEventListener('resize',f);window.addEventListener('orientationchange',f);return()=>{window.removeEventListener('resize',f);window.removeEventListener('orientationchange',f)}},[]);
-  const [page,setPage]=useState(0);const pagerRef=useRef<HTMLDivElement>(null);const sharingNow=screen||Object.values(peers).some(p=>p.screen);useEffect(()=>{try{pagerRef.current?.scrollTo({left:0,behavior:'smooth'})}catch{}},[sharingNow]);
+  const [page,setPage]=useState(0);const pagerRef=useRef<HTMLDivElement>(null);const sharingNow=screen||Object.values(peers).some(p=>p.screen);useEffect(()=>{try{pagerRef.current?.scrollTo({left:0,behavior:'smooth'})}catch{}},[sharingNow]);const barAuto=useRef(false);useEffect(()=>{if(small&&sharingNow){setStripHide(true);if(barOn){barAuto.current=true;setBarOn(false)}}else if(barAuto.current){barAuto.current=false;setBarOn(true)}},[small,sharingNow]);   // phones: the shared page gets the whole screen; "Show people" brings the strip back
   const [speaking,setSpeaking]=useState('');const peersRef=useRef<Record<string,Peer>>({});const localRef=useRef<MediaStream|null>(null);const seatIds=useRef<string[]>([]);
   const [gCount,setGCount]=useState(2);const [gMinutes,setGMinutes]=useState('');const [gHosts,setGHosts]=useState(false);const [announce,setAnnounce]=useState('');const [, tickClock]=useState(0);
 
@@ -204,7 +204,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const attachLocal=async(pc:RTCPeerConnection)=>{
     for(const tx of pc.getTransceivers()){
       const kind=tx.receiver.track.kind;tx.direction='sendrecv';
-      const t=kind==='audio'?local.current.audio:local.current.video;if(t)await tx.sender.replaceTrack(t);
+      const t=kind==='audio'?(local.current.mixed||local.current.audio):local.current.video;if(t)await tx.sender.replaceTrack(t);
     }
     tuneSenders();
   };
@@ -233,7 +233,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     setPeers(p=>{const n:Record<string,Peer>={};for(const id in p)n[id]={...p[id],stream:peerStreams.current[id]};return n});
     const c=new SfuClient(send,(id,st)=>{peerStreams.current[id]=st||new MediaStream();upsert(id,{stream:peerStreams.current[id]});recorderRefresh()});sfuRef.current=c;
     setNotice('This is a big meeting, so video now goes through our video server. Speakers, people sharing and the host are shown; everyone is in the Participants list.');
-    try{await c.publish(local.current.audio,local.current.video)}catch(e:any){if(e?.message!=='closed')setNotice(e?.message||'Could not connect to the video server for this big meeting.')}
+    try{await c.publish(local.current.mixed||local.current.audio,local.current.video)}catch(e:any){if(e?.message!=='closed')setNotice(e?.message||'Could not connect to the video server for this big meeting.')}
     resub();
   };
 
@@ -307,7 +307,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
     sock.onclose=()=>{clearTimeout(slow);setPhase(p=>{if(p==='lobby'){setErr(e=>e||'Could not connect to the meeting. Press Join again.');setJoining(false)}return p==='room'||p==='waiting'?'ended':p})};
     sock.onerror=()=>{setJoining(false)};
   };
-  const leaveLocal=()=>{sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
+  const leaveLocal=()=>{if(tabAud.current){try{tabAud.current.track.stop();tabAud.current.ctx.close().catch(()=>{})}catch{}tabAud.current=null;local.current.mixed=undefined}sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
   const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
   const endAll=async()=>{if(!window.confirm('End the meeting for everyone?'))return;if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
 
@@ -316,6 +316,11 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const toggleCam=()=>{const t=local.current.cam;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.video){setNotice('The host has not allowed participants to start their video. Ask the host.');return}t.enabled=!t.enabled;setCam(t.enabled);send({type:'state',mic:!!local.current.audio?.enabled,cam:t.enabled,screen})};
   const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}await sfuRef.current?.replaceVideo(track||null,!!track&&track!==local.current.cam).catch(()=>{})};
   const [bg,setBg]=useState<BgMode>(loadSaved);const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const [bgSel,setBgSel]=useState<BgMode>(()=>loadSaved());const openBg=()=>{setBgSel(bg);setBgOpen(true)};const bgInit=useRef(false);
+  // Sound of a shared browser tab (a video, a recording): mixed with the microphone and sent on the same audio line, so there is nothing extra to connect. Muting the microphone still leaves the tab's sound on.
+  const tabAud=useRef<{ctx:AudioContext;track:MediaStreamTrack}|null>(null);
+  const replaceAudio=async(track:MediaStreamTrack|null)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='audio');if(tx)try{await tx.sender.replaceTrack(track)}catch{}}await sfuRef.current?.replaceAudio(track).catch(()=>{})};
+  const stopTabAudio=async(restore=true)=>{const t=tabAud.current;if(!t)return;tabAud.current=null;local.current.mixed=undefined;try{t.track.stop()}catch{}if(restore)await replaceAudio(local.current.audio||null);try{await t.ctx.close()}catch{}};
+  const startTabAudio=async(track:MediaStreamTrack):Promise<boolean>=>{try{await stopTabAudio(false);const Ctx=(window as any).AudioContext||(window as any).webkitAudioContext;const ctx:AudioContext=new Ctx();await ctx.resume().catch(()=>{});const dest=ctx.createMediaStreamDestination();if(local.current.audio)ctx.createMediaStreamSource(new MediaStream([local.current.audio])).connect(dest);ctx.createMediaStreamSource(new MediaStream([track])).connect(dest);const mix=dest.stream.getAudioTracks()[0];tabAud.current={ctx,track};local.current.mixed=mix;await replaceAudio(mix);recorderRefresh();return true}catch{local.current.mixed=undefined;tabAud.current=null;return false}};
   const swapCam=async(nt:MediaStreamTrack)=>{const L=local.current,old=L.cam,en=old?old.enabled!==false:true,sharing=!!L.video&&L.video!==old;nt.enabled=en;L.cam=nt;if(!sharing){L.video=nt;await replaceVideo(nt)}setLocalStream(new MediaStream([...(L.audio?[L.audio]:[]),nt]))};
   const applyBg=async(m:BgMode)=>{
     setBg(m);saveBg(m);const L=local.current,raw=L.raw;if(!raw)return;
@@ -351,13 +356,13 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
       send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true});
     }catch(e){fileShare.current?.stop();fileShare.current=null;setNotice('That file could not be opened. Try a photo (JPG or PNG) or a PDF.')}
   };
-  const stopShareNow=async()=>{fileShare.current?.stop();fileShare.current=null;setFilePg(null);const st=local.current.video;await replaceVideo(local.current.cam);local.current.video=local.current.cam;if(st&&st!==local.current.cam)try{st.stop()}catch{};setScreenStream(null);setScreen(false);setWbOn(false)};
+  const stopShareNow=async()=>{stopTabAudio();fileShare.current?.stop();fileShare.current=null;setFilePg(null);const st=local.current.video;await replaceVideo(local.current.cam);local.current.video=local.current.cam;if(st&&st!==local.current.cam)try{st.stop()}catch{};setScreenStream(null);setScreen(false);setWbOn(false)};
   const otherSharer=()=>Object.values(peers).find((p:any)=>p.screen) as any;const blockedShare=()=>{const o=otherSharer();if(o){setNotice(`${o.name||'Someone'} is sharing. You can share after they stop.`);return true}return false};
   const shareBoard=async()=>{
     if(wbOn){await stopShareNow();send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false});return}
     if(blockedShare())return;
     try{
-      if(screen){const st=local.current.video;try{await replaceVideo(local.current.cam)}catch{};if(st&&st!==local.current.cam)try{st.stop()}catch{};fileShare.current?.stop()}
+      if(screen){stopTabAudio();const st=local.current.video;try{await replaceVideo(local.current.cam)}catch{};if(st&&st!==local.current.cam)try{st.stop()}catch{};fileShare.current?.stop()}
       const cs=new CanvasShare(()=>wbBox.current?.querySelector('canvas')||null);cs.init();fileShare.current=cs;const t=cs.track;
       local.current.video=t;setScreenStream(new MediaStream([t]));await replaceVideo(t);setScreen(true);setWbOn(true);setFilePg(null);
       setNotice('You are sharing the whiteboard. Draw on it and everyone sees it. Everyone can zoom in.');
@@ -367,11 +372,11 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const saveBoard=async()=>{if(!token)return;try{const r=await fetch(`${api}/notes`,{method:'POST',headers:{'content-type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({kind:'board',title:`Meeting whiteboard · ${info?.title||''}`.slice(0,120),content:wbContent.current||''})});setWbSaved(r.ok?'Saved to your Whiteboards.':'Could not save.')}catch{setWbSaved('Could not save.')}setTimeout(()=>setWbSaved(''),4000)};
   const filePage=async(d:number)=>{const fs=fileShare.current;if(!fs||!fs.show)return;await fs.show((fs.page||1)+d);setFilePg({n:fs.page||1,of:fs.pages||1})};
   const toggleScreen=async()=>{
-    if(screen){setWbOn(false);fileShare.current?.stop();fileShare.current=null;setFilePg(null);const st=local.current.video;await replaceVideo(local.current.cam);local.current.video=local.current.cam;if(st&&st!==local.current.cam)try{st.stop()}catch{};setScreenStream(null);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false});return}
+    if(screen){stopTabAudio();setWbOn(false);fileShare.current?.stop();fileShare.current=null;setFilePg(null);const st=local.current.video;await replaceVideo(local.current.cam);local.current.video=local.current.cam;if(st&&st!==local.current.cam)try{st.stop()}catch{};setScreenStream(null);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false});return}
     if(blockedShare())return;
     if(!(navigator.mediaDevices as any)?.getDisplayMedia&&/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){filePick.current?.click();return}
     if(!(navigator.mediaDevices as any)?.getDisplayMedia){setNotice(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)?'Phones and tablets do not allow web pages to share the screen: this is a limit of Safari and Chrome on mobile, not of iSift. To present, join this meeting from a laptop or desktop computer. You can still show a document by sharing it from a computer, or by turning your camera on and pointing it at the paper.':'This browser cannot share the screen. Use a current Chrome, Edge, Firefox or Safari on a computer.');return}
-    try{const d=await (navigator.mediaDevices as any).getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:false,selfBrowserSurface:'exclude',surfaceSwitching:'include'});const t=d.getVideoTracks()[0];try{(t as any).contentHint='detail'}catch{}local.current.video=t;setScreenStream(new MediaStream([t]));t.onended=()=>{replaceVideo(local.current.cam);local.current.video=local.current.cam;setScreenStream(null);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false})};await replaceVideo(t);setScreen(true);setNotice('You are sharing your screen. Wear headphones to avoid echo, and share a window or tab (not the whole screen) to avoid a mirror-in-mirror picture.');send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true})}catch(e:any){setNotice(e?.name==='NotAllowedError'?'Screen sharing was cancelled or not allowed. Allow screen recording for your browser in the computer’s privacy settings and try again.':'Screen sharing is not available in this browser.')}
+    try{const d=await (navigator.mediaDevices as any).getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:true,selfBrowserSurface:'exclude',surfaceSwitching:'include'});const t=d.getVideoTracks()[0];const sound=d.getAudioTracks()[0];try{(t as any).contentHint='detail'}catch{}local.current.video=t;setScreenStream(new MediaStream([t]));t.onended=()=>{stopTabAudio();replaceVideo(local.current.cam);local.current.video=local.current.cam;setScreenStream(null);setScreen(false);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:false})};await replaceVideo(t);const withSound=sound?await startTabAudio(sound):false;setScreen(true);setNotice((withSound?'You are sharing your screen and its sound. ':'You are sharing your screen. To also share the sound of a video, stop and share again, choose a Chrome tab and tick Also share tab audio. ')+'Wear headphones to avoid echo, and share a window or tab (not the whole screen) to avoid a mirror-in-mirror picture.');send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true})}catch(e:any){setNotice(e?.name==='NotAllowedError'?'Screen sharing was cancelled or not allowed. Allow screen recording for your browser in the computer’s privacy settings and try again.':'Screen sharing is not available in this browser.')}
   };
   const others=(key:string)=>key==='all'?[]:key.split(',').filter(x=>x!==myId.current);
   const sendChat=(e:React.FormEvent)=>{e.preventDefault();if(!chatText.trim())return;const to=others(chatKey);send({type:'chat',text:chatText,...(to.length?{to}:{})});setChatText('')};
@@ -395,7 +400,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const infoRef=useRef<any>({peers:[],local:null,name:'',cam:false,mic:false,screen:false,speaking:''});
   infoRef.current={peers:Object.values(peers),local:localStream,name,cam,mic,screen,speaking,vtrack:local.current.video};
   const recorderRefresh=()=>{const r=rec.current;if(!r)return;const have=new Set<string>(r.sources.keys());
-    const streams:Record<string,MediaStream>={...peerStreams.current,__me:localStream||new MediaStream()};
+    const streams:Record<string,MediaStream>={...peerStreams.current,__me:localStream||new MediaStream()};if(tabAud.current)streams.__tab=new MediaStream([tabAud.current.track]);
     for(const [k,s] of Object.entries(streams)){const t=s.getAudioTracks()[0];if(t&&!have.has(k+t.id)){try{const src=r.ctx.createMediaStreamSource(new MediaStream([t]));src.connect(r.dest);r.sources.set(k+t.id,src)}catch{}}}};
   useEffect(()=>{if(!recording)return;const h=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[recording]);
   const autoRec=useRef<null|(()=>void)>(null);const screenRef=useRef<null|(()=>void)>(null);

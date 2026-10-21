@@ -65,6 +65,13 @@ export class SfuClient {
     } catch { /* the browser keeps its own settings */ }
   }
 
+  /** The sound of a shared tab is mixed in with the microphone (or taken out again). */
+  async replaceAudio(t: MediaStreamTrack | null) {
+    const tx = this.tx.audio;
+    if (!tx) return;
+    await tx.sender.replaceTrack(t);
+  }
+
   /** Receive these people (the ones on stage). The new set is connected first and swapped in once it is carrying video, so the picture does not blink. */
   async subscribe(ids: string[]) {
     const my = ++this.gen;
