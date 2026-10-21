@@ -182,7 +182,14 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn}:{code:str
   const getMedia=useCallback(async()=>{
     let stream:MediaStream|null=null;
     try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},video:phoneCam()})}
-    catch{try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote('Camera not available - joining with microphone only.')}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}}
+    catch(e1:any){
+      // strict settings can be refused by some cameras: retry with plain settings before giving up on video
+      try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:true})}
+      catch(e2:any){
+        const why=({NotAllowedError:'the browser has blocked the camera for this site',NotReadableError:'another app or tab is using the camera',OverconstrainedError:'the camera does not support the requested settings',NotFoundError:'no camera was found'} as any)[e2?.name||e1?.name]||(e2?.name||e1?.name||'unknown reason');
+        try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote(`Camera not available (${why}) - joining with microphone only.`)}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}
+      }
+    }
     if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;local.current.raw=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
     setLocalStream(stream);return stream;
   },[]);
