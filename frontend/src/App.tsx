@@ -259,8 +259,8 @@ function AllMeetingsAdmin({request,act}:any){
  </section>
 }
 function PricingAdmin({request,act}:any){
- const [rows,setRows]=useState<any[]>([]),[cur,setCur]=useState('AUD'),[edit,setEdit]=useState<any>(null),[msg,setMsg]=useState(''),[err,setErr]=useState('');const [tiers,setTiers]=useState<{n:string;pct:string}[]>([]);
- const load=()=>request('/admin/pricing').then((d:any)=>{setRows(d.rows);setCur(d.currency);setTiers((d.tiers||[]).map((t:any)=>({n:String(t.n),pct:String(t.pct)})))}).catch((e:any)=>setErr(e.message));
+ const [rows,setRows]=useState<any[]>([]),[cur,setCur]=useState('AUD'),[edit,setEdit]=useState<any>(null),[msg,setMsg]=useState(''),[err,setErr]=useState('');const [tiers,setTiers]=useState<Record<string,{n:string;pct:string}[]>>({individual:[],business:[]});const fromApi=(t:any)=>Object.fromEntries(['individual','business'].map(k=>[k,(t?.[k]||[]).map((x:any)=>({n:String(x.n),pct:String(x.pct)}))]));
+ const load=()=>request('/admin/pricing').then((d:any)=>{setRows(d.rows);setCur(d.currency);setTiers(fromApi(d.tiers))}).catch((e:any)=>setErr(e.message));
  useEffect(()=>{load()},[]);
  const d=(c:number)=>(c/100).toFixed(2);
  const blank={id:'',plan:'individual',label:'',monthly:'',yearly:'',active:false,isNew:true};
@@ -290,13 +290,15 @@ function PricingAdmin({request,act}:any){
      <td className="actions"><button className="primary" onClick={save}><Save size={14}/> Save</button><button className="secondary" onClick={()=>setEdit(null)}>Cancel</button></td></tr>}</tbody></table>
   {rows.length===0&&<p className="hint">No prices yet. Add one to put a plan on sale.</p>}
   <div className="actions"><button className="primary" disabled={!!edit} onClick={()=>{setMsg('');setEdit({...blank})}}><Plus size={16}/> Add a price</button></div>
-  <h3 style={{marginTop:28}}>Participant sizes</h3>
-  <p className="hint">This is the dropdown people see on the Pricing page. Each size costs a percentage of the 100-person price (100% = the price above). The size a person buys is also the most people their meetings can hold. The 100 row is always there. Up to 12 sizes, 2 to 1000 people.</p>
-  <table className="modtable pr-admin"><thead><tr><th>People in a meeting</th><th>% of the 100-person price</th>{rows.filter(r=>r.active).map(r=><th key={r.id}>{r.plan==='business'?'Business':'Standard'} per month / year ({cur})</th>)}<th style={{width:90}}></th></tr></thead>
-   <tbody>{tiers.map((t,i)=>{const pct=parseFloat(t.pct)||0;return <tr key={i}><td><input aria-label="Participants" inputMode="numeric" value={t.n} disabled={t.n==='100'} onChange={e=>setTiers(x=>x.map((y,j)=>j===i?{...y,n:e.target.value}:y))} style={{width:90}}/></td><td><input aria-label="Percent" inputMode="numeric" value={t.pct} disabled={t.n==='100'} onChange={e=>setTiers(x=>x.map((y,j)=>j===i?{...y,pct:e.target.value}:y))} style={{width:90}}/> %</td>
-     {rows.filter(r=>r.active).map(r=><td key={r.id}>{d(Math.round(r.monthly*pct/100))} / {d(Math.round(r.yearly*pct/100))}</td>)}
-     <td className="actions">{t.n!=='100'&&<button className="secondary danger" onClick={()=>setTiers(x=>x.filter((_,j)=>j!==i))}>Remove</button>}</td></tr>})}</tbody></table>
-  <div className="actions"><button className="secondary" onClick={()=>setTiers(x=>[...x,{n:'',pct:''}])} disabled={tiers.length>=12}><Plus size={16}/> Add a size</button><button className="primary" onClick={()=>act(async()=>{try{setErr('');const d2=await request('/admin/pricing/tiers',{method:'PUT',body:JSON.stringify({tiers:tiers.map(t=>({n:parseInt(t.n,10),pct:parseFloat(t.pct)}))})});setTiers(d2.tiers.map((t:any)=>({n:String(t.n),pct:String(t.pct)})));setMsg('Sizes saved. The Pricing page and home page show them now. People already subscribed keep their size; at renewal they pay the new percentage for it.')}catch(e:any){setErr(e.message)}})}><Save size={14}/> Save sizes</button></div>
+  <h3 style={{marginTop:28}}>Participant sizes and what they cost</h3>
+  <p className="hint">This is the dropdown people see on the Pricing page, set separately for Standard and Business. Each size costs a percentage of that plan's 100-person price (100% = the price in the table above); decimals are fine, for example 14.72. The size a person buys is also the most people their meetings can hold. The 100 row is always there. Up to 12 sizes, 2 to 1000 people.</p>
+  {(['individual','business'] as const).map(pl=>{const pr=rows.find(r=>r.plan===pl&&r.active);const list=tiers[pl]||[];const setL=(f:(x:{n:string;pct:string}[])=>{n:string;pct:string}[])=>setTiers(o=>({...o,[pl]:f(o[pl]||[])}));
+   return <div key={pl} style={{marginTop:14}}><h4>{pl==='business'?'Business':'Standard'}</h4>
+    <table className="modtable pr-admin"><thead><tr><th>People in a meeting</th><th>% of the 100-person price</th><th>Per month ({cur})</th><th>Per year ({cur})</th><th style={{width:90}}></th></tr></thead>
+     <tbody>{list.map((t,i)=>{const pct=parseFloat(t.pct)||0;return <tr key={i}><td><input aria-label="Participants" inputMode="numeric" value={t.n} disabled={t.n==='100'} onChange={e=>setL(x=>x.map((y,j)=>j===i?{...y,n:e.target.value}:y))} style={{width:90}}/></td><td><input aria-label="Percent" inputMode="decimal" value={t.pct} disabled={t.n==='100'} onChange={e=>setL(x=>x.map((y,j)=>j===i?{...y,pct:e.target.value}:y))} style={{width:90}}/> %</td>
+      <td>{pr?d(Math.round(pr.monthly*pct/100)):'no active price'}</td><td>{pr?d(Math.round(pr.yearly*pct/100)):''}</td>
+      <td className="actions">{t.n!=='100'&&<button className="secondary danger" onClick={()=>setL(x=>x.filter((_,j)=>j!==i))}>Remove</button>}</td></tr>})}</tbody></table>
+    <div className="actions"><button className="secondary" onClick={()=>setL(x=>[...x,{n:'',pct:''}])} disabled={list.length>=12}><Plus size={16}/> Add a size</button><button className="primary" onClick={()=>act(async()=>{try{setErr('');const d2=await request('/admin/pricing/tiers',{method:'PUT',body:JSON.stringify({plan:pl,tiers:list.map(t=>({n:parseInt(t.n,10),pct:parseFloat(t.pct)}))})});setTiers(fromApi(d2.tiers));setMsg((pl==='business'?'Business':'Standard')+' sizes saved. The Pricing page and home page show them now. People already subscribed keep their size; at renewal they pay the new percentage for it.')}catch(e:any){setErr(e.message)}})}><Save size={14}/> Save {pl==='business'?'Business':'Standard'} sizes</button></div></div>})}
  </section>
 }
 const PLAN_ROWS:{k:string;label:string;bool?:boolean;hint?:string}[]=[

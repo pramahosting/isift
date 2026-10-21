@@ -64,7 +64,7 @@ function Mark({v}:{v:Cell}){
   return <span className="cmp-txt">{v}</span>;
 }
 export function CompareSection(){
-  const live=useLivePlans();const lo=live.tiers[0]?.n||10;const ind=live.prices('individual',lo);
+  const live=useLivePlans();const lo=live.tiersOf('individual')[0]?.n||10;const ind=live.prices('individual',lo);
   const price:Cell[]=[`${money(ind.perMonthYearly,live.currency)} a month (${lo} people)`,'US$14.16 (Pro)','US$10 (Standard)','US$15 (Teams)','Part of Microsoft 365','US$7 (Workspace Starter)','Varies'];
   return <section className="landing-section" id="compare"><p className="eyebrow">HOW ISIFT COMPARES</p><h2>Where iSift fits next to the tools you already know.</h2>
     <p className="why-lead">Zoom, Teams and Meet are strongest for large meetings. Calendly and Cal.com are strongest for scheduling. PDF editors do one job well. iSift brings the everyday parts of all of them together for one person or a small team.</p>
