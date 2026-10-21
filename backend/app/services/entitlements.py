@@ -6,7 +6,7 @@ The administrator can raise or lower any of these for a single person (Admin > U
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 100}
+BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25}
 OPEN = {"calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0}
 PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Standard and Business (5 GB, 300 hours)
 WARN_MINUTES = 10

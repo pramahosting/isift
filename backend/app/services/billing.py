@@ -27,35 +27,40 @@ PLANS = {
 PERIODS = ("monthly", "yearly")
 PAID = ("individual", "business")
 PRICE_KEY = "pricing:rows"
-# Participant tiers: the price listed for a plan is for BASE_TIER people in a meeting; each tier is a percentage of it (the administrator can edit the table).
+# Participant tiers: the price listed for a plan is for BASE_TIER people in a meeting; each tier is a percentage of it. Standard and Business each have their own table (the administrator can edit both).
 BASE_TIER = 100
-DEFAULT_TIERS = [{"n": 10, "pct": 45}, {"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 100, "pct": 100}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]
-TIERS: dict[int, int] = {t["n"]: t["pct"] for t in DEFAULT_TIERS}
-for _p in PLANS.values(): _p["available"] = True
-DEFAULT_ROWS = [{"id": f"default-{k}", "plan": k, "label": "Standard", "monthly": PLANS[k]["monthly"], "yearly": PLANS[k]["yearly"], "active": True} for k in PAID]
+_COMMON = [{"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 100, "pct": 100}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]
+DEFAULT_TIERS = {"individual": [{"n": 10, "pct": 14.72}] + _COMMON, "business": [{"n": 10, "pct": 45}] + _COMMON}      # Standard at 10 people is about 2.00 a month
+TIERS: dict[str, dict[int, float]] = {k: {t["n"]: t["pct"] for t in v} for k, v in DEFAULT_TIERS.items()}
 
 def clean_tiers(raw) -> list[dict]:
-    """A valid tier table: whole numbers of people (2 to 1000), a percentage (10 to 1000) of the base price, no repeats, the 100-person tier always present."""
-    out: dict[int, int] = {}
+    """A valid tier table: whole numbers of people (2 to 1000), a percentage (1 to 1000, two decimals) of the base price, no repeats, the 100-person tier always present."""
+    out: dict[int, float] = {}
     for t in raw or []:
-        try: n, p = int(t["n"]), int(round(float(t["pct"])))
-        except (KeyError, TypeError, ValueError): raise BillingError("Each tier needs a number of people and a percentage.", 422)
-        if not 2 <= n <= 1000 or not 10 <= p <= 1000: raise BillingError("Participants must be 2 to 1000 and the percentage 10 to 1000.", 422)
+        try: n, p = int(t["n"]), round(float(t["pct"]), 2)
+        except (KeyError, TypeError, ValueError): raise BillingError("Each size needs a number of people and a percentage.", 422)
+        if not 2 <= n <= 1000 or not 1 <= p <= 1000: raise BillingError("Participants must be 2 to 1000 and the percentage 1 to 1000.", 422)
         out[n] = p
     out[BASE_TIER] = 100
-    if len(out) > 12: raise BillingError("At most 12 tiers.", 422)
+    if len(out) > 12: raise BillingError("At most 12 sizes.", 422)
     return [{"n": n, "pct": out[n]} for n in sorted(out)]
 
-async def tier_rows(db) -> list[dict]:
-    d = await store.get(db, PRICE_KEY, None) or {}
-    t = clean_tiers(d.get("tiers")) if d.get("tiers") else [dict(x) for x in DEFAULT_TIERS]
-    TIERS.clear(); TIERS.update({x["n"]: x["pct"] for x in t}); return t
+async def tier_rows(db) -> dict[str, list[dict]]:
+    d = await store.get(db, PRICE_KEY, None) or {}; raw = d.get("tiers")
+    if isinstance(raw, list): raw = {k: raw for k in PAID}                  # an older single table applies to both plans
+    t = {k: (clean_tiers(raw[k]) if isinstance(raw, dict) and raw.get(k) else [dict(x) for x in DEFAULT_TIERS[k]]) for k in PAID}
+    for k in PAID: TIERS[k] = {x["n"]: x["pct"] for x in t[k]}
+    return t
 
-def tier_ok(tier) -> int:
+def tier_ok(plan: str, tier) -> int:
+    if plan not in PAID: return BASE_TIER
     try: n = int(tier)
     except (TypeError, ValueError): n = BASE_TIER
-    if n not in TIERS: raise BillingError("Choose one of the listed participant numbers.", 422)
+    if n not in TIERS[plan]: raise BillingError("Choose one of the listed participant numbers.", 422)
     return n
+
+for _p in PLANS.values(): _p["available"] = True
+DEFAULT_ROWS = [{"id": f"default-{k}", "plan": k, "label": "Standard", "monthly": PLANS[k]["monthly"], "yearly": PLANS[k]["yearly"], "active": True} for k in PAID]
 
 async def price_rows(db) -> list[dict]:
     """The price list the administrator edits (Admin Console > Commercial > Pricing). Seeded once with the standard prices."""
@@ -89,7 +94,7 @@ def norm_plan(p) -> str:
 
 def cents(plan: str, period: str, tier: int = BASE_TIER) -> int:
     base = PLANS[plan]["yearly" if period == "yearly" else "monthly"]
-    return base if tier == BASE_TIER else round(base * TIERS.get(int(tier), 100) / 100)
+    return base if tier == BASE_TIER else round(base * TIERS.get(plan, {}).get(int(tier), 100) / 100)
 def add_period(d: date, period: str) -> date:
     months = 12 if period == "yearly" else 1
     y, mo = d.year + (d.month - 1 + months) // 12, (d.month - 1 + months) % 12 + 1
@@ -119,7 +124,7 @@ def terms_of(period: str, terms: dict | None, today: date) -> tuple[bool, str | 
 
 async def plans_view(db) -> dict:
     await load_prices(db)
-    return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()], "tiers": [{"n": n, "pct": p} for n, p in sorted(TIERS.items())], "base_tier": BASE_TIER}
+    return {"currency": settings.square_currency, "plans": [{"id": k, **v} for k, v in PLANS.items()], "tiers": {k: [{"n": n, "pct": p} for n, p in sorted(TIERS[k].items())] for k in PAID}, "base_tier": BASE_TIER}
 
 # ------------------------------------------------------------------ who pays
 async def holder(db, user) -> tuple[str, dict | None, bool]:
@@ -270,7 +275,7 @@ async def subscribe(db, user, plan: str, period: str, immediate: bool = False, t
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
     if plan not in PLANS: raise BillingError("Choose Basic, Standard or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
-    await load_prices(db); require_on_sale(plan); tier = tier_ok(tier if tier is not None else BASE_TIER)
+    await load_prices(db); require_on_sale(plan); tier = tier_ok(plan, tier if tier is not None else BASE_TIER)
     r = await record(db, key, c); today = date.today()
     if plan == "basic" and immediate and term_active(r, today): return await cancel_now(db, user)
     if plan != "basic" and term_active(r, today) and (plan, period, tier) != (r["plan"], r.get("period", "monthly"), int(r.get("tier") or BASE_TIER)): return await change_plan(db, user, plan, period, terms, tier)
@@ -323,7 +328,7 @@ async def quote(db, user, plan: str, period: str, tier: int | None = None) -> di
     key, c, can = await holder(db, user)
     if plan not in PLANS: raise BillingError("Choose Basic, Standard or Business.", 422)
     if period not in PERIODS: raise BillingError("Choose monthly or yearly.", 422)
-    await load_prices(db); require_on_sale(plan); tier = tier_ok(tier if tier is not None else BASE_TIER)
+    await load_prices(db); require_on_sale(plan); tier = tier_ok(plan, tier if tier is not None else BASE_TIER)
     r = await record(db, key, c); today = date.today(); credit = unused_credit(r, today)
     if plan == "basic":
         return {"kind": "cancel" if credit else "none", "credit_cents": credit, "new_price_cents": 0, "charge_cents": 0, "refund_cents": credit, "effective": "today" if credit else None, "keeps_until": r.get("period_end")}
@@ -363,7 +368,7 @@ async def change_plan(db, user, plan: str, period: str, terms: dict | None = Non
     the difference is charged now; if the credit is bigger than the new price the plan switches at once and the leftover becomes a REFUND REQUEST an administrator must approve."""
     key, c, can = await holder(db, user)
     if not can: raise BillingError("Only the company owner or an administrator can change the plan.", 403)
-    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period, tier); tier = tier_ok(tier if tier is not None else BASE_TIER); auto, ends_on = terms_of(period, terms, today)
+    r = await record(db, key, c); today = date.today(); q = await quote(db, user, plan, period, tier); tier = tier_ok(plan, tier if tier is not None else BASE_TIER); auto, ends_on = terms_of(period, terms, today)
     if q["kind"] != "change": raise BillingError("Nothing to change.")
     if not r.get("card_id"): raise BillingError("Add a card first.", 409)
     if not SQ.configured(): raise BillingError("Card payments are not switched on yet. Ask your administrator to set up Square in Admin Console.", 503)

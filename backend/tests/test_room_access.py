@@ -2135,14 +2135,24 @@ def test_multi_share_and_pen(client):
 
 def test_participant_tiers_price_and_limit(client):
     h, tok = login(client)
-    pl = client.get("/api/v1/billing/plans").json(); assert [t["n"] for t in pl["tiers"]][:4] == [10, 25, 50, 100] and pl["plans"][1]["name"] == "Standard"
+    pl = client.get("/api/v1/billing/plans").json(); assert pl["plans"][1]["name"] == "Standard"
+    assert [t["n"] for t in pl["tiers"]["individual"]][:4] == [10, 25, 50, 100] and pl["tiers"]["individual"][0]["pct"] == 14.72 and pl["tiers"]["business"][0]["pct"] == 45
     base = next(p for p in pl["plans"] if p["id"] == "individual")["monthly"]
     q100 = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 100}, headers=h).json(); assert q100["new_price_cents"] == base
-    q10 = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 10}, headers=h).json(); assert q10["new_price_cents"] == round(base * 45 / 100)
+    q10 = client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 10}, headers=h).json(); assert q10["new_price_cents"] == round(base * 14.72 / 100) and abs(q10["new_price_cents"] - 200) <= 2   # about 2.00 a month
+    bb = next(p for p in pl["plans"] if p["id"] == "business")["monthly"]
+    qb = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "monthly", "tier": 10}, headers=h).json(); assert qb["new_price_cents"] == round(bb * 45 / 100)
     assert client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 77}, headers=h).status_code == 422     # only listed sizes
-    r = client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 20, "pct": 50}, {"n": 500, "pct": 400}]}, headers=h); assert r.status_code == 200
-    assert [t["n"] for t in r.json()["tiers"]] == [20, 100, 500]                                                                              # 100 always stays
-    assert client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 1, "pct": 50}]}, headers=h).status_code == 422
+    r = client.put("/api/v1/admin/pricing/tiers", json={"plan": "business", "tiers": [{"n": 20, "pct": 50}, {"n": 500, "pct": 400}]}, headers=h); assert r.status_code == 200
+    assert [t["n"] for t in r.json()["tiers"]["business"]] == [20, 100, 500] and r.json()["tiers"]["individual"][0]["n"] == 10               # each plan has its own table; 100 always stays
+    assert client.put("/api/v1/admin/pricing/tiers", json={"plan": "business", "tiers": [{"n": 1, "pct": 50}]}, headers=h).status_code == 422
+    assert client.put("/api/v1/admin/pricing/tiers", json={"plan": "basic", "tiers": []}, headers=h).status_code == 422
     q500 = client.post("/api/v1/billing/quote", json={"plan": "business", "period": "yearly", "tier": 500}, headers=h).json()
     by = next(p for p in client.get("/api/v1/billing/plans").json()["plans"] if p["id"] == "business")["yearly"]; assert q500["new_price_cents"] == by * 4
-    client.put("/api/v1/admin/pricing/tiers", json={"tiers": [{"n": 10, "pct": 45}, {"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]}, headers=h)
+    assert client.post("/api/v1/billing/quote", json={"plan": "individual", "period": "monthly", "tier": 500}, headers=h).status_code == 422    # Standard does not have that size
+    client.put("/api/v1/admin/pricing/tiers", json={"plan": "business", "tiers": [{"n": 10, "pct": 45}, {"n": 25, "pct": 60}, {"n": 50, "pct": 80}, {"n": 150, "pct": 135}, {"n": 200, "pct": 170}, {"n": 300, "pct": 240}]}, headers=h)
+
+
+def test_basic_allows_25_people():
+    from app.services import entitlements as ent
+    assert ent.plan_defaults("basic")["max_participants"] == 25 and ent.plan_defaults("individual")["max_participants"] == 100

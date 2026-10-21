@@ -48,13 +48,15 @@ async def pricing_list(user: User = Depends(require_admin), db: AsyncSession = D
 
 @router.put("/admin/pricing/tiers")
 async def pricing_tiers(payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """The participant tiers (people in a meeting) and what each costs as a percentage of the 100-person price."""
+    """The participant sizes of one plan (Standard or Business) and what each costs as a percentage of that plan's 100-person price."""
+    plan = str(payload.get("plan") or "")
+    if plan not in B.PAID: raise HTTPException(422, "Choose Standard or Business.")
     try: t = B.clean_tiers(payload.get("tiers"))
     except B.BillingError as e: raise HTTPException(e.status, e.message)
-    rows = await B.price_rows(db); from app.services import store
-    await store.put(db, B.PRICE_KEY, {"rows": rows, "tiers": t}, commit=False); B.TIERS.clear(); B.TIERS.update({x["n"]: x["pct"] for x in t})
-    db.add(AuditLog(actor=user.email, action="pricing.tiers", resource_type="pricing", safe_metadata={})); await db.commit()
-    return {"tiers": t, "plans": (await B.plans_view(db))["plans"]}
+    rows = await B.price_rows(db); allt = await B.tier_rows(db); allt[plan] = t; from app.services import store
+    await store.put(db, B.PRICE_KEY, {"rows": rows, "tiers": allt}, commit=False); B.TIERS[plan] = {x["n"]: x["pct"] for x in t}
+    db.add(AuditLog(actor=user.email, action="pricing.tiers", resource_type="pricing", safe_metadata={"plan": plan})); await db.commit()
+    return {"tiers": allt, "plans": (await B.plans_view(db))["plans"]}
 
 @router.post("/admin/pricing")
 async def pricing_add(payload: dict, user: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
