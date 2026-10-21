@@ -240,12 +240,15 @@ async def _tell_hosts(state: dict):
     for p in list(state["peers"].values()):
         if p["host"]: await _send(p["ws"], {"type": "waiting-list", "list": waiting})
 
+REACTIONS = {"👍", "👏", "❤️", "😂", "😮", "🎉", "🙏", "😢", "🔥", "💯", "👎", "✅"}
+
 def _rank(p: dict) -> int:
     """2 = the host, 1 = a co-host, 0 = everyone else."""
     return 0 if not p.get("host") else (1 if p.get("cohost") else 2)
 
 def _pub(i: str, p: dict) -> dict:
     d = {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
+    if p.get("hand"): d["hand"] = True
     if p.get("sfu"): d["sfu"] = p["sfu"]; d["screen"] = bool(p.get("screen"))
     return d
 
@@ -438,7 +441,8 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
     await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
-                     "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"])})
+                     "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
+                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want"))})
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
@@ -500,6 +504,8 @@ async def room_socket(ws: WebSocket, code: str):
             ranks = [_rank(p) for p in state["peers"].values()]
             if 2 not in ranks: is_host = True               # open room, nobody in charge: the first person in becomes the host
             elif 1 not in ranks: cohost_join = True         # the second person in becomes the co-host; everybody after is a normal participant   # nobody in charge is here: the first person in can run the room
+        if state.get("locked") and not is_host and not cohost_join:
+            await _send(ws, {"type": "error", "code": "locked", "message": "The host has locked this meeting, so nobody new can join right now."}); pid = None; await ws.close(); return
         if waiting_room and not is_host and not cohost_join:
             state["waiting"][pid] = {"ws": ws, "name": name, "user_id": user.id if user else None}
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)
@@ -545,6 +551,20 @@ async def room_socket(ws: WebSocket, code: str):
                     if mic and not state["policy"]["audio"]: mic = False; await _send(ws, {"type": "force", "mic": False, "reason": "policy"})
                     if cam and not state["policy"]["video"]: cam = False; await _send(ws, {"type": "force", "cam": False, "reason": "policy"})
                 await _to_view(state, me.get("group"), {"type": "state", "id": pid, "mic": mic, "cam": cam, "screen": want_screen}, skip=pid)
+            elif t == "react":                       # an emoji that floats up on everyone's screen
+                me = state["peers"][pid]; now = time.time(); emoji = str(msg.get("emoji") or "")[:8]
+                if emoji in REACTIONS and now - me.get("last_react", 0) > 0.12:
+                    me["last_react"] = now; await _to_view(state, me.get("group"), {"type": "react", "id": pid, "name": me["name"], "emoji": emoji})
+            elif t == "hand":                        # raise or lower a hand
+                me = state["peers"][pid]; me["hand"] = bool(msg.get("up"))
+                await _to_view(state, me.get("group"), {"type": "hand", "id": pid, "name": me["name"], "up": me["hand"]}, skip=pid)
+            elif t == "captions_want":               # captions run while at least one person wants to read them
+                want = state.setdefault("captions_want", set()); before = bool(want)
+                (want.add if msg.get("on") else want.discard)(pid)
+                if before != bool(want): await _broadcast(code, {"type": "captions", "on": bool(want)})
+            elif t == "caption" and state.get("captions_want"):       # what a person said, written by their own browser
+                me = state["peers"][pid]; text = str(msg.get("text") or "").strip()[:400]
+                if text: await _to_view(state, me.get("group"), {"type": "caption", "id": pid, "name": me["name"], "text": text, "final": bool(msg.get("final"))}, skip=pid)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_start": await _groups_start(state, pid, msg)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_move": await _groups_move(state, pid, msg)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_end": await _close_groups(state, "closed")
@@ -574,7 +594,7 @@ async def room_socket(ws: WebSocket, code: str):
                 await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you."})
             elif _rank(state["peers"][pid]) == 2 and t == "record":
                 state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
-            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape"):
+            elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape", "lock", "hidepics"):
                 me = state["peers"][pid]; target = state["peers"].get(msg.get("id"))
                 if t == "kick":
                     if target and msg.get("id") != pid and _rank(target) < _rank(me): await _send(target["ws"], {"type": "kicked"}); await target["ws"].close()
@@ -593,6 +613,10 @@ async def room_socket(ws: WebSocket, code: str):
                     if state.get("vroom_allowed", True):
                         state["vroom"] = bool(msg.get("on"))
                         await _broadcast(code, {"type": "vroom", "on": state["vroom"], "by": me["name"]})
+                elif t == "lock":                           # nobody new can join while the meeting is locked
+                    state["locked"] = bool(msg.get("on")); await _broadcast(code, {"type": "locked", "on": state["locked"], "by": me["name"]})
+                elif t == "hidepics":                       # no profile letters or pictures on tiles without video
+                    state["hide_pics"] = bool(msg.get("on")); await _broadcast(code, {"type": "hidepics", "on": state["hide_pics"], "by": me["name"]})
                 elif t == "tshape":                  # the host or a co-host flips the boardroom table between rectangular and round; everyone sees it
                     state["shape"] = "round" if msg.get("shape") == "round" else "rect"
                     await _broadcast(code, {"type": "tshape", "shape": state["shape"], "by": me["name"]})
@@ -635,6 +659,10 @@ async def room_socket(ws: WebSocket, code: str):
             if state["waiting"].pop(pid, None) is not None: await _tell_hosts(state)
             if pid in state["peers"]:
                 gone = state["peers"].pop(pid, None)
+                _cw = state.get("captions_want")
+                if _cw and pid in _cw:
+                    _cw.discard(pid)
+                    if not _cw: await _broadcast(code, {"type": "captions", "on": False})
                 await _to_view(state, gone.get("group") if gone else None, {"type": "peer-left", "id": pid})
                 await _roster_to_hosts(state)
                 if state.get("sfu"): await _stage_update(state)

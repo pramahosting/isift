@@ -2069,3 +2069,28 @@ def test_one_person_shares_at_a_time(client):
     a.send_json(share(False)); b.send_json(share(True))        # Ann stopped, so Bob may share now
     assert read_until(a, lambda m: m["type"] == "state" and m["screen"] is True)
     ws_a.__exit__(None, None, None); ws_b.__exit__(None, None, None)
+
+def test_lock_reactions_hand_and_captions(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    ws_h, host = join(client, r["code"], name="Host", token=tok); assert read_until(host, lambda m: m["type"] == "welcome")["host"] is True
+    ws_a, a = join(client, r["code"], name="Ann"); w = read_until(a, lambda m: m["type"] == "welcome")
+    assert w["locked"] is False and w["captions"] is False and w["hide_pics"] is False
+    # an emoji reaches everyone, including the sender; anything that is not on the list is ignored
+    a.send_json({"type": "react", "emoji": "<script>"}); a.send_json({"type": "react", "emoji": "👏"})
+    m = read_until(host, lambda m: m["type"] == "react"); assert m["emoji"] == "👏" and m["name"] == "Ann"
+    assert read_until(a, lambda m: m["type"] == "react")["emoji"] == "👏"
+    # a raised hand is shown to the others
+    a.send_json({"type": "hand", "up": True}); assert read_until(host, lambda m: m["type"] == "hand")["up"] is True
+    # captions only flow while someone wants to read them
+    a.send_json({"type": "caption", "text": "ignored, nobody asked", "final": True})
+    host.send_json({"type": "captions_want", "on": True}); assert read_until(a, lambda m: m["type"] == "captions")["on"] is True
+    a.send_json({"type": "caption", "text": "hello everyone", "final": True})
+    assert read_until(host, lambda m: m["type"] == "caption")["text"] == "hello everyone"
+    # only a host can lock; a locked meeting turns new people away
+    a.send_json({"type": "lock", "on": True}); host.send_json({"type": "lock", "on": True})
+    assert read_until(a, lambda m: m["type"] == "locked")["on"] is True
+    ws_g, g = join(client, r["code"], name="Late"); m = read_until(g, lambda m: m["type"] in ("welcome", "error")); assert m["type"] == "error" and m["code"] == "locked"
+    ws_g.__exit__(None, None, None)
+    host.send_json({"type": "lock", "on": False}); assert read_until(a, lambda m: m["type"] == "locked")["on"] is False
+    ws_g, g = join(client, r["code"], name="Late2"); assert read_until(g, lambda m: m["type"] in ("welcome", "error"))["type"] == "welcome"
+    for x in (ws_g, ws_a, ws_h): x.__exit__(None, None, None)
