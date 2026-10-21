@@ -1560,3 +1560,27 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .today-card{background:linear-gradient(180deg,#18233a 0,#141d30 90px);border-color:#2a3550}:root:not([data-theme="light"]) .today-card .today-date{background:#22305a;color:#c8d6f5}:root:not([data-theme="light"]) .today-card .today-empty{background:#1b2742;color:#c8d6f5}:root:not([data-theme="light"]) .today-more .kpi,:root:not([data-theme="light"]) .today-more .panel{background:#172033;border-color:#2a3550}:root:not([data-theme="light"]) .today-more .kpi span{color:#c8d6f5}:root:not([data-theme="light"]) .today-head b{color:#e8eefc}}
 .today-card .today-head>.today-right{display:flex;flex-direction:row;align-items:center;gap:10px}
 .today-more .meetingrow{padding:9px 0;gap:10px}
+
+/* ---- phones: upright camera pictures shown whole and centred; roomier gallery in portrait (Zoom-like) ---- */
+.rm-tile.portrait video,.rm-seat .rm-tile.portrait video{object-fit:contain;object-position:center}
+@media (max-width:700px) and (orientation:portrait){
+  .rm-grid:not(.big){--cols:2;--rows:4;align-content:center}
+  .rm-grid.n1:not(.big),.rm-grid.n2:not(.big){--cols:1;--rows:2}
+  .rm-grid.n3:not(.big),.rm-grid.n4:not(.big){--cols:2;--rows:2}
+  .rm-grid.n5:not(.big),.rm-grid.n6:not(.big){--cols:2;--rows:3}
+  .rm-grid:not(.big)>*{aspect-ratio:4/3}
+  .rm-grid.n1:not(.big)>*,.rm-grid.n2:not(.big)>*{width:min(calc(100% - 20px),calc((var(--ah) - 8px)/2*4/3))}
+}
+/* the picture always fills the tile box and is fitted inside it (before, a picture of another shape could spill out and be cut off) */
+.rm-tile>video{position:absolute;inset:0;width:100%;height:100%;min-height:0}
+
+/* ---- phone, upright: swipeable screens like Zoom mobile ---- */
+.rm-pager{flex:1;min-height:0;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain}
+.rm-pager::-webkit-scrollbar{display:none}
+.rm-page{flex:0 0 100%;min-width:0;height:100%;box-sizing:border-box;scroll-snap-align:start;scroll-snap-stop:always;padding:10px;display:flex;flex-direction:column;gap:8px;position:relative}
+.rm-bigself{flex:1 1 0;min-height:0}.rm-bigself>.rm-wrap{height:100%}
+.rm-thumbs{flex:0 0 26%;min-height:0;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rm-pgrid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:8px}
+.rm-pager .rm-wrap,.rm-pager .rm-wrap .rm-tile{height:100%;min-height:0}.rm-pager .rm-tile{min-height:0}
+.rm-pg-share{padding:6px}.rm-pg-share .rm-spot-main{flex:1;min-height:0}
+.rm-dots{display:flex;justify-content:center;gap:7px;padding:2px 0 6px}.rm-dots i{width:7px;height:7px;border-radius:50%;background:#ffffff40}.rm-dots i.on{background:#fff}
