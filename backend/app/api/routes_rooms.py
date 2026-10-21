@@ -535,12 +535,16 @@ async def room_socket(ws: WebSocket, code: str):
             elif t == "talk" and state.get("sfu"):
                 state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
-                me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); me["screen"] = bool(msg.get("screen"))
+                me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); want_screen = bool(msg.get("screen"))
+                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") else None
+                if rival:                                   # one person shares at a time: the second one waits until the first stops
+                    await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
+                me["screen"] = want_screen
                 if state.get("sfu"): asyncio.create_task(_stage_update(state))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
                     if mic and not state["policy"]["audio"]: mic = False; await _send(ws, {"type": "force", "mic": False, "reason": "policy"})
                     if cam and not state["policy"]["video"]: cam = False; await _send(ws, {"type": "force", "cam": False, "reason": "policy"})
-                await _to_view(state, me.get("group"), {"type": "state", "id": pid, "mic": mic, "cam": cam, "screen": bool(msg.get("screen"))}, skip=pid)
+                await _to_view(state, me.get("group"), {"type": "state", "id": pid, "mic": mic, "cam": cam, "screen": want_screen}, skip=pid)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_start": await _groups_start(state, pid, msg)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_move": await _groups_move(state, pid, msg)
             elif _rank(state["peers"][pid]) >= 1 and t == "groups_end": await _close_groups(state, "closed")
