@@ -1,3 +1,4 @@
+import {getPrefs} from './prefs';
 import React,{useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {rememberRoom} from './Connections';
 import {Scene,ScenePicker} from './Scenes';
@@ -127,12 +128,11 @@ function VideoTile({stream,name,muted,off,host,cohost,screen,self,speaking,plate
   useEffect(()=>{const v=ref.current;if(!v)return;const f=()=>setPortrait(v.videoHeight>v.videoWidth&&v.videoWidth>0);f();v.addEventListener('loadedmetadata',f);v.addEventListener('resize',f);return()=>{v.removeEventListener('loadedmetadata',f);v.removeEventListener('resize',f)}},[stream]);   // an upright phone picture is shown whole and centred, never cropped
   return <div className={`rm-tile${self?' self':''}${portrait&&!screen?' portrait':''}${screen?' scr':''}${speaking?' speaking':''}`} data-name={name} onDoubleClick={onDouble} title={onDouble?'Double-click to highlight':undefined}>
     <video ref={ref} autoPlay playsInline muted className={off?'hidden':''}/>
-    {micOff&&!screen&&(self&&onMic?<button type="button" className="rm-micoff btn" onClick={e=>{e.stopPropagation();onMic()}} onDoubleClick={e=>e.stopPropagation()} title="You are muted. Tap to unmute" aria-label="You are muted. Tap to unmute"><MicOff size={14}/><b>Muted · tap to unmute</b></button>:<span className="rm-micoff" title="Microphone is off" aria-label="Microphone is off"><MicOff size={14}/>{self&&<b>You are muted</b>}</span>)}
     
     {off&&!HIDE_PICS&&<div className="rm-avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>}
     {blocked&&<button type="button" className="rm-tapsound" onClick={()=>{ref.current?.play().then(()=>setBlocked(false)).catch(()=>{})}}>Tap to hear</button>}
     {hand&&<span className="rm-handtag" title="Hand raised" aria-label="Hand raised">✋</span>}
-    {!plate&&<span className="rm-name">{name}{self?' (you)':''}{host?(cohost?' · co-host':' · host'):''}{screen?' · sharing':''}</span>}
+    {!plate&&<span className="rm-name">{micOff&&!screen&&(self&&onMic?<button type="button" className="rm-nmic" onClick={e=>{e.stopPropagation();onMic()}} onDoubleClick={e=>e.stopPropagation()} aria-label="Muted"><MicOff size={13}/></button>:<span className="rm-nmic" aria-label="Muted"><MicOff size={13}/></span>)}{name}{self?' (you)':''}{host?(cohost?' · co-host':' · host'):''}{screen?' · sharing':''}</span>}
   </div>;
 }
 
@@ -142,7 +142,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   // while you are in the meeting, the browser's back swipe, pull-down refresh and accidental reload must not take you out; only the Leave button does
   useEffect(()=>{if(phase!=='room')return;onActive?.(location.hash);document.documentElement.classList.add('in-room');const bu=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',bu);return()=>{onActive?.('');document.documentElement.classList.remove('in-room');window.removeEventListener('beforeunload',bu)}},[phase]);
   const [passcode,setPasscode]=useState('');const [waitList,setWaitList]=useState<{id:string;name:string}[]>([]);const [hostInfo,setHostInfo]=useState<any>(null);const [secOpen,setSecOpen]=useState(false);
-  const [name,setName]=useState(defaultName||'');
+  const [name,setName]=useState(()=>{if(defaultName)return defaultName;try{return localStorage.getItem('isift.name')||''}catch{return ''}});
   useEffect(()=>{if(defaultName)setName(n=>n||defaultName)},[defaultName]);   // a person who has just signed in gets their own name filled in
   const [mic,setMic]=useState(true);const [cam,setCam]=useState(true);const [screen,setScreen]=useState(false);const fileShare=useRef<{stop:()=>void;page?:number;pages?:number;show?:(n:number)=>Promise<void>;scrollBy?:(dy:number)=>void;width?:number;height?:number;onPage?:(n:number)=>void}|null>(null);const [wbOpen,setWbOpen]=useState(false);const [wbTab,setWbTab]=useState<'board'|'apps'>('board');const [appsLoaded,setAppsLoaded]=useState(false);const [wbOn,setWbOn]=useState(false);const wbContent=useRef('');const wbBox=useRef<HTMLDivElement>(null);const [wbSaved,setWbSaved]=useState('');
   useEffect(()=>{if(!token)return;const h=(e:MessageEvent)=>{if(e.origin===location.origin&&e.data?.type==='isift-ready'&&e.source)(e.source as Window).postMessage({type:'isift-token',token},location.origin)};window.addEventListener('message',h);return()=>window.removeEventListener('message',h)},[token]);
@@ -223,7 +223,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
         try{stream=await navigator.mediaDevices.getUserMedia({audio:true});setMediaNote(`Camera not available (${why}) - joining with microphone only.`)}catch{setMediaNote('No camera or microphone available - you can still watch, listen and chat.')}
       }
     }
-    if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;local.current.raw=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
+    if(stream){local.current.audio=stream.getAudioTracks()[0];local.current.video=stream.getVideoTracks()[0];local.current.cam=local.current.video;local.current.raw=local.current.video;setCam(!!local.current.video);setMic(!!local.current.audio);try{const jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');if((jo.audio===false||getPrefs().muteOnJoin)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((jo.video===false||getPrefs().camOffOnJoin)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(jo.name)setName(n=>n||jo.name)}catch{}}else{setCam(false);setMic(false)}
     setLocalStream(stream);return stream;
   },[]);
   useEffect(()=>{if(phase==='lobby'&&info&&!localStream&&!err)getMedia()},[phase,info]);// preview in the lobby
@@ -336,7 +336,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   useEffect(()=>{const f=()=>setFs(!!((document as any).fullscreenElement||(document as any).webkitFullscreenElement));document.addEventListener('fullscreenchange',f);document.addEventListener('webkitfullscreenchange',f);return()=>{document.removeEventListener('fullscreenchange',f);document.removeEventListener('webkitfullscreenchange',f)}},[]);
   useEffect(()=>{if(phase!=='lobby'||err)setJoining(false)},[phase,err]);
   const join=async()=>{
-    if(joining)return;setErr('');setJoining(true);
+    if(joining)return;setErr('');setJoining(true);try{if(name.trim())localStorage.setItem('isift.name',name.trim())}catch{}
     const slow=setTimeout(()=>{setErr('Could not reach the meeting. Check your connection and press Join again.');setJoining(false);try{ws.current?.close()}catch{}},20000);
     const sock=new WebSocket(wsUrl(api,code));ws.current=sock;
     sock.onopen=()=>send({type:'join',client:(()=>{try{let c=sessionStorage.getItem('isift.cid');if(!c){c=Math.random().toString(36).slice(2)+Date.now().toString(36);sessionStorage.setItem('isift.cid',c)}return c}catch{return ''}})(),name:name.trim()||'Guest',token:token||undefined,passcode:passcode.trim()||undefined});
@@ -411,7 +411,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   };
   const leaveLocal=()=>{if(tabAud.current){try{tabAud.current.track.stop();tabAud.current.ctx.close().catch(()=>{})}catch{}tabAud.current=null;local.current.mixed=undefined}sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
   const finishOut=()=>{leaveLocal();if(pendRec.current)setPhase('ended');else onLeave()};
-  const leave=async()=>{if(rec.current)await stopRecording(false);finishOut()};
+  const leave=async()=>{if(getPrefs().confirmLeave&&!window.confirm('Leave the meeting?'))return;if(rec.current)await stopRecording(false);finishOut()};
   const endAll=async()=>{if(rec.current)await stopRecording(true);send({type:'end'});finishOut()};
 
   // ---- controls ----
@@ -851,7 +851,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
     {leaveOpen&&<><div className="rm-pop-shade" onClick={()=>setLeaveOpen(false)}/><div className="rm-pop rm-leavemenu" role="dialog" aria-label="Leave or end"><button type="button" className="secondary" onClick={()=>{setLeaveOpen(false);leave()}}><PhoneOff size={15}/> Leave meeting</button><button type="button" className="end-btn" onClick={()=>{setLeaveOpen(false);endAll()}}><X size={15}/> End meeting for everyone</button></div></>}
     {bgOpen&&bgPanel}
     {scenePick&&<ScenePicker title={scenePick==='win'?'View outside the window':'Picture on the wall'} value={scenes[scenePick]} w={scenePick==='win'?100:135} h={scenePick==='win'?148:100} onClose={()=>setScenePick('')} onApply={id=>{setScenes({[scenePick]:id});setScenePick('')}}/>}
-    {!mic&&(!barOn||focus)&&<button type="button" className="rm-mutepill" onClick={toggleMic} aria-label="You are muted. Tap to unmute"><MicOff size={14}/> You are muted. Tap to unmute</button>}
+    
     <div className="rm-viewctl"><button type="button" className="vc-leave" onClick={()=>primary?setLeaveOpen(o=>!o):leave()} aria-label="Leave meeting" title="Leave meeting"><PhoneOff size={15}/></button><button onClick={goFs} aria-label={(fs||focus)?"Exit full screen":"Full screen"} title={(fs||focus)?"Exit full screen":"Full screen"}>{(fs||focus)?<Minimize size={16}/>:<Maximize size={16}/>}</button><button onClick={()=>setBarOn(v=>!v)} aria-label={barOn?"Hide buttons":"Show buttons"} title={barOn?"Hide buttons":"Show buttons"}>{barOn?<ChevronDown size={16}/>:<ChevronUp size={16}/>}</button></div>
   </div>;
 }
