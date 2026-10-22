@@ -1857,3 +1857,19 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .rm-wrap:has(>.rm-tile.self.sized) .rm-tile.self{height:auto!important;aspect-ratio:16/9!important}
 .rm-wrap:has(>.rm-tile.self.sized),.rm-tile.self.sized{max-height:calc(var(--app-h,100dvh) - 240px)!important}
 .rm-wrap:has(>.rm-tile.self.sized)>.rm-tile.self{height:100%!important}
+/* compact workspace tiles */
+.ws-grid,.ws-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))!important;gap:8px!important}
+.ws-btn{min-height:0!important;padding:8px 10px!important;border-radius:12px!important;column-gap:10px!important}
+.ws-btn .ws-ic{width:38px!important;height:38px!important}.ws-btn .ws-ic svg{width:19px!important;height:19px!important}
+.ws-btn .ws-lb{font-size:.88rem!important;line-height:1.2}.ws-btn .ws-nt{font-size:.72rem!important;line-height:1.2}
+.ws-btn.ws-more-btn{grid-column:auto!important;padding:8px 10px!important;border-style:dashed}.ws-more-btn .ws-ic{width:38px!important;height:38px!important}
+.ws-unpin{width:20px;height:20px;right:5px;top:5px}.ws-unpin svg{width:11px;height:11px}
+.ws-lock{width:16px;height:16px;right:-3px;top:-3px}.ws-lock svg{width:9px;height:9px}
+@media(max-width:900px){.ws-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:380px){.ws-btn .ws-nt{display:none}}
+.ws-unpin{min-height:0!important;min-width:0!important;padding:0!important;width:20px!important;height:20px!important;border-radius:50%}
+.ws-btn{padding-right:28px!important}
+
+.rm-szctl{display:none!important}
+.rm-grip{position:absolute;right:4px;bottom:4px;z-index:7;width:34px;height:34px;border-radius:10px;background:#0d1320b3;color:#fff;display:grid;place-items:center;cursor:nwse-resize;touch-action:none;opacity:.9}
+@media(hover:hover){.rm-tile.self .rm-grip{opacity:0;transition:opacity .15s}.rm-tile.self:hover .rm-grip{opacity:1}}

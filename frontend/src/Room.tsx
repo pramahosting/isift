@@ -9,7 +9,7 @@ import {FileShare,CanvasShare} from './shareFile';
 import {Board} from './Whiteboard';
 import {SharePen,type Stroke,type Pointer} from './SharePen';
 import {WatchTogether,type WatchState} from './WatchTogether';
-import {Minus,PenLine,ZoomIn,ZoomOut,Pencil,Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer,Smile,Hand,Captions,Ellipsis,NotebookPen,EyeOff} from 'lucide-react';
+import {PenLine,ZoomIn,ZoomOut,Pencil,Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer,Smile,Hand,Captions,Ellipsis,NotebookPen,EyeOff} from 'lucide-react';
 import {Tool,ToolButton,MoreMenu,ReactMenu,FloatingReactions,CaptionsBar,HostMenu,loadPins,savePins,Floater,CapLine} from './MeetingTools';
 let HIDE_PICS=false;   // set while the meeting screen draws: tiles without video then show no letter or picture
 
@@ -127,7 +127,11 @@ function VideoTile({stream,name,muted,off,host,cohost,screen,self,speaking,plate
   useEffect(()=>{const v=ref.current;if(v&&v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>{})}},[stream]);
   useEffect(()=>{const v=ref.current;if(!v)return;const f=()=>setPortrait(v.videoHeight>v.videoWidth&&v.videoWidth>0);f();v.addEventListener('loadedmetadata',f);v.addEventListener('resize',f);return()=>{v.removeEventListener('loadedmetadata',f);v.removeEventListener('resize',f)}},[stream]);   // an upright phone picture is shown whole and centred, never cropped
   return <div className={`rm-tile${self?' self':''}${self&&sz?' sized':''}${portrait&&!screen?' portrait':''}${screen?' scr':''}${speaking?' speaking':''}`} data-name={name} onDoubleClick={onDouble} title={onDouble?'Double-click to highlight':undefined}>
-    <video ref={ref} autoPlay playsInline muted className={off?'hidden':''}/>{self&&onSize&&!screen&&<span className="rm-szctl" onDoubleClick={e=>e.stopPropagation()}><button type="button" aria-label="Make my video smaller" title="Smaller" onClick={e=>{e.stopPropagation();onSize(e.currentTarget.closest('.rm-tile')!.getBoundingClientRect().width*0.8)}}><Minus size={14}/></button><button type="button" aria-label="Make my video bigger" title="Bigger" onClick={e=>{e.stopPropagation();onSize(e.currentTarget.closest('.rm-tile')!.getBoundingClientRect().width*1.25)}}><Plus size={14}/></button></span>}
+    <video ref={ref} autoPlay playsInline muted className={off?'hidden':''}/>{self&&onSize&&!screen&&<span className="rm-grip" role="slider" aria-label="Drag to change the size of my video. Double tap to reset." title="Drag to resize. Double tap to reset." onDoubleClick={e=>{e.stopPropagation();onSize(0)}}
+      onPointerDown={e=>{e.stopPropagation();e.preventDefault();const el=e.currentTarget;const tile=el.closest('.rm-tile') as HTMLElement;const w0=tile.getBoundingClientRect().width,x0=e.clientX,y0=e.clientY;try{el.setPointerCapture(e.pointerId)}catch{}
+        const mv=(ev:PointerEvent)=>{const d=(ev.clientX-x0+(ev.clientY-y0)*1.6)/2;onSize(Math.max(70,w0+d))};
+        const up=()=>{el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up);el.removeEventListener('pointercancel',up)};
+        el.addEventListener('pointermove',mv);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up)}}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M13 5L5 13M13 9L9 13M13 1L1 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/></svg></span>}
     
     {off&&!HIDE_PICS&&<div className="rm-avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>}
     {blocked&&<button type="button" className="rm-tapsound" onClick={()=>{ref.current?.play().then(()=>setBlocked(false)).catch(()=>{})}}>Tap to hear</button>}
@@ -328,7 +332,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   const [focus,setFocus]=useState(false);
   const [selfSz,setSelfSz]=useState(()=>{try{const v=parseFloat(localStorage.getItem('isift.selfsz2')||'0');return v>=0.2&&v<=0.95?v:0}catch{return 0}});
   useEffect(()=>{const r=document.documentElement;if(selfSz)r.style.setProperty('--selfw',`${selfSz*100}vw`);else r.style.removeProperty('--selfw');return()=>{r.style.removeProperty('--selfw')}},[selfSz]);
-  const bumpSz=(w:number)=>setSelfSz(()=>{const n=Math.round(Math.max(0.2,Math.min(window.innerWidth>=700?0.6:0.95,w/window.innerWidth))*1000)/1000;try{localStorage.setItem('isift.selfsz2',String(n))}catch{}return n});
+  const bumpSz=(w:number)=>setSelfSz(()=>{if(w<=0){try{localStorage.removeItem('isift.selfsz2')}catch{}return 0}const n=Math.round(Math.max(0.2,Math.min(window.innerWidth>=700?0.6:0.95,w/window.innerWidth))*1000)/1000;try{localStorage.setItem('isift.selfsz2',String(n))}catch{}return n});
   useEffect(()=>()=>{try{const d:any=document;if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)}catch{}},[]);
   useEffect(()=>{if(phase==='ended'){try{const d:any=document;if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)}catch{}}},[phase]);
   const goFs=async()=>{const d:any=document,el:any=document.documentElement;const real=d.fullscreenElement||d.webkitFullscreenElement;
