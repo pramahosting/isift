@@ -75,6 +75,8 @@ def _lines(raw: bytes) -> list:
     except Exception: pages = []
     for i, pg in enumerate(rd.pages):
         l, b, r, t = _box(pg); out = []
+        try: ox, oy = float(pg.mediabox.left), float(pg.mediabox.bottom)     # pdfminer measures from the corner of the media box; the page's own coordinates (and the cropbox) do not
+        except Exception: ox = oy = 0.0
         if i < len(pages):
             def walk(o):
                 if isinstance(o, LTTextLine):
@@ -93,7 +95,7 @@ def _lines(raw: bytes) -> list:
                         fn = (chars[0].fontname if chars else "") or ""; low = fn.lower()     # the original font's name tells bold, italic and the kind of letter
                         fam = "Courier" if any(k in low for k in ("courier", "mono", "consolas")) else "Times" if any(k in low for k in ("times", "serif", "georgia", "garamond", "cambria", "palatino")) and "sans" not in low else "Helvetica"
                         bold = any(k in low for k in ("bold", "black", "heavy", "demi")); italic = any(k in low for k in ("italic", "oblique"))
-                        base = (t - chars[0].matrix[5]) if chars else (t - o.y0)
+                        base = (t - oy - chars[0].matrix[5]) if chars else (t - oy - o.y0)
                         words, cw, prev = [], None, None
                         for ch in chars:
                             t_ = ch.get_text()
@@ -102,9 +104,15 @@ def _lines(raw: bytes) -> list:
                                 cw = [t_, ch.x0, ch.x1]; words.append(cw)
                             else: cw[0] += t_; cw[2] = ch.x1
                             prev = ch
-                        words = [[w_[0], round(w_[1] - l, 2), round(w_[2] - l, 2)] for w_ in words]
+                        if len(words) > 2 and sorted(len(w_[0]) for w_ in words)[len(words) // 2] <= 1:     # letters set one to a cell (comb boxes): join the letters of a name or number into one word
+                            gp = sorted(b_[1] - a_[2] for a_, b_ in zip(words, words[1:])); mg = gp[len(gp) // 2]; mw = []
+                            for w_ in words:
+                                if mw and w_[1] - mw[-1][2] <= 1.6 * mg + 0.5: mw[-1][0] += w_[0]; mw[-1][2] = w_[2]
+                                else: mw.append(list(w_))
+                            words = mw
+                        words = [[w_[0], round(w_[1] + ox - l, 2), round(w_[2] + ox - l, 2)] for w_ in words]
                         if "".join(w_[0] for w_ in words).replace(" ", "") != txt.replace(" ", ""): words = []     # the words do not add up to the line: use the whole line instead
-                        out.append({"bbox": [round(o.x0 - l, 2), round(t - o.y1, 2), round(o.x1 - l, 2), round(t - o.y0, 2)], "text": txt, "size": round(size, 1),
+                        out.append({"bbox": [round(o.x0 + ox - l, 2), round(t - oy - o.y1, 2), round(o.x1 + ox - l, 2), round(t - oy - o.y0, 2)], "text": txt, "size": round(size, 1),
                                     "words": words, "base": round(base, 2), "track": round(track, 2) if track > 0.4 else 0, "fam": fam, "bold": bold, "italic": italic})
                 elif hasattr(o, "__iter__"):
                     for c in o: walk(c)
@@ -112,9 +120,74 @@ def _lines(raw: bytes) -> list:
         out.sort(key=lambda x: (round(x["bbox"][1]), x["bbox"][0])); res.append(out)
     return res
 
+def _walk_images(rd, owner, res, ctm, out: list, depth: int = 0):
+    """Every picture drawn by a content stream (the page itself or a form inside it), with where it lands on the page.
+    Each entry: {"bbox": user-space [x0, y0, x1, y1], "owner": the stream it is drawn from, "idx": index of its Do instruction, "px": (w, h)}."""
+    from pypdf.generic import ContentStream
+    if depth > 6: return
+    try: cs = ContentStream(owner.get_contents() if hasattr(owner, "get_contents") else owner, rd)
+    except Exception: return
+    I = [1, 0, 0, 1, 0, 0]; cur = list(ctm); stack = []
+    xos = (res or {}).get("/XObject")
+    xos = xos.get_object() if xos is not None else {}
+    for idx, (operands, op) in enumerate(cs.operations):
+        o = op.decode() if isinstance(op, bytes) else str(op)
+        try:
+            if o == "q": stack.append(list(cur))
+            elif o == "Q": cur = stack.pop() if stack else list(ctm)
+            elif o == "cm": cur = _mul([float(v) for v in operands], cur)
+            elif o == "Do" and operands and operands[0] in xos:
+                xo = xos[operands[0]].get_object(); st = xo.get("/Subtype")
+                if st == "/Image":
+                    pts = [(cur[4], cur[5]), (cur[0] + cur[4], cur[1] + cur[5]), (cur[2] + cur[4], cur[3] + cur[5]), (cur[0] + cur[2] + cur[4], cur[1] + cur[3] + cur[5])]
+                    xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                    out.append({"bbox": [min(xs), min(ys), max(xs), max(ys)], "owner": owner, "idx": idx, "px": (int(xo.get("/Width", 0) or 0), int(xo.get("/Height", 0) or 0))})
+                elif st == "/Form":
+                    m = [float(v) for v in (xo.get("/Matrix") or I)]
+                    _walk_images(rd, xo, xo.get("/Resources") or res, _mul(m, cur), out, depth + 1)
+        except Exception: continue
+
+def _page_images(rd, pg) -> list:
+    out: list = []
+    try: _walk_images(rd, pg, pg.get("/Resources"), [1, 0, 0, 1, 0, 0], out)
+    except Exception: pass
+    return out
+
+def _images(raw: bytes) -> list:
+    """Per page: the pictures on it as {rect:[x0,y0,x1,y1] top-left points, px:[w,h]}, leaving out a picture that is the whole page (a scan) and specks."""
+    rd = _reader(raw); res = []
+    for pg in rd.pages:
+        l, b, r, t = _box(pg); W, H = r - l, t - b; items = []
+        for im in _page_images(rd, pg):
+            x0, y0, x1, y1 = im["bbox"]; rc = [round(x0 - l, 2), round(t - y1, 2), round(x1 - l, 2), round(t - y0, 2)]
+            w, h = rc[2] - rc[0], rc[3] - rc[1]
+            if w < 4 or h < 4 or w * h > 0.55 * W * H: continue
+            items.append({"rect": rc, "px": list(im["px"])})
+        res.append(items)
+    return res
+
+def _strip_images(rd, pg, rects: list, whole: bool) -> list:
+    """Remove the pictures drawn inside any rectangle (user-space points, y up). A picture goes when most of it is inside (whole=False: half of it; whole=True: nearly all of it).
+    Returns the indexes of the rectangles that took something out."""
+    from pypdf.generic import ContentStream, NameObject
+    found = _page_images(rd, pg); gone: dict = {}; hit: set = set()
+    for im in found:
+        x0, y0, x1, y1 = im["bbox"]; area = max(1e-6, (x1 - x0) * (y1 - y0))
+        for k, r in enumerate(rects):
+            ix = max(0, min(x1, r[2]) - max(x0, r[0])); iy = max(0, min(y1, r[3]) - max(y0, r[1]))
+            if ix * iy / area >= (0.85 if whole else 0.5):
+                gone.setdefault(id(im["owner"]), (im["owner"], set()))[1].add(im["idx"]); hit.add(k); break
+    for owner, idxs in gone.values():
+        cs = ContentStream(owner.get_contents() if hasattr(owner, "get_contents") else owner, rd); cs.operations = [x for i, x in enumerate(cs.operations) if i not in idxs]
+        if hasattr(owner, "replace_contents"): owner.replace_contents(cs)
+        else: owner.set_data(cs.get_data())
+    return sorted(hit)
+
 def pdf_inspect(raw: bytes) -> dict:
     import pypdfium2 as pdfium
     raw = _normalised(raw); _reader(raw); scale = 1.4; lines = _lines(raw); pages = []
+    try: pics = _images(raw)
+    except Exception: pics = []
     try:
         pdf = pdfium.PdfDocument(raw)
         try: pdf.init_forms()   # so signature stamps and form fields are drawn
@@ -123,7 +196,7 @@ def pdf_inspect(raw: bytes) -> dict:
     for i in range(len(pdf)):
         pg = pdf[i]; w, h = pg.get_size(); buf = io.BytesIO()
         pg.render(scale=scale, may_draw_forms=True).to_pil().convert("RGB").save(buf, "JPEG", quality=72)
-        pages.append({"w": round(w, 2), "h": round(h, 2), "scale": scale, "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode(), "lines": lines[i] if i < len(lines) else []})
+        pages.append({"w": round(w, 2), "h": round(h, 2), "scale": scale, "image": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode(), "lines": lines[i] if i < len(lines) else [], "images": pics[i] if i < len(pics) else []})
     return {"kind": "pdf", "pages": pages}
 
 def _color(c) -> tuple:
@@ -237,12 +310,18 @@ def pdf_apply(raw: bytes, ops: list):
                 W, H = r - l, t - b
                 covers.setdefault(i, []).append([max(0, min(cx0, cx1)), max(0, min(cy0, cy1)), min(W, max(cx0, cx1)), min(H, max(cy0, cy1)), _color(o.get("fill") or "#ffffff")])
         user = [[l + x0, t - y1, l + x1, t - y0] for x0, y0, x1, y1 in rects]
-        _, hit = _strip_text(w, w.pages[i], user)
+        ti = [k for k, o in enumerate(mine) if not o.get("img")]; ik = [k for k, o in enumerate(mine) if o.get("img")]
+        hit: set = set()
+        if ti: hit |= {ti[j] for j in _strip_text(w, w.pages[i], [user[k] for k in ti])[1]}
+        if ik: hit |= {ik[j] for j in _strip_images(w, w.pages[i], [user[k] for k in ik], False)}      # a picture chosen on the page is taken out of the file itself
+        if ti: _strip_images(w, w.pages[i], [user[k] for k in ti], True)                                 # a picture lying wholly inside a whiteout area goes too
         for k, rc in enumerate(rects):     # nothing in the page content started inside this area (the text is drawn some other way): cover it instead
-            if k not in hit and not mine[k].get("cover"): covers.setdefault(i, []).append(rc); warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
+            if mine[k].get("img") and k not in hit: covers.setdefault(i, []).append([*rc, _color(mine[k].get("fill") or "#ffffff")]); warnings.append(f"A picture on page {i + 1} is part of the page itself, so it was covered instead of removed.")
+            elif k not in hit and not mine[k].get("cover"): covers.setdefault(i, []).append(rc); warnings.append(f"Some text on page {i + 1} could not be removed from the file itself, so it was covered instead. It may still be found by searching the PDF.")
     if dels:   # check that nothing readable is left in the deleted areas; anything that is gets covered, and the person is told
         mid = io.BytesIO(); w.write(mid); left = _lines(mid.getvalue())
         for o in dels:
+            if o.get("img"): continue
             i = page_of(o); x0, y0, x1, y1 = rect_of(o, i)
             if any(ln["bbox"][0] < x1 and ln["bbox"][2] > x0 and ln["bbox"][1] < y1 - 1 and ln["bbox"][3] > y0 + 1 and ln["text"].strip() for ln in left[i]):
                 if not o.get("cover"): covers.setdefault(i, []).append([x0, y0, x1, y1])
@@ -250,7 +329,7 @@ def pdf_apply(raw: bytes, ops: list):
     midb = mid.getvalue() if dels else b""; shots: dict = {}
     for o in dels:     # text that is still showing after it was stripped is part of the page picture: cover it in the paper colour
         i = page_of(o)
-        if o.get("cover"): continue
+        if o.get("cover") or o.get("img"): continue
         x0, y0, x1, y1 = rect_of(o, i)
         col = _still_visible(raw, midb, i, [x0, y0, x1, y1], shots)
         if col: covers.setdefault(i, []).append([x0, y0, x1, y1, col])

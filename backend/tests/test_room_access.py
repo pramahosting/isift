@@ -2183,3 +2183,25 @@ def test_basic_host_has_no_multi_share_or_watch_together(client, monkeypatch):
     h.send_json({"type": "multishare", "on": True}); assert "not included" in read_until(h, lambda m: m["type"] == "plan-limit")["message"]
     h.send_json({"type": "video", "op": "load", "vid": "dQw4w9WgXcQ"}); assert "not included" in read_until(h, lambda m: m["type"] == "video-error")["message"]
     ws_h.__exit__(None, None, None)
+
+
+def test_pdf_pictures_selectable_and_text_positions_with_shifted_page_frame():
+    """A PDF whose page frame does not start at 0,0 (like many bank forms): text boxes must sit on the text, and a picture on the page can be found and removed."""
+    import io, base64
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
+    from PIL import Image
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import RectangleObject
+    from app.services import docedit as de
+    buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(612, 792)); c.setFont("Helvetica", 12); c.drawString(100, 700, "HELLO NAME")
+    im = Image.new("RGB", (60, 30), (30, 30, 200)); ib = io.BytesIO(); im.save(ib, "PNG"); c.drawImage(ImageReader(io.BytesIO(ib.getvalue())), 100, 500, width=120, height=60); c.save()
+    rd = PdfReader(io.BytesIO(buf.getvalue())); w = PdfWriter(clone_from=rd)
+    pg = w.pages[0]; pg.mediabox = RectangleObject([0, 8, 612, 800]); pg.cropbox = RectangleObject([0, 8, 612, 800])      # the frame is shifted up by 8 points
+    out = io.BytesIO(); w.write(out); raw = out.getvalue()
+    line = next(l for l in de._lines(raw)[0] if "HELLO" in l["text"])
+    assert abs((line["bbox"][1] + line["bbox"][3]) / 2 - (800 - 703)) < 4      # text sits near y=700 in page coordinates, i.e. 97 points from the top of the frame
+    pics = de._images(raw)[0]; assert len(pics) == 1 and abs(pics[0]["rect"][0] - 100) < 1 and abs(pics[0]["rect"][2] - 220) < 1
+    insp = de.pdf_inspect(raw); assert len(insp["pages"][0]["images"]) == 1
+    edited, warn = de.pdf_apply(raw, [{"t": "delete", "page": 0, "rect": pics[0]["rect"], "img": True, "fill": "#ffffff", "text": ""}])
+    assert de._images(edited)[0] == [] and not warn
