@@ -308,6 +308,8 @@ const PLAN_ROWS:{k:string;label:string;bool?:boolean;hint?:string}[]=[
  {k:'meeting_minutes',label:'Length of a meeting (minutes)',hint:'0 = no limit'},
  {k:'meeting_hours_per_month',label:'Hosted meeting hours a month',hint:'0 = no limit'},
  {k:'recording',label:'Cloud recording',bool:true},
+ {k:'multi_share',label:'Several people sharing at once, pointer and pen',bool:true},
+ {k:'watch_together',label:'Watch a video or document together',bool:true},
  {k:'open_room',label:'Open room (always-open meeting link)',bool:true},
  {k:'calls',label:'Call another user inside the app',bool:true},
  {k:'commbox',label:'Commbox: mail, calendar and contacts',bool:true},

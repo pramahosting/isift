@@ -345,6 +345,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
       else if(m.type==='draw'){addInk(m.sharer,m.by+':'+m.sid,m.by,m.pts||[])}
       else if(m.type==='draw_clear'){setInks(o=>({...o,[m.sharer]:[]}))}
       else if(m.type==='pen_ask'){setPenAsks(a=>[...a.filter(x=>x.id!==m.id),{id:m.id,name:m.name}])}
+      else if(m.type==='plan-limit'){setNotice(m.message||'That is not included in the host’s plan.')}
       else if(m.type==='video-error'){setNotice(m.message||'That link cannot be shown.')}
       else if(m.type==='video'){if(m.stopped){setWatch(null);setWatchOpen(false);setNotice((m.by||'Someone')+' stopped the video.')}else{setWatch({kind:m.kind==='web'?'web':'yt',vid:m.vid||'',url:m.url,label:m.label,by:m.by,by_id:m.by_id,playing:!!m.playing,t:Number(m.t)||0,at:Date.now()});setWatchOpen(true)}}
       else if(m.type==='state')upsert(m.id,{mic:m.mic,cam:m.cam,screen:m.screen});
@@ -388,7 +389,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   };
   const leaveLocal=()=>{if(tabAud.current){try{tabAud.current.track.stop();tabAud.current.ctx.close().catch(()=>{})}catch{}tabAud.current=null;local.current.mixed=undefined}sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
   const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
-  const endAll=async()=>{if(!window.confirm('End the meeting for everyone?'))return;if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
+  const endAll=async()=>{if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
 
   // ---- controls ----
   const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};

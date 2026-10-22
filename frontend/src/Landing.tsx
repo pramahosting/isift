@@ -40,22 +40,23 @@ export function WhySection(){
 
 type Cell=string|true|false|null;
 const Y=true,N=false;
-const COLS=['iSift','Zoom','Calendly','Cal.com','Microsoft Teams','Google Meet','PDF editors'];
-const SUB=['','','','','','','Sejda, Adobe Acrobat'];
+const COLS=['iSift','Zoom','Zoho Meeting','Webex','GoTo Meeting','Microsoft Teams','Google Meet'];
+const SUB=['','','','','','',''];
 const ROWS:{label:string;cells:Cell[]}[]=[
- {label:'Video meetings in the browser',cells:[Y,Y,'Uses other tools',Y,Y,Y,N]},
- {label:'Free plan: group meeting length',cells:['70 minutes','40 minutes',null,null,'60 minutes','60 minutes',null]},
- {label:'Booking pages, like Calendly',cells:[Y,Y,Y,Y,'Paid plans (Bookings)','Via Google Calendar',N]},
- {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)','Recaps and actions','Credits on paid plans','Needs Copilot add-on','Gemini, paid plans',null]},
- {label:'PDF edit and sign inside the product',cells:[Y,'Separate app',N,N,'Separate app','Separate app',Y]},
- {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','No','No','Outlook, separate','Gmail, separate',N]},
- {label:'Whiteboard and documents',cells:[Y,Y,N,N,'Paid plans','Separate app',N]},
- {label:'Reactions, raise hand and live captions',cells:[Y,Y,N,N,Y,Y,N]},
- {label:'Several people sharing at once, with pointer and pen',cells:['Yes (paid plans)','Yes (host option)',N,N,null,null,N]},
- {label:'Watch a YouTube video together, in sync',cells:['Yes (paid plans)',null,N,N,null,null,N]},
- {label:'Take control of someone’s computer',cells:['Not yet (pointer and pen instead)',Y,N,N,Y,null,N]},
- {label:'Call another user inside the app',cells:['Yes (paid plans)',Y,N,N,Y,Y,N]},
- {label:'Calls to real phone numbers',cells:['Not yet','Zoom Phone (extra)',N,N,'Teams Phone (extra)','Google Voice (extra)',N]},
+ {label:'Video meetings in the browser',cells:[Y,Y,Y,Y,Y,Y,Y]},
+ {label:'Free plan: group meeting length',cells:['70 minutes','40 minutes','60 minutes','40 minutes','Trial only','60 minutes','60 minutes']},
+ {label:'People in one meeting on paid plans',cells:['10 to 300, the size you choose and pay for','100 (Pro)','10 to 250, by size','150 to 1,000, by plan','150 to 250, by plan','300','100 to 500, by plan']},
+ {label:'Meeting recording',cells:['Yes (paid plans)','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
+ {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)',null,'AI Assistant (paid plans)','Business plan','Needs Copilot add-on','Gemini, paid plans']},
+ {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','Zoho Mail, separate',N,N,'Outlook, separate','Gmail, separate']},
+ {label:'Whiteboard and documents',cells:[Y,Y,Y,Y,'Drawing tools','Paid plans','Separate app']},
+ {label:'Reactions, raise hand and live captions',cells:[Y,Y,null,Y,null,Y,Y]},
+ {label:'Several people sharing at once, with pointer and pen',cells:['Yes (paid plans)','Yes (host option)',null,null,null,null,null]},
+ {label:'Watch a YouTube video together, in sync',cells:['Yes (paid plans)',null,null,null,null,null,null]},
+ {label:'Take control of someone’s computer',cells:['Not yet (pointer and pen instead)',Y,Y,Y,Y,Y,null]},
+ {label:'Call another user inside the app',cells:['Yes (paid plans)',Y,null,Y,null,Y,Y]},
+ {label:'Calls to real phone numbers',cells:['Not yet','Zoom Phone (extra)',null,'Webex Calling (extra)','GoTo Connect (extra)','Teams Phone (extra)','Google Voice (extra)']},
+ {label:'Webinars and very large events',cells:['Not yet','Separate product','Separate product','Webex Webinars','GoTo Webinar (separate)','Teams Premium','Paid plans']},
 ];
 function Mark({v}:{v:Cell}){
   if(v===true)return <span className="cmp-yes" aria-label="Yes"><Check size={16}/></span>;
@@ -68,14 +69,14 @@ export function CompareSection(){
   // the cheapest way in: the lowest price on sale, over every paid plan and every size on the Pricing page (so it follows the administrator's changes)
   const opts=(['individual','business'] as const).filter(id=>live.onSale(id)).flatMap(id=>live.tiersOf(id).map(t=>({id,n:t.n,v:live.prices(id,t.n).perMonthYearly}))).filter(o=>o.v>0).sort((a,b)=>a.v-b.v);
   const best=opts[0];
-  const price:Cell[]=[best?`${money(best.v,live.currency)} a month (${best.n} people)`:'Free','US$14.16 (Pro)','US$10 (Standard)','US$15 (Teams)','Part of Microsoft 365','US$7 (Workspace Starter)','Varies'];
+  const price:Cell[]=[best?`${money(best.v,live.currency)} a month (${best.n} people)`:'Free','US$14.16 (Pro)','From US$1 (10 people)','A$17.50 (Starter)','From about US$12 (Professional)','Part of Microsoft 365','US$7 (Workspace Starter)'];
   return <section className="landing-section" id="compare"><p className="eyebrow">HOW ISIFT COMPARES</p><h2>Where iSift fits next to the tools you already know.</h2>
-    <p className="why-lead">Zoom, Teams and Meet are strongest for large meetings. Calendly and Cal.com are strongest for scheduling. PDF editors do one job well. iSift brings the everyday parts of all of them together for one person or a small team.</p>
+    <p className="why-lead">Zoom, Webex, GoTo Meeting and Teams are built for large and managed meetings, and Zoho Meeting is the closest on price. iSift brings meetings, notes, whiteboard, booking and mail together for one person or a small team, and you pay only for the number of people you need in a meeting.</p>
     <div className="cmp-wrap" role="region" aria-label="Comparison table" tabIndex={0}><table className="cmp">
       <thead><tr><th scope="col"></th>{COLS.map((c,i)=><th key={c} scope="col" className={i===0?'me':''}>{c}{SUB[i]&&<small>{SUB[i]}</small>}</th>)}</tr></thead>
       <tbody>{ROWS.map(r=><tr key={r.label}><th scope="row">{r.label}</th>{r.cells.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr>)}
         <tr><th scope="row">Paid plan from (billed yearly, per host)</th>{price.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr></tbody></table></div>
-    <p className="cmp-note">Based on each product’s published plans, checked in October 2026. Competitor prices are in US dollars; iSift’s price is in {live.currency}. Plans and features change, so check each vendor before you decide. “Separate app” means it is not part of the core product. iSift does not do webinars, very large meetings, calls to phone numbers or remote control of another computer yet.</p></section>;
+    <p className="cmp-note">Based on each product’s published plans, checked in October 2026; a dash means we could not confirm it. Competitor prices are US dollars except Webex, which is Australian dollars; iSift’s price is in {live.currency}. Plans and features change, so check each vendor before you decide. “Separate app” means it is not part of the core product. iSift does not do webinars, very large meetings, calls to phone numbers or remote control of another computer yet.</p></section>;
 }
 
 export function TrustSection(){
