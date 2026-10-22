@@ -2173,3 +2173,13 @@ def test_share_a_cloud_document_link(client):
     ws_c, c = join(client, r["code"], name="Cy"); w = read_until(c, lambda m: m["type"] == "welcome"); assert w["video"]["kind"] == "web" and w["video"]["label"] == "Google Sheet"
     a.send_json({"type": "video", "op": "stop"}); assert read_until(b, lambda m: m["type"] == "video").get("stopped") is True
     for x in (ws_c, ws_b, ws_a): x.__exit__(None, None, None)
+
+
+def test_basic_host_has_no_multi_share_or_watch_together(client, monkeypatch):
+    su = signed_up(client, monkeypatch, "basicmulti@example.com", "Bas", "Ic"); bh = {"Authorization": "Bearer " + su["access_token"]}
+    r = make(client, bh, access="open", waiting_room=False)
+    ws_h, h = join(client, r["code"], name="Host", token=su["access_token"]); w = read_until(h, lambda m: m["type"] == "welcome")
+    assert w["multi_share"] is False and w["multi_ok"] is False and w["watch_ok"] is False
+    h.send_json({"type": "multishare", "on": True}); assert "not included" in read_until(h, lambda m: m["type"] == "plan-limit")["message"]
+    h.send_json({"type": "video", "op": "load", "vid": "dQw4w9WgXcQ"}); assert "not included" in read_until(h, lambda m: m["type"] == "video-error")["message"]
+    ws_h.__exit__(None, None, None)

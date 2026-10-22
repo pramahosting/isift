@@ -466,6 +466,10 @@ async def _groups_move(state: dict, pid: str, msg: dict):
     if target not in state["peers"] or (gid and not _gmeta(state, gid)): await _send(me["ws"], {"type": "groups-error", "message": "That person or group is no longer there."}); return
     await _regroup(state, {target: gid}, "moved"); await _roster_to_hosts(state)
 
+def _multi_on(state: dict) -> bool:
+    """Several people may share at once when the host's plan includes it and the host has not switched it off."""
+    return bool(state.get("multi_ok", True) and state.get("multi_share", True))
+
 async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_host: bool, room_options: dict | None = None, user_id: str | None = None, cohost: bool = False) -> bool:
     cap = max(2, min(settings.room_max_people, state.get("max_people") or settings.room_max_people))
     if len(state["peers"]) >= cap:
@@ -481,7 +485,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
-                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": bool(state.get("multi_share", True)), "pens": dict(state.get("pen") or {})})
+                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": _multi_on(state), "multi_ok": state.get("multi_ok", True), "watch_ok": state.get("watch_ok", True), "pens": dict(state.get("pen") or {})})
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
@@ -527,6 +531,7 @@ async def room_socket(ws: WebSocket, code: str):
         if left is not None: host_lim = {**host_lim, "meeting_minutes": min(host_lim["meeting_minutes"] or left, left)}     # the meeting cannot run past the hours left this month
         state = HUB.setdefault(code, {"host_email": host_user.email, "max_people": host_lim.get("max_participants") or 0, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
+        state.update(max_people=host_lim.get("max_participants") or 0, multi_ok=bool(host_lim.get("multi_share", True)), watch_ok=bool(host_lim.get("watch_together", True)), rec_ok=bool(host_lim["recording"]))      # the host's plan as it is now: an upgrade or a lapse applies to the next person who joins
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         client = str(first.get("client") or "")[:40]
         if client:                                         # the same browser tab joining again (refresh, network drop): drop its old, dead connection first
@@ -581,7 +586,7 @@ async def room_socket(ws: WebSocket, code: str):
                 state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); want_screen = bool(msg.get("screen"))
-                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not state.get("multi_share", True) else None
+                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not _multi_on(state) else None
                 if rival:                                   # when the host has switched several shares off, one person shares at a time: the second one waits until the first stops
                     await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
                 if me.get("screen") and not want_screen: await _pen_clear(state, pid, code)     # sharing stopped: the pen goes back
@@ -598,7 +603,7 @@ async def room_socket(ws: WebSocket, code: str):
             elif t == "hand":                        # raise or lower a hand
                 me = state["peers"][pid]; me["hand"] = bool(msg.get("up"))
                 await _to_view(state, me.get("group"), {"type": "hand", "id": pid, "name": me["name"], "up": me["hand"]}, skip=pid)
-            elif t in ("pen_give", "pen_take", "pen_ask", "pointer", "draw", "draw_clear"):     # pointer and pen on someone's shared screen
+            elif t in ("pen_give", "pen_take", "pen_ask", "pointer", "draw", "draw_clear") and state.get("multi_ok", True):     # pointer and pen on someone's shared screen (a paid-plan facility)
                 me = state["peers"][pid]; sid = pid if t in ("pen_give", "pen_take") else str(msg.get("sharer") or "")
                 sh = state["peers"].get(sid); pens = state.setdefault("pen", {})
                 if not sh or not sh.get("screen") or sh.get("group") != me.get("group"): pass
@@ -620,6 +625,8 @@ async def room_socket(ws: WebSocket, code: str):
                         pts = [[max(0.0, min(1.0, float(a))), max(0.0, min(1.0, float(b)))] for a, b in (msg.get("pts") or [])[:60] if isinstance(a, (int, float)) and isinstance(b, (int, float))]
                         if pts: await _to_view(state, me.get("group"), {"type": "draw", "sharer": sid, "by": pid, "sid": str(msg.get("sid") or "")[:24], "pts": pts}, skip=pid)
                     else: await _to_view(state, me.get("group"), {"type": "draw_clear", "sharer": sid, "by": pid}, skip=pid)
+            elif t == "video" and not state.get("watch_ok", True):
+                await _send(ws, {"type": "video-error", "message": "Watching a video or document together is not included in the host's plan (Basic). Upgrade to Standard or Business."})
             elif t == "video":                       # watch a YouTube video together: the starter (or a host) loads, plays, pauses and skips for everyone
                 me = state["peers"][pid]; op = msg.get("op"); cur = state.get("video"); vid = str(msg.get("vid") or "")
                 if op == "web" and (not cur or cur["by_id"] == pid or _rank(me) >= 1):                  # a cloud document (Google Docs, Sheets, Slides, Drive, Microsoft 365, ...) shown to everyone
@@ -698,7 +705,8 @@ async def room_socket(ws: WebSocket, code: str):
                 elif t == "lock":                           # nobody new can join while the meeting is locked
                     state["locked"] = bool(msg.get("on")); await _broadcast(code, {"type": "locked", "on": state["locked"], "by": me["name"]})
                 elif t == "multishare":                     # allow several people to share at the same time (shown side by side)
-                    state["multi_share"] = bool(msg.get("on")); await _broadcast(code, {"type": "multishare", "on": state["multi_share"], "by": me["name"]})
+                    if msg.get("on") and not state.get("multi_ok", True): await _send(ws, {"type": "plan-limit", "message": "Several people sharing at once is not included in the host's plan (Basic). Upgrade to Standard or Business."})
+                    else: state["multi_share"] = bool(msg.get("on")); await _broadcast(code, {"type": "multishare", "on": _multi_on(state), "by": me["name"]})
                 elif t == "hidepics":                       # no profile letters or pictures on tiles without video
                     state["hide_pics"] = bool(msg.get("on")); await _broadcast(code, {"type": "hidepics", "on": state["hide_pics"], "by": me["name"]})
                 elif t == "tshape":                  # the host or a co-host flips the boardroom table between rectangular and round; everyone sees it
