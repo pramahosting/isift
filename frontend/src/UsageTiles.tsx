@@ -6,7 +6,9 @@ const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov',
 const fmt=(v:number,hours?:boolean)=>hours?(v%1?v.toFixed(1):String(v)):String(Math.round(v));
 const KEY='isift.usage.open';
 
-export function UsageTiles({request}:{request:(p:string)=>Promise<any>}){
+/* Where each number's details live. */
+const DEST:Record<string,[string,string]>={hours:['Meetings','Meetings and their hours'],meetings:['Meetings','Meetings you hosted'],recordings:['Meetings','Your meetings and their recordings'],pdf_edited:['Sign & Edit PDF','Your edited PDFs'],pdf_signed:['Sign & Edit PDF','Your signed PDFs'],docs_created:['WordPerfect','Your Docs'],docs_edited:['WordPerfect','Your Docs'],boards_created:['Whiteboard','Your whiteboards'],calls:['Phone','Your calls'],ai_summaries:['Meetings','Meetings with AI summaries'],storage:['WordPerfect','Documents and whiteboards using your storage']};
+export function UsageTiles({request,go}:{request:(p:string)=>Promise<any>;go?:(page:string)=>void}){
   const [s,setS]=useState<Stats|null>(null);const [err,setErr]=useState(false);
   const [open,setOpen]=useState(()=>{try{return localStorage.getItem(KEY)==='1'}catch{return false}});
   const flip=()=>setOpen(o=>{const n=!o;try{localStorage.setItem(KEY,n?'1':'0')}catch{}return n});
@@ -34,12 +36,12 @@ export function UsageTiles({request}:{request:(p:string)=>Promise<any>}){
       {!open&&s&&<span className="ut-sum"><span><b>{fmt(c.hours||0,true)}</b> h</span><span><b>{c.meetings||0}</b> meetings</span><span><b>{(c.docs_created||0)+(c.docs_edited||0)}</b> docs</span><span><b>{(c.pdf_edited||0)+(c.pdf_signed||0)}</b> PDFs</span><span><b>{c.calls||0}</b> calls</span></span>}
       <span className="ut-chev">{open?<ChevronUp size={18}/>:<ChevronDown size={18}/>}</span>
     </button>
-    {open&&(s?<div className="ut-grid">{tiles.map(t=>{const Icon=t.icon;return <div key={t.k} className={`ut-tile t-${t.tone}${t.off?' off':''}`} title={t.off?'Not in your plan':t.title}>
+    {open&&(s?<div className="ut-grid">{tiles.map(t=>{const Icon=t.icon;return <button type="button" key={t.k} className={`ut-tile t-${t.tone}${t.off?' off':''}`} title={t.off?'Not in your plan':`${t.title}: open ${DEST[t.k][1].toLowerCase()}`} onClick={()=>go?.(DEST[t.k][0])}>
       <span className="ut-ic"><Icon size={15}/></span>
       <span className="ut-num">{fmt(c[t.k]||0,t.hours)}<small>{limitNote(t.k)}{t.hours&&!limitNote(t.k)?' h':''}</small></span>
       <span className="ut-title">{t.title}{!t.off&&<em>{delta(t.k)}</em>}</span>
-    </div>})}
-      <div className="ut-tile t-slate" title="Storage used"><span className="ut-ic"><HardDrive size={15}/></span><span className="ut-num">{s.storage_used_mb}<small>{s.caps.storage_mb?` / ${s.caps.storage_mb} MB`:' MB'}</small></span><span className="ut-title">Storage</span></div>
+    </button>})}
+      <button type="button" className="ut-tile t-slate" title={`Storage used: open ${DEST.storage[1].toLowerCase()}`} onClick={()=>go?.(DEST.storage[0])}><span className="ut-ic"><HardDrive size={15}/></span><span className="ut-num">{s.storage_used_mb}<small>{s.caps.storage_mb?` / ${s.caps.storage_mb} MB`:' MB'}</small></span><span className="ut-title">Storage</span></button>
     </div>:<p className="muted small ut-load">Loading…</p>)}
     {open&&<p className="ut-note muted small">Counts are for this calendar month and start again on the 1st.</p>}
   </section>;
