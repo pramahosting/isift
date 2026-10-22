@@ -1,4 +1,5 @@
 import {getPrefs} from './prefs';
+import {InstallBanner} from './HomeWorkspace';
 import React,{useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {rememberRoom} from './Connections';
 import {Scene,ScenePicker} from './Scenes';
@@ -330,9 +331,10 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   const endMeeting=async()=>{if(!window.confirm('End this meeting? The link stops working and the meeting is cancelled.'))return;const r=await fetch(`${api}/rooms/${code}/end`,{method:'POST',headers:authH,body:JSON.stringify({cancel:true})});if(r.ok){local.current.audio?.stop();local.current.cam?.stop();onLeave()}else setErr('Could not end the meeting. Try again.')};
   const [joining,setJoining]=useState(false);const [barOn,setBarOn]=useState(true);const [fs,setFs]=useState(false);
   const [focus,setFocus]=useState(false);
-  const [selfSz,setSelfSz]=useState(()=>{try{const v=parseFloat(localStorage.getItem('isift.selfsz2')||'0');return v>=0.2&&v<=0.95?v:0}catch{return 0}});
+  useEffect(()=>{try{localStorage.removeItem('isift.selfsz2');localStorage.removeItem('isift.selfsz')}catch{}},[]);
+  const [selfSz,setSelfSz]=useState(0);   // every meeting starts at the normal full size; drag the corner handle to change it for this meeting
   useEffect(()=>{const r=document.documentElement;if(selfSz)r.style.setProperty('--selfw',`${selfSz*100}vw`);else r.style.removeProperty('--selfw');return()=>{r.style.removeProperty('--selfw')}},[selfSz]);
-  const bumpSz=(w:number)=>setSelfSz(()=>{if(w<=0){try{localStorage.removeItem('isift.selfsz2')}catch{}return 0}const n=Math.round(Math.max(0.2,Math.min(window.innerWidth>=700?0.6:0.95,w/window.innerWidth))*1000)/1000;try{localStorage.setItem('isift.selfsz2',String(n))}catch{}return n});
+  const bumpSz=(w:number)=>setSelfSz(()=>{if(w<=0)return 0;return Math.round(Math.max(0.2,Math.min(window.innerWidth>=700?0.6:0.95,w/window.innerWidth))*1000)/1000});
   useEffect(()=>()=>{try{const d:any=document;if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)}catch{}},[]);
   useEffect(()=>{if(phase==='ended'){try{const d:any=document;if(d.fullscreenElement||d.webkitFullscreenElement)(d.exitFullscreen||d.webkitExitFullscreen)?.call(d)}catch{}}},[phase]);
   const goFs=async()=>{const d:any=document,el:any=document.documentElement;const real=d.fullscreenElement||d.webkitFullscreenElement;
@@ -632,7 +634,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   if(err&&phase!=='ended'&&!info)return <div className="rm-center"><div className="rm-card"><h1>Meeting not available</h1><p>{err}</p><button className="primary" onClick={onLeave}>Back to the app</button></div></div>;
   if(phase==='ended')return <div className="rm-center"><div className="rm-card"><h1>{err?'You left the meeting':'This meeting has ended'}</h1><p>{err||endWhy||'Thanks for joining.'}</p>{pend&&<div style={{margin:'12px 0'}}><p><b>Your recording is ready.</b> {pendSaved?'Saved to this computer.':'Save it to this computer now: it is not stored anywhere else.'}</p><button className="primary" onClick={savePend}>{pendSaved?'Save again':'Save recording to this computer'}</button></div>}<button className={pend&&!pendSaved?'':'primary'} onClick={()=>{if(pend&&!pendSaved&&!window.confirm('You have not saved the recording yet. Leave without saving it?'))return;onLeave()}}>{token?'Back to the app':'Close'}</button></div></div>;
   if(!info)return <div className="rm-center"><div className="rm-card">Loading…</div></div>;
-  if(phase==='lobby')return <div className="rm-center"><div className="rm-card lobby"><button type="button" className="rm-x" aria-label="Close and leave this meeting" title="Close" onClick={()=>{leaveLocal();onLeave()}}><X size={20}/></button>
+  if(phase==='lobby')return <div className="rm-center"><div className="rm-card lobby"><button type="button" className="rm-x" aria-label="Close and leave this meeting" title="Close" onClick={()=>{leaveLocal();onLeave()}}><X size={20}/></button><InstallBanner/>
     <h1>{info.title}{info.you_are_host&&!!token&&<button type="button" className="rm-editname dark" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{const t=window.prompt('Meeting name',info.title);if(t&&t.trim())renameTo(t)}}><Pencil size={17}/></button>}</h1><p className="muted">Hosted by {info.host||'the organizer'} · {info.people_now} {info.people_now===1?'person':'people'} in the meeting</p>
     <div className="rm-preview"><VideoTile stream={localStream} name={name||'You'} muted off={!cam||!localStream?.getVideoTracks().length} self/></div>
     {mediaNote&&<p className="muted">{mediaNote}</p>}

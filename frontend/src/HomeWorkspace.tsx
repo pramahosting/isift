@@ -10,6 +10,13 @@ if(typeof window!=='undefined')window.addEventListener('beforeinstallprompt',(e:
 const standalone=()=>{try{return window.matchMedia('(display-mode: standalone)').matches||(navigator as any).standalone===true}catch{return false}};
 const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
+export function InstallBanner({text}:{text?:string}){
+  const [hide,setHide]=useState(()=>{try{return sessionStorage.getItem('isift.nobanner')==='1'}catch{return false}});const [help_,setHelp]=useState(false);const [can,setCan]=useState(!!deferred);
+  useEffect(()=>{const f=()=>setCan(true);window.addEventListener('isift:installable',f);return()=>window.removeEventListener('isift:installable',f)},[]);
+  if(standalone()||hide)return null;
+  const go=async()=>{if(deferred){try{deferred.prompt();await deferred.userChoice}catch{}deferred=null;setCan(false)}else setHelp(true)};
+  return <div className="inst-banner" role="note"><span className="inst-ic"><Download size={18}/></span><span className="inst-tx"><b>Use iSift as an app</b><small>{text||'Opens faster, remembers you, and meeting links open right in the app.'}</small></span><button type="button" className="primary" onClick={go}>{can?'Install':'How to install'}</button><button type="button" className="inst-x" aria-label="Hide this message" onClick={()=>{setHide(true);try{sessionStorage.setItem('isift.nobanner','1')}catch{}}}><X size={14}/></button>{help_&&<InstallHelp onClose={()=>setHelp(false)}/>}</div>;
+}
 export function InstallHelp({onClose}:{onClose:()=>void}){
   const ios=isIOS(),mac=/Mac/i.test(navigator.platform)&&!ios,and=/android/i.test(navigator.userAgent);
   return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="login-dialog ws-help" role="dialog" aria-modal="true" aria-label="Install iSift">

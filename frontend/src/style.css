@@ -1903,3 +1903,11 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .ws-btn .ws-nt{display:none!important}
 .ws-btn,.ws-btn.ws-more-btn{gap:4px!important;padding:10px 6px 8px!important;justify-content:flex-start!important}
 .ws-btn .ws-lb{margin-top:0;line-height:1.15;font-size:.86rem!important}
+
+.inst-banner{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid #e2d9c4;background:#fff8e4;border-radius:14px;color:#193348;font-size:.9rem}
+.inst-ic{width:34px;height:34px;border-radius:50%;background:#1f3a4d;color:#f6c344;display:grid;place-items:center;flex:none}
+.inst-tx{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.3}.inst-tx small{color:#6b5a2a}
+.inst-banner .primary{flex:none;padding:8px 14px;border-radius:999px;font-size:.85rem}
+.inst-x{flex:none;border:0;background:none;cursor:pointer;color:#6b5a2a;padding:4px}
+@media(max-width:420px){.inst-banner{flex-wrap:wrap}.inst-tx{flex:1 1 60%}}
+.rm-card.lobby .inst-banner{margin-top:40px}
