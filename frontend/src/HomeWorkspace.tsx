@@ -13,7 +13,10 @@ const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platfo
 export function InstallBanner({text}:{text?:string}){
   const [hide,setHide]=useState(()=>{try{return sessionStorage.getItem('isift.nobanner')==='1'}catch{return false}});const [help_,setHelp]=useState(false);const [can,setCan]=useState(!!deferred);
   useEffect(()=>{const f=()=>setCan(true);window.addEventListener('isift:installable',f);return()=>window.removeEventListener('isift:installable',f)},[]);
+  const [have,setHave]=useState(false);
+  useEffect(()=>{try{(navigator as any).getInstalledRelatedApps?.().then((l:any[])=>{if(l&&l.length)setHave(true)}).catch(()=>{})}catch{}},[]);
   if(standalone()||hide)return null;
+  if(have){const m=location.hash.match(/^#\/room\/([A-Za-z0-9]+)/);return <div className="inst-banner" role="note"><span className="inst-ic"><Download size={18}/></span><span className="inst-tx"><b>iSift is installed on this device</b><small>Open this meeting in the app for the best experience.</small></span>{m&&<a className="primary" style={{textDecoration:'none',display:'inline-grid',placeItems:'center'}} href={`web+isift://room/${m[1]}`}>Open in iSift app</a>}<button type="button" className="inst-x" aria-label="Hide this message" onClick={()=>{setHide(true);try{sessionStorage.setItem('isift.nobanner','1')}catch{}}}><X size={14}/></button></div>}
   const go=async()=>{if(deferred){try{deferred.prompt();await deferred.userChoice}catch{}deferred=null;setCan(false)}else setHelp(true)};
   return <div className="inst-banner" role="note"><span className="inst-ic"><Download size={18}/></span><span className="inst-tx"><b>Use iSift as an app</b><small>{text||'Opens faster, remembers you, and meeting links open right in the app.'}</small></span><button type="button" className="primary" onClick={go}>{can?'Install':'How to install'}</button><button type="button" className="inst-x" aria-label="Hide this message" onClick={()=>{setHide(true);try{sessionStorage.setItem('isift.nobanner','1')}catch{}}}><X size={14}/></button>{help_&&<InstallHelp onClose={()=>setHelp(false)}/>}</div>;
 }

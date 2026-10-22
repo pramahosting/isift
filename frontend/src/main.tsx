@@ -28,7 +28,13 @@ async function handedOver():Promise<boolean>{
     const f=(e:MessageEvent)=>{const m=e.data||{};if(m.type==='taken'&&m.to===TAB_ID){clearTimeout(to);chan!.removeEventListener('message',f);res(true)}};
     chan!.addEventListener('message',f);chan!.postMessage({type:'open',hash:location.hash,from:TAB_ID})})
 }
+function protocolLaunch(){
+  try{const u=new URLSearchParams(location.search).get('isift');if(!u)return;
+    const m=decodeURIComponent(u).match(/^web\+isift:\/*room\/([A-Za-z0-9]+)/i);
+    history.replaceState(null,'',location.pathname+(m?'#/room/'+m[1]:''))}catch{}
+}
 async function start(){
+ protocolLaunch();
  if(await handedOver()){
   document.body.innerHTML='<div style="font-family:system-ui,sans-serif;max-width:420px;margin:18vh auto;padding:0 20px;text-align:center;color:#193348"><h2>Your meeting is open in your other iSift tab</h2><p>Switch to that tab to continue. You can close this one.</p></div>';
   try{window.close()}catch{}
