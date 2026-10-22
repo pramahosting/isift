@@ -301,9 +301,13 @@ export function SignEdit({request,requestUp,notify,userId}:{request:any;requestU
   const onSig=async(s:Sig,keep:boolean,name:string)=>{setSig(s);setPad(false);if(pend){placeSig(s,pend);setPend(null)}else setTool('sign');if(keep){try{const r=await request('/docedit/signatures',{method:'POST',body:JSON.stringify({name,png:s.png})});setSig(r);loadSaved();notify('Signature saved for future use.')}catch(e:any){setErr(e.message)}}};
   const delSig=async(s:Sig)=>{if(!window.confirm('Delete this saved signature?'))return;try{await request('/docedit/signatures/'+s.id,{method:'DELETE'});if(sig?.id===s.id)setSig(null);loadSaved()}catch(e:any){setErr(e.message)}};
   const reset=()=>{if(ops.length&&!window.confirm('You have changes that are not applied yet. Leave without applying them?'))return;setCur(null);setOps([]);setApplied(0);setErr('');setDocId('');setCertOpen(false);setPad(false);loadHist()};
-  const openRec=async(m:Meta)=>{setErr('');setBusy('Opening your file…');try{const b=await histBlobs(uidk,m.id);if(!b)throw new Error('That file is no longer stored in this browser.');
-      const info=await request('/docedit/inspect',{method:'POST',body:JSON.stringify({name:m.name,data:b.cur})});
-      const d:Doc={name:m.name,kind:m.kind,b64:b.cur,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(m.applied);resetHist(d,e0,m.applied);setTool('text');setDocId(m.id)}catch(e:any){setErr(e.message)}setBusy('')};
+  const openRec=async(m:Meta)=>{setErr('');const tok=++upTok.current;setBusy('Opening your file…');setUp({name:m.name,size:m.size,pct:0,label:'Reading the saved file…'});
+    try{const b=await histBlobs(uidk,m.id);if(!b)throw new Error('That file is no longer stored in this browser.');if(tok!==upTok.current)return;setUp(u=>u&&{...u,pct:15,label:'Uploading…'});
+      const body=JSON.stringify({name:m.name,data:b.cur});const send=requestUp||(async(path:string,bd:string)=>request(path,{method:'POST',body:bd}));
+      const info=await send('/docedit/inspect',body,(sent:number,total:number,phase:string)=>{if(tok!==upTok.current)return;setUp(u=>u&&(phase==='wait'?{...u,pct:90,label:'Processing the pages…'}:{...u,pct:15+Math.round(sent/total*73),label:'Uploading…'}))});
+      if(tok!==upTok.current)return;setUp(u=>u&&{...u,pct:100,label:'Done'});
+      const d:Doc={name:m.name,kind:m.kind,b64:b.cur,info};const e0:Op[]=[];setCur(d);setOps(e0);setApplied(m.applied);resetHist(d,e0,m.applied);setTool('text');setDocId(m.id)}catch(e:any){if(tok===upTok.current)setErr(e.message)}
+    if(tok===upTok.current){setUp(null);setBusy('')}};
   const getRec=async(m:Meta)=>{try{const b=await histBlobs(uidk,m.id);if(b)saveFile(b.cur,m.kind,m.name)}catch(e:any){setErr(e.message)}};
   const delRec=async(m:Meta)=>{if(!window.confirm('Remove "'+m.name+'" from your list? The copy kept in this browser is deleted.'))return false;await histDelete(uidk,m.id);loadHist();return true};
   const pdf=cur?.kind==='pdf';const sigs:any[]=(cur?.info?.signatures)||[];const signed=sigs.length>0;const changed=ops.length>0;const note=pdf?'Click existing text to edit it in place, or click an empty spot to add new text. Drag the blue handle to move it.':'Use the buttons beside each paragraph.';
