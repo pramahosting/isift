@@ -1682,3 +1682,5 @@ html.in-room,html.in-room body{overscroll-behavior:none;overflow:hidden;height:1
 @media(max-width:800px){.rm-spot.sz1 .rm-spot-strip{width:auto!important;height:110px!important}.rm-spot.sz1 .rm-spot-strip .rm-wrap{width:150px!important;height:100%!important}.rm-spot.sz2 .rm-spot-strip{width:auto!important;height:150px!important}.rm-spot.sz2 .rm-spot-strip .rm-wrap{width:210px!important;height:100%!important}}
 .rm-watch-frame{position:absolute;inset:0 0 28px 0;width:100%;height:calc(100% - 28px);border:0;background:#fff}.rm-watch-hint{position:absolute;left:0;right:0;bottom:0;margin:0;padding:5px 12px;font-size:11px;color:#9fb0cc;background:#0b1220;line-height:1.3}
 .rm-watch-open{display:inline-flex;align-items:center;background:#243049;color:#fff;border-radius:8px;padding:6px 10px;font-size:13px;text-decoration:none}
+
+.rm-tapsound{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;background:#e5484d;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer}

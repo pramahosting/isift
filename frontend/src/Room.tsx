@@ -12,7 +12,7 @@ import {PenLine,ZoomIn,ZoomOut,Pencil,Image as ImageIcon,Maximize,Minimize,Chevr
 import {Tool,ToolButton,MoreMenu,ReactMenu,FloatingReactions,CaptionsBar,HostMenu,loadPins,savePins,Floater,CapLine} from './MeetingTools';
 let HIDE_PICS=false;   // set while the meeting screen draws: tiles without video then show no letter or picture
 
-type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStream;mic:boolean;cam:boolean;screen:boolean;hand?:boolean};
+type Peer={id:string;name:string;host?:boolean;cohost?:boolean;stream:MediaStream;shot?:MediaStream;mic:boolean;cam:boolean;screen:boolean;hand?:boolean};
 const wsUrl=(api:string,code:string)=>{const base=api.startsWith('http')?api:location.origin+api;return base.replace(/^http/,'ws')+`/ws/rooms/${code}`};
 
 // Seat positions (percent of the room) for n people around the table. Index 0 is "you", at the bottom, so everyone sees themselves nearest.
@@ -94,7 +94,8 @@ function ZoomPane({children,resetKey}:{children:React.ReactNode;resetKey:string}
 }
 // Phones and tablets: ask for the front camera in its own natural shape (upright when held upright) instead of a fixed 16:9 landscape picture, which phones crop or turn sideways.
 const isTouchDevice=()=>{try{return window.matchMedia('(pointer: coarse)').matches&&!window.matchMedia('(hover: hover)').matches}catch{return false}};
-const phoneCam=():MediaTrackConstraints=>isTouchDevice()?{facingMode:'user',height:{ideal:720},frameRate:{ideal:24,max:30}}:{width:{ideal:1280,max:1280},height:{ideal:720,max:720},frameRate:{ideal:24,max:30}};
+const weakPc=():boolean=>{const n=navigator as any;return (n.deviceMemory&&n.deviceMemory<=4)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4)};     // an older computer: a smaller picture keeps it from choking while it also decodes everyone else
+const phoneCam=():MediaTrackConstraints=>isTouchDevice()?{facingMode:'user',height:{ideal:720},frameRate:{ideal:24,max:30}}:weakPc()?{width:{ideal:640,max:640},height:{ideal:360,max:360},frameRate:{ideal:20,max:24}}:{width:{ideal:1280,max:1280},height:{ideal:720,max:720},frameRate:{ideal:24,max:30}};
 /** The person sharing a PDF scrolls it by dragging up and down or with the mouse wheel on the picture: everyone sees the page move. */
 function DocScroll({fs}:{fs:{scrollBy?:(dy:number)=>void;width?:number;height?:number}}){
   const me=useRef<HTMLSpanElement>(null);
@@ -120,14 +121,15 @@ function useSingleVoice(stream:MediaStream|null,muted?:boolean):boolean{
   return loud;
 }
 function VideoTile({stream,name,muted,off,host,cohost,screen,self,speaking,plate,onDouble,hand}:{hand?:boolean;onDouble?:()=>void;stream:MediaStream|null;name:string;muted?:boolean;off?:boolean;host?:boolean;cohost?:boolean;screen?:boolean;self?:boolean;speaking?:boolean;plate?:boolean}){
-  const ref=useRef<HTMLVideoElement>(null);const [portrait,setPortrait]=useState(false);const loud=useSingleVoice(stream,muted);
-  useEffect(()=>{const v=ref.current;if(v)v.muted=!loud},[loud]);
+  const ref=useRef<HTMLVideoElement>(null);const [portrait,setPortrait]=useState(false);const [blocked,setBlocked]=useState(false);const loud=useSingleVoice(stream,muted);
+  useEffect(()=>{const v=ref.current;if(!v)return;v.muted=!loud;if(loud)v.play().then(()=>setBlocked(false)).catch(()=>setBlocked(true))},[loud]);
   useEffect(()=>{const v=ref.current;if(v&&v.srcObject!==stream){v.srcObject=stream;v.play().catch(()=>{})}},[stream]);
   useEffect(()=>{const v=ref.current;if(!v)return;const f=()=>setPortrait(v.videoHeight>v.videoWidth&&v.videoWidth>0);f();v.addEventListener('loadedmetadata',f);v.addEventListener('resize',f);return()=>{v.removeEventListener('loadedmetadata',f);v.removeEventListener('resize',f)}},[stream]);   // an upright phone picture is shown whole and centred, never cropped
   return <div className={`rm-tile${self?' self':''}${portrait&&!screen?' portrait':''}${screen?' scr':''}${speaking?' speaking':''}`} data-name={name} onDoubleClick={onDouble} title={onDouble?'Double-click to highlight':undefined}>
     <video ref={ref} autoPlay playsInline muted className={off?'hidden':''}/>
     {speaking&&<span className="rm-talk" title="Speaking" aria-label="Speaking"><Mic size={14}/></span>}
     {off&&!HIDE_PICS&&<div className="rm-avatar">{(name||'?').trim().charAt(0).toUpperCase()}</div>}
+    {blocked&&<button type="button" className="rm-tapsound" onClick={()=>{ref.current?.play().then(()=>setBlocked(false)).catch(()=>{})}}>Tap to hear</button>}
     {hand&&<span className="rm-handtag" title="Hand raised" aria-label="Hand raised">✋</span>}
     {!plate&&<span className="rm-name">{name}{self?' (you)':''}{host?(cohost?' · co-host':' · host'):''}{screen?' · sharing':''}</span>}
   </div>;
@@ -150,7 +152,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   const [notice,setNotice]=useState('');const [canRec,setCanRec]=useState(true);const [endWarn,setEndWarn]=useState<{at:number;msg:string}|null>(null);const [endNow,setEndNow]=useState(0);const [endWhy,setEndWhy]=useState('');useEffect(()=>{if(!endWarn)return;const id=setInterval(()=>setEndNow(Date.now()),1000);return()=>clearInterval(id)},[endWarn]);const [localStream,setLocalStream]=useState<MediaStream|null>(null);const [mediaNote,setMediaNote]=useState('');
   const ws=useRef<WebSocket|null>(null);const pcs=useRef<Record<string,RTCPeerConnection>>({});const pendIce=useRef<Record<string,any[]>>({});const sigQ=useRef<Record<string,Promise<any>>>({});const myId=useRef('');
   const local=useRef<{audio?:MediaStreamTrack;mixed?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
-  const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});
+  const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});const peerShots=useRef<Record<string,MediaStream>>({});
   const sfuRef=useRef<SfuClient|null>(null);const sfuOnRef=useRef(false);const [sfuOn,setSfuOn]=useState(false);const [stage,setStage]=useState<string[]>([]);const stageRef=useRef<string[]>([]);const sfuInfo=useRef<Record<string,any>>({});const resubT=useRef<any>(null);
   const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
   const rec=useRef<any>(null);const wasRecording=useRef(false);
@@ -233,27 +235,32 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
     const pc=new RTCPeerConnection({iceServers:iceRef.current});pcs.current[id]=pc;
     peerStreams.current[id]=peerStreams.current[id]||new MediaStream();
     pc.onicecandidate=e=>{if(e.candidate)send({type:'signal',to:id,data:{candidate:e.candidate}})};
-    pc.ontrack=e=>{const s=peerStreams.current[id];if(!s.getTracks().includes(e.track))s.addTrack(e.track);upsert(id,{stream:s});e.track.onunmute=()=>upsert(id,{});recorderRefresh()};
+    pc.ontrack=e=>{const vt=pc.getTransceivers().filter(x=>x.receiver.track.kind==='video');const isShot=e.track.kind==='video'&&vt.length>1&&vt.indexOf(e.transceiver)===1;     // the second video line carries a shared screen; the first carries the camera
+      const s=isShot?(peerShots.current[id]=peerShots.current[id]||new MediaStream()):peerStreams.current[id];if(!s.getTracks().includes(e.track))s.addTrack(e.track);upsert(id,isShot?{shot:s}:{stream:s});e.track.onunmute=()=>upsert(id,{});recorderRefresh()};
     let retried=0,t:any=null;
     const restart=async()=>{if(retried++>=3||pc.signalingState!=='stable')return;try{const o=await pc.createOffer({iceRestart:true});await pc.setLocalDescription(o);send({type:'signal',to:id,data:{sdp:pc.localDescription}})}catch{}};
     pc.oniceconnectionstatechange=()=>{clearTimeout(t);if(pc.iceConnectionState==='disconnected')t=setTimeout(restart,4000);else if(pc.iceConnectionState==='failed')restart();else if(pc.iceConnectionState==='connected'||pc.iceConnectionState==='completed'){retried=0;tuneSenders()}};
     pc.onconnectionstatechange=()=>{if(pc.connectionState==='failed')setNotice('Could not connect video and sound to another person on this network. Ask the administrator to set up a TURN relay (Admin Console, Video meetings).')};
+    (pc as any).kick=restart;
     return pc;
   };
   const tuneSenders=()=>{      // fewer bits per person as the room grows, so everyone's video and sound stay smooth
     const list=Object.values(pcs.current),n=list.length;
     const kbps=n<=1?2500:n<=2?1500:n<=3?1000:n<=6?500:250,scale=n<=2?1:n<=3?1.33:n<=6?2:3;
-    for(const pc of list)for(const tx of pc.getSenders()){if(tx.track?.kind!=='video')continue;try{const p=tx.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];p.encodings[0].maxBitrate=kbps*1000;p.encodings[0].scaleResolutionDownBy=scale;p.encodings[0].maxFramerate=n>6?15:24;(p as any).degradationPreference='balanced';tx.setParameters(p).catch(()=>{})}catch{}}
+    for(const pc of list)for(const tx of pc.getSenders()){if(tx.track?.kind!=='video')continue;try{const vt=pc.getTransceivers().filter(x=>x.receiver.track.kind==='video'),isShot=vt.length>1&&vt[1].sender===tx;const p=tx.getParameters();if(!p.encodings||!p.encodings.length)p.encodings=[{}];p.encodings[0].maxBitrate=(isShot?Math.max(kbps,1200):Math.min(kbps,vt.length>1?900:kbps))*1000;p.encodings[0].scaleResolutionDownBy=isShot?1:scale;p.encodings[0].maxFramerate=n>6?15:24;(p as any).degradationPreference='balanced';tx.setParameters(p).catch(()=>{})}catch{}}
   };
   const attachLocal=async(pc:RTCPeerConnection)=>{
+    const L=local.current,two=pc.getTransceivers().filter(x=>x.receiver.track.kind==='video').length>1,share=L.video&&L.video!==L.cam?L.video:null;let vi=0;
     for(const tx of pc.getTransceivers()){
       const kind=tx.receiver.track.kind;tx.direction='sendrecv';
-      const t=kind==='audio'?(local.current.mixed||local.current.audio):local.current.video;if(t)await tx.sender.replaceTrack(t);
+      let t:MediaStreamTrack|null|undefined;
+      if(kind==='audio')t=L.mixed||L.audio;else{const i=vi++;t=!two?L.video:i===0?L.cam:share}     // two video lines: the camera keeps going while a screen is shared on the other
+      await tx.sender.replaceTrack(t||null);
     }
     tuneSenders();
   };
   const callPeer=async(id:string)=>{ // we are the newcomer: we send the offer
-    const pc=makePc(id);pc.addTransceiver('audio',{direction:'sendrecv'});pc.addTransceiver('video',{direction:'sendrecv'});
+    const pc=makePc(id);pc.addTransceiver('audio',{direction:'sendrecv'});pc.addTransceiver('video',{direction:'sendrecv'});pc.addTransceiver('video',{direction:'sendrecv'});
     await attachLocal(pc);const offer=await pc.createOffer();await pc.setLocalDescription(offer);send({type:'signal',to:id,data:{sdp:pc.localDescription}});
   };
   const onSignalNow=async(from:string,data:any)=>{
@@ -266,15 +273,29 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
       if(pc.remoteDescription){try{await pc.addIceCandidate(data.candidate)}catch{}}else(pendIce.current[from]=pendIce.current[from]||[]).push(data.candidate);
     }
   };
+  // Frozen-picture watchdog: a person whose camera is on but whose video has stopped arriving gets their connection refreshed (the person with the lower id re-offers, so both sides never do it at once)
+  const stall=useRef<Record<string,{b:number;n:number}>>({});
+  useEffect(()=>{const iv=setInterval(async()=>{for(const [id,pc] of Object.entries(pcs.current)){
+    const pr=peersRef.current[id];if(!pr||!pr.cam||pr.screen||pc.connectionState!=='connected')continue;
+    try{let bytes=-1;(await pc.getStats()).forEach((r:any)=>{if(r.type==='inbound-rtp'&&r.kind==='video'&&r.bytesReceived>bytes&&!r.trackIdentifier?.includes('screen'))bytes=Math.max(bytes,r.bytesReceived)});
+      const st=stall.current[id]||(stall.current[id]={b:-1,n:0});if(bytes<0)continue;if(bytes>st.b+2000){st.b=bytes;st.n=0}else st.n++;
+      if(st.n>=4){st.n=0;if((myId.current||'')<id)(pc as any).kick?.()}}catch{}}},3000);return()=>clearInterval(iv)},[]);
+  // When the last share ends, every picture is re-attached so all cameras are running again exactly as before the share
+  const anyShare=screen||Object.values(peers).some(p=>p.screen);const wasShare=useRef(false);
+  useEffect(()=>{if(wasShare.current&&!anyShare){
+    for(const id of Object.keys(peerStreams.current)){const o=peerStreams.current[id];peerStreams.current[id]=new MediaStream(o.getTracks());upsert(id,{stream:peerStreams.current[id]})}
+    setLocalStream(l=>l?new MediaStream(l.getTracks()):l);
+    tuneSenders();
+  }wasShare.current=anyShare},[anyShare]);
   const onSignal=(from:string,data:any)=>{sigQ.current[from]=(sigQ.current[from]||Promise.resolve()).then(()=>onSignalNow(from,data)).catch(()=>{})};     // one message at a time per person, in order
-  const dropPeer=(id:string)=>{delete sfuInfo.current[id];pcs.current[id]?.close();delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id];setTimeout(()=>tuneSenders(),0);delete peerStreams.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
+  const dropPeer=(id:string)=>{delete sfuInfo.current[id];pcs.current[id]?.close();delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id];setTimeout(()=>tuneSenders(),0);delete peerStreams.current[id];delete peerShots.current[id];setPeers(p=>{const n={...p};delete n[id];return n});recorderRefresh()};
   // ---- big meetings: everyone sends once to the Cloudflare video server; we receive the people on stage ----
   const resub=()=>{clearTimeout(resubT.current);resubT.current=setTimeout(()=>{const c=sfuRef.current;if(!c)return;c.subscribe(stageRef.current.filter(id=>id!==myId.current&&sfuInfo.current[id])).catch(e=>{if(e?.message!=='closed')setNotice(e?.message||'Could not receive video from the meeting.')})},400)};
   const enterSfu=async()=>{
     if(sfuOnRef.current)return;sfuOnRef.current=true;setSfuOn(true);
     Object.keys(pcs.current).forEach(id=>{try{pcs.current[id].close()}catch{}delete pcs.current[id];delete pendIce.current[id];delete sigQ.current[id]});     // direct connections give way to the video server
-    for(const id of Object.keys(peerStreams.current))peerStreams.current[id]=new MediaStream();
-    setPeers(p=>{const n:Record<string,Peer>={};for(const id in p)n[id]={...p[id],stream:peerStreams.current[id]};return n});
+    for(const id of Object.keys(peerStreams.current)){peerStreams.current[id]=new MediaStream();delete peerShots.current[id]}
+    setPeers(p=>{const n:Record<string,Peer>={};for(const id in p)n[id]={...p[id],stream:peerStreams.current[id],shot:undefined};return n});
     const c=new SfuClient(send,(id,st)=>{peerStreams.current[id]=st||new MediaStream();upsert(id,{stream:peerStreams.current[id]});recorderRefresh()});sfuRef.current=c;
     setNotice('This is a big meeting, so video now goes through our video server. Speakers, people sharing and the host are shown; everyone is in the Participants list.');
     try{await c.publish(local.current.mixed||local.current.audio,local.current.video)}catch(e:any){if(e?.message!=='closed')setNotice(e?.message||'Could not connect to the video server for this big meeting.')}
@@ -372,7 +393,18 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   // ---- controls ----
   const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};
   const toggleCam=()=>{const t=local.current.cam;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.video){setNotice('The host has not allowed participants to start their video. Ask the host.');return}t.enabled=!t.enabled;setCam(t.enabled);send({type:'state',mic:!!local.current.audio?.enabled,cam:t.enabled,screen})};
-  const replaceVideo=async(track?:MediaStreamTrack)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='video');if(tx)await tx.sender.replaceTrack(track||null)}await sfuRef.current?.replaceVideo(track||null,!!track&&track!==local.current.cam).catch(()=>{})};
+  const replaceVideo=async(track?:MediaStreamTrack)=>{
+    const cam=local.current.cam,isCam=!track||track===cam;
+    for(const pc of Object.values(pcs.current)){
+      const vt=pc.getTransceivers().filter(x=>x.receiver.track.kind==='video');
+      try{
+        if(vt.length>1){await vt[0].sender.replaceTrack(cam||null);await vt[1].sender.replaceTrack(isCam?null:track!)}     // camera stays on the first line, the screen goes on the second
+        else if(vt[0])await vt[0].sender.replaceTrack(track||null);
+      }catch{}
+    }
+    await sfuRef.current?.replaceVideo(track||null,!!track&&track!==local.current.cam).catch(()=>{});
+    tuneSenders();
+  };
   const [bg,setBg]=useState<BgMode>(loadSaved);const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const [bgSel,setBgSel]=useState<BgMode>(()=>loadSaved());const openBg=()=>{setBgSel(bg);setBgOpen(true)};const bgInit=useRef(false);
   // Sound of a shared browser tab (a video, a recording): mixed with the microphone and sent on the same audio line, so there is nothing extra to connect. Muting the microphone still leaves the tab's sound on.
   const tabAud=useRef<{ctx:AudioContext;track:MediaStreamTrack}|null>(null);
@@ -395,7 +427,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
     try{rc.start()}catch{}
     return()=>{run=false;try{rc.onend=null;rc.stop()}catch{}}},[capsActive,mic,phase]);
   useEffect(()=>{if(!capsView)return;const iv=setInterval(()=>setCapLines(L=>{const f=L.filter(l=>Date.now()-l.at<9000);return f.length===L.length?L:f}),1500);return()=>clearInterval(iv)},[capsView]);
-  const swapCam=async(nt:MediaStreamTrack)=>{const L=local.current,old=L.cam,en=old?old.enabled!==false:true,sharing=!!L.video&&L.video!==old;nt.enabled=en;L.cam=nt;if(!sharing){L.video=nt;await replaceVideo(nt)}setLocalStream(new MediaStream([...(L.audio?[L.audio]:[]),nt]))};
+  const swapCam=async(nt:MediaStreamTrack)=>{const L=local.current,old=L.cam,en=old?old.enabled!==false:true,sharing=!!L.video&&L.video!==old;nt.enabled=en;L.cam=nt;if(!sharing){L.video=nt;await replaceVideo(nt)}else for(const pc of Object.values(pcs.current)){const vt=pc.getTransceivers().filter(x=>x.receiver.track.kind==='video');if(vt.length>1)try{await vt[0].sender.replaceTrack(nt)}catch{}}setLocalStream(new MediaStream([...(L.audio?[L.audio]:[]),nt]))};
   const applyBg=async(m:BgMode)=>{
     setBg(m);saveBg(m);const L=local.current,raw=L.raw;if(!raw)return;
     if(m.kind==='none'){const p=L.proc;if(p){L.proc=undefined;await swapCam(raw);p.stop()}setBgBusy(false);return}
@@ -586,15 +618,15 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   if(phase==='waiting')return <div className="rm-center"><div className="rm-card"><h1>Waiting for the host</h1><p>The host will let you in shortly. You can leave this page at any time.</p><button className="secondary" onClick={()=>{ws.current?.close();onLeave()}}>Cancel</button></div></div>;
   const everyone=Object.values(peers);const list=sfuOn?everyone.filter(p=>stage.includes(p.id)):everyone;const tiles=list.length+1;const total=everyone.length+1;
   const rankOf=(h?:boolean,c?:boolean)=>!h?0:c?1:2;const myRank=rankOf(isHost,cohost);const primary=myRank===2;
-  type Row={id:string;self?:boolean;name:string;host?:boolean;cohost?:boolean;mic:boolean;cam:boolean;screen:boolean;stream:MediaStream|null;hand?:boolean};
-  const ordered:Row[]=[{id:'__me',self:true,name:name||'You',host:isHost,cohost,mic,cam,screen,stream:localStream,hand:myHand},...list.map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:p.stream||null,hand:p.hand}))]
+  type Row={id:string;self?:boolean;name:string;host?:boolean;cohost?:boolean;mic:boolean;cam:boolean;screen:boolean;stream:MediaStream|null;shot?:MediaStream|null;hand?:boolean};
+  const ordered:Row[]=[{id:'__me',self:true,name:name||'You',host:isHost,cohost,mic,cam,screen,stream:localStream,hand:myHand},...list.map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:p.stream||null,shot:p.shot||null,hand:p.hand}))]
     .map((r,i)=>({r,i})).sort((a,b)=>rankOf(b.r.host,b.r.cohost)-rankOf(a.r.host,a.r.cohost)||a.i-b.i).map(x=>x.r);     // the host first, then co-hosts, then everyone else
   const orderedAll:Row[]=sfuOn?[...ordered,...everyone.filter(p=>!stage.includes(p.id)).map(p=>({id:p.id,name:p.name,host:p.host,cohost:p.cohost,mic:p.mic,cam:p.cam,screen:p.screen,stream:null}))]:ordered;
   const viewRows=(()=>{const v=ordered.filter(r=>!(hideSelf&&r.self)&&!(hideNoVideo&&!r.self&&!r.cam&&!r.screen));return v.length?v:ordered})();
   const curG=group?.id||'main';const sharing=ordered.some(r=>r.screen);
   const sharerRow=ordered.find(r=>r.screen);const autoShare=!pin&&!!sharerRow;const pinnedRow=pin?ordered.find(r=>r.id===pin):sharerRow;       // someone is sharing: their screen takes the big space and everyone else shrinks to the strip
   const selfStream=screen&&screenStream?screenStream:localStream;const togglePin=(id:string)=>setPin(p=>p===id?'':id);
-  const spotTile=(r:Row)=>r.self?<VideoTile stream={selfStream} name={r.name} muted off={!cam&&!screen} self host={isHost} cohost={cohost} screen={screen} speaking={speaking==='__me'} hand={myHand} onDouble={()=>togglePin('__me')}/>:<VideoTile stream={r.stream} name={r.name} off={!r.cam&&!r.screen} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===r.id} hand={r.hand} onDouble={()=>togglePin(r.id)}/>;
+  const spotTile=(r:Row,big?:boolean)=>r.self?<VideoTile stream={big?selfStream:(localStream||selfStream)} name={r.name} muted off={big?(!cam&&!screen):!cam} self host={isHost} cohost={cohost} screen={big&&screen} speaking={speaking==='__me'} hand={myHand} onDouble={()=>togglePin('__me')}/>:<VideoTile stream={big&&r.screen&&r.shot?r.shot:r.stream} name={r.name} off={big?(!r.cam&&!r.screen):(!r.cam&&!(r.screen&&!r.shot))} host={r.host} cohost={r.cohost} screen={big&&r.screen} speaking={speaking===r.id} hand={r.hand} onDouble={()=>togglePin(r.id)}/>;
   const whoName=(id:string)=>id===myId.current?(name||'You'):((peers as any)[id]?.name||'Someone');
   const penFor=(r:Row)=>{if(!r.screen)return null;const sid=r.self?(myId.current||''):r.id;if(!sid)return null;return <SharePen key={'pen'+sid} sharer={sid} isSharer={!!r.self} holder={pens[sid]||''} holderName={pens[sid]?whoName(pens[sid]):''} myId={myId.current||''} candidates={ordered.filter(x=>!x.self&&x.id!==sid).map(x=>({id:x.id,name:x.name}))} ink={inks[sid]||[]} pointers={Object.values(pointers[sid]||{}).filter(p=>p.by!==myId.current)} send={send} onLocalInk={(k,pts)=>addInk(sid,k,myId.current||'',pts)} onClear={()=>setInks(o=>({...o,[sid]:[]}))} onAsked={()=>setNotice('Asked '+r.name+' for the pen.')}/>};
   const sharerRows=ordered.filter(r=>r.screen);const multiMode=!pin&&sharerRows.length>1;
@@ -615,7 +647,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
     const chunk=(a:Row[],n:number)=>{const o:Row[][]=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o};
     const me=viewRows.find(r=>r.self)||viewRows[0];const rest=viewRows.filter(r=>r!==me);const pages:JSX.Element[]=[];
     if(pinnedRow&&(pinnedRow.screen||multiMode)){
-      (multiMode?sharerRows:[pinnedRow]).forEach(sr=>{      pages.push(<div key={"share"+sr.id} className="rm-page rm-pg-share"><div className="rm-spot-main"><ZoomPane resetKey={sr.id}>{spotTile(sr)}</ZoomPane>{sr.self&&screen&&(shareBarHidden?<button type="button" className="rm-sharepill" onClick={()=>setShareBarHidden(false)} aria-label="Show sharing bar"><MonitorUp size={14}/> Sharing <ChevronUp size={14}/></button>:<div className="rm-sharebar" role="status"><MonitorUp size={16}/><span>You are sharing{filePg&&filePg.of>1?` · page ${filePg.n}/${filePg.of}`:''}</span>{filePg&&filePg.of>1&&<><button type="button" className="iconbtn" onClick={()=>filePage(-1)} aria-label="Previous page" disabled={filePg.n<=1}><ChevronUp size={16}/></button><button type="button" className="iconbtn" onClick={()=>filePage(1)} aria-label="Next page" disabled={filePg.n>=filePg.of}><ChevronDown size={16}/></button></>}<button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button><button type="button" className="iconbtn" onClick={()=>setShareBarHidden(true)} aria-label="Hide sharing bar" title="Hide"><ChevronDown size={16}/></button></div>)}{!(sr.self&&screen)&&<div className="rm-spot-tag"><b>{autoShare?`${sr.self?'You are':sr.name+' is'} sharing ${sr.self?'your':'their'} screen`:`Highlighted: ${sr.name}${sr.self?' (you)':''}`}</b>{!autoShare&&<button type="button" onClick={()=>setPin('')}>Back to everyone</button>}</div>}{sr.self&&docScroll}{penFor(sr)}</div></div>);});
+      (multiMode?sharerRows:[pinnedRow]).forEach(sr=>{      pages.push(<div key={"share"+sr.id} className="rm-page rm-pg-share"><div className="rm-spot-main"><ZoomPane resetKey={sr.id}>{spotTile(sr,true)}</ZoomPane>{sr.self&&screen&&(shareBarHidden?<button type="button" className="rm-sharepill" onClick={()=>setShareBarHidden(false)} aria-label="Show sharing bar"><MonitorUp size={14}/> Sharing <ChevronUp size={14}/></button>:<div className="rm-sharebar" role="status"><MonitorUp size={16}/><span>You are sharing{filePg&&filePg.of>1?` · page ${filePg.n}/${filePg.of}`:''}</span>{filePg&&filePg.of>1&&<><button type="button" className="iconbtn" onClick={()=>filePage(-1)} aria-label="Previous page" disabled={filePg.n<=1}><ChevronUp size={16}/></button><button type="button" className="iconbtn" onClick={()=>filePage(1)} aria-label="Next page" disabled={filePg.n>=filePg.of}><ChevronDown size={16}/></button></>}<button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button><button type="button" className="iconbtn" onClick={()=>setShareBarHidden(true)} aria-label="Hide sharing bar" title="Hide"><ChevronDown size={16}/></button></div>)}{!(sr.self&&screen)&&<div className="rm-spot-tag"><b>{autoShare?`${sr.self?'You are':sr.name+' is'} sharing ${sr.self?'your':'their'} screen`:`Highlighted: ${sr.name}${sr.self?' (you)':''}`}</b>{!autoShare&&<button type="button" onClick={()=>setPin('')}>Back to everyone</button>}</div>}{sr.self&&docScroll}{penFor(sr)}</div></div>);});
       chunk(viewRows,6).forEach((c,i)=>pages.push(<div key={'p'+i} className="rm-page"><div className="rm-pgrid">{c.map(cell)}</div></div>));
     }else{
       // the first screen shows someone else large (a highlighted person, whoever spoke last, or the newest person), and you as a small picture
@@ -693,7 +725,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
       <label><input type="radio" name="acc" checked={hostInfo.access==='signed_in'} onChange={()=>changeSecurity({access:'signed_in'})}/> Signed-in people only</label>
       <label><input type="checkbox" checked={!!hostInfo.waiting_room} onChange={e=>changeSecurity({waiting_room:e.target.checked})}/> Waiting room</label>
       <small className="muted">Changes apply to people who join from now on.</small><button className="secondary" onClick={()=>setSecOpen(false)}>Close</button></div>}
-    <div className="rm-main">{mobileView?mobileView:multiMode?<div className={`rm-spot sz${stripSz}`}><div className="rm-multi" style={{['--c' as any]:sharerRows.length<=4?2:3}}>{sharerRows.map(r=><div key={r.id} className="rm-multicell rm-spot-main">{r.self?<div className="rm-selfshare"><MonitorUp size={26}/><h2>You are sharing</h2><div className="rm-selfprev"><VideoTile stream={selfStream} name={r.name} muted off={false} self screen/></div><button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button></div>:<ZoomPane resetKey={r.id}>{spotTile(r)}</ZoomPane>}{r.self&&docScroll}{penFor(r)}<div className="rm-spot-tag"><b>{r.self?'You':r.name}</b><button type="button" onClick={()=>setPin(r.id)}>Enlarge</button></div></div>)}</div>{!stripHide&&<div className="rm-spot-strip">{ordered.filter(r=>!r.screen).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div>}</div>:pinnedRow?<div className={`rm-spot sz${stripSz}`}><div className="rm-spot-main">{pinnedRow.self&&screen?<div className="rm-selfshare"><MonitorUp size={34}/><h2>You are sharing your screen</h2><p>Everyone can see it. To avoid a picture-in-picture loop, your own screen is shown here as a small preview.</p><div className="rm-selfprev"><VideoTile stream={selfStream} name={pinnedRow.name} muted off={false} self screen/></div><button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button></div>:<ZoomPane resetKey={pinnedRow.id}>{spotTile(pinnedRow)}</ZoomPane>}{pinnedRow.self&&docScroll}{penFor(pinnedRow)}<div className="rm-spot-tag"><b>{autoShare?`${pinnedRow.self?'You are':pinnedRow.name+' is'} sharing ${pinnedRow.self?'your':'their'} screen`:`Highlighted: ${pinnedRow.name}${pinnedRow.self?' (you)':''}`}</b>{!autoShare&&<button type="button" onClick={()=>setPin('')}>Back to everyone</button>}<button type="button" onClick={()=>setStripHide(h=>!h)}>{stripHide?'Show people':'Hide people'}</button>{!stripHide&&<button type="button" onClick={bumpStrip} title="Make the people pictures smaller or larger">People: {['small','medium','large'][stripSz]}</button>}</div></div>{!stripHide&&<div className="rm-spot-strip">{ordered.filter(r=>r.id!==pinnedRow.id).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div>}</div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} style={{['--tw' as any]:+(autoT*tune.tw).toFixed(3),['--td' as any]:+((0.7+0.3*autoT)*tune.td).toFixed(3),['--ps' as any]:tune.ps,['--pf' as any]:tune.pf}} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
+    <div className="rm-main">{mobileView?mobileView:multiMode?<div className={`rm-spot sz${stripSz}`}><div className="rm-multi" style={{['--c' as any]:sharerRows.length<=4?2:3}}>{sharerRows.map(r=><div key={r.id} className="rm-multicell rm-spot-main">{r.self?<div className="rm-selfshare"><MonitorUp size={26}/><h2>You are sharing</h2><div className="rm-selfprev"><VideoTile stream={selfStream} name={r.name} muted off={false} self screen/></div><button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button></div>:<ZoomPane resetKey={r.id}>{spotTile(r,true)}</ZoomPane>}{r.self&&docScroll}{penFor(r)}<div className="rm-spot-tag"><b>{r.self?'You':r.name}</b><button type="button" onClick={()=>setPin(r.id)}>Enlarge</button></div></div>)}</div>{!stripHide&&<div className="rm-spot-strip">{ordered.filter(r=>!r.screen||r.self||!!r.shot).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div>}</div>:pinnedRow?<div className={`rm-spot sz${stripSz}`}><div className="rm-spot-main">{pinnedRow.self&&screen?<div className="rm-selfshare"><MonitorUp size={34}/><h2>You are sharing your screen</h2><p>Everyone can see it. To avoid a picture-in-picture loop, your own screen is shown here as a small preview.</p><div className="rm-selfprev"><VideoTile stream={selfStream} name={pinnedRow.name} muted off={false} self screen/></div><button type="button" className="primary" onClick={toggleScreen}>Stop sharing</button></div>:<ZoomPane resetKey={pinnedRow.id}>{spotTile(pinnedRow,true)}</ZoomPane>}{pinnedRow.self&&docScroll}{penFor(pinnedRow)}<div className="rm-spot-tag"><b>{autoShare?`${pinnedRow.self?'You are':pinnedRow.name+' is'} sharing ${pinnedRow.self?'your':'their'} screen`:`Highlighted: ${pinnedRow.name}${pinnedRow.self?' (you)':''}`}</b>{!autoShare&&<button type="button" onClick={()=>setPin('')}>Back to everyone</button>}<button type="button" onClick={()=>setStripHide(h=>!h)}>{stripHide?'Show people':'Hide people'}</button>{!stripHide&&<button type="button" onClick={bumpStrip} title="Make the people pictures smaller or larger">People: {['small','medium','large'][stripSz]}</button>}</div></div>{!stripHide&&<div className="rm-spot-strip">{ordered.filter(r=>r.id!==pinnedRow.id||(autoShare&&(r.self||!!r.shot))).map(r=><div key={r.id} className="rm-wrap">{spotTile(r)}{!r.mic&&<span className="rm-muted" title="Muted"><MicOff size={13}/></span>}</div>)}</div>}</div>:mode==='table'?<div className="rm-table-stage"><div ref={gridRef} className={`rm-room ${shape}`} style={{['--tw' as any]:+(autoT*tune.tw).toFixed(3),['--td' as any]:+((0.7+0.3*autoT)*tune.td).toFixed(3),['--ps' as any]:tune.ps,['--pf' as any]:tune.pf}} aria-label={`Boardroom table with ${tiles} ${tiles===1?'person':'people'}`}>
       <div className="rm-walls" aria-hidden="true"><i className="w-ceil"/><i className="w-back"/><i className="w-left"/><i className="w-right"/><i className="w-floor"/><i className="w-skirt"/></div>{tb&&(()=>{const w=tb.x1-tb.x0,legH=Math.max(10,Math.min(tb.rh*.15,tb.rh-tb.y1-4)),lw=Math.max(8,tb.rw*.02);return <><div className="rm-floorshadow" style={{left:tb.x0+w*.04,width:w*.92,top:tb.y1+legH*.55,height:Math.max(10,tb.rh*.06)}}/>{shape==="round"?<><div className="rm-leg ped" style={{left:(tb.x0+tb.x1)/2-lw*1.6,width:lw*3.2,top:tb.y1-6,height:legH+6}}/><div className="rm-foot" style={{left:(tb.x0+tb.x1)/2-w*.16,width:w*.32,top:tb.y1+legH-6}}/></>:<><div className="rm-leg" style={{left:tb.x0+w*.09,width:lw,top:tb.y1-6,height:legH+6}}/><div className="rm-leg" style={{left:tb.x1-w*.09-lw,width:lw,top:tb.y1-6,height:legH+6}}/></>}</>})()}<RoomDecor win={scenes.win} pic={scenes.pic} pick={k=>setScenePick(k)}/><div className="rm-table" aria-hidden="true"/>
       {seatRows.map((r,i)=>{const b=seats[i],mv=moved[r.id]||{x:0,y:0},pt={x:b.x+mv.x,y:b.y+mv.y,py:b.py+mv.y};const qs=SSg(r.name);return <div key={r.id} onPointerDown={e=>{if((e.target as HTMLElement).closest('button'))return;dragSeat.current={id:r.id,sx:e.clientX,sy:e.clientY,ox:mv.x,oy:mv.y,on:false};try{(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)}catch{}}} onPointerMove={e=>{const d=dragSeat.current,box=gridRef.current?.getBoundingClientRect();if(!d||d.id!==r.id||!box)return;const dx=e.clientX-d.sx,dy=e.clientY-d.sy;if(!d.on&&Math.hypot(dx,dy)<5)return;d.on=true;const nx=Math.max(4-b.x,Math.min(96-b.x,d.ox+dx/box.width*100)),ny=Math.max(8-b.y,Math.min(92-b.y,d.oy+dy/box.height*100));setMoved(m=>({...m,[r.id]:{x:nx,y:ny}}))}} onPointerUp={e=>{const d=dragSeat.current;dragSeat.current=null;if(d&&!d.on&&!(e.target as HTMLElement).closest('button'))setSelSeat(v=>v===r.name?'':r.name)}} onPointerCancel={()=>{dragSeat.current=null}} className={`rm-seat top${selSeat===r.name?' sel':''}${dragSeat.current?.id===r.id&&dragSeat.current.on?' dragging':''}${speaking===r.id||(r.self&&speaking==='__me')?' speaking':''}`} style={{left:`${pt.x}%`,top:`${pt.y}%`,width:`${seatW*qs.w}%`,['--ta' as any]:(4/3*qs.w/qs.h).toFixed(4),['--rz' as any]:`${qs.rot}deg`,zIndex:pt.y>EDGE_Y?55:Math.max(1,Math.min(40,Math.round(pt.y))),['--ry' as any]:qs.rot?'0deg':`${(Math.max(-1,Math.min(1,(50-pt.x)/38))*40).toFixed(1)}deg`,['--rx' as any]:qs.rot?'0deg':`${(Math.max(-1,Math.min(1,(pt.y-50)/30))*12).toFixed(1)}deg`,['--sc' as any]:'0.96'}}>
         <VideoTile stream={r.self?selfStream:r.stream} name={r.name} muted={r.self} off={r.self?(!cam&&!screen):(!r.cam&&!r.screen)} self={r.self} host={r.host} cohost={r.cohost} screen={r.screen} speaking={speaking===(r.self?'__me':r.id)} plate hand={r.hand} onDouble={()=>togglePin(r.id)}/>
