@@ -60,21 +60,28 @@ def test_pdf_page_cap_for_basic(client, monkeypatch):
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"pdf_pages": 8}}, headers=ah)
     assert client.post("/api/v1/docedit/inspect", json={"name": "b.pdf", "data": pdf(6)}, headers=bh).status_code == 200
 
-def test_recording_not_for_basic(client, monkeypatch):
+def test_recording_basic_is_local_only_paid_goes_to_cloud(client, monkeypatch):
     ah, _ = login(client); bh = basic_user(client, monkeypatch)
     code = make(client, bh)["code"]
     ws, w = join(client, code, name="Ben", token=bh["Authorization"].split()[1])
     try:
-        wel = w.receive_json(); assert wel["type"] == "welcome" and wel["can_record"] is False
-        w.send_json({"type": "record", "on": True})
-        got = [w.receive_json() for _ in range(1)][0]; assert got["type"] == "notice" and got["kind"] == "record"
+        wel = w.receive_json(); assert wel["type"] == "welcome" and wel["can_record"] is True and wel["cloud_rec"] is False      # Basic may record, kept on the host's own computer
     finally: ws.__exit__(None, None, None)
-    r = client.post(f"/api/v1/rooms/{code}/recording", data={"consent_acknowledged": "true"}, files={"audio": ("a.webm", b"x")}, headers=bh); assert r.status_code == 403, r.text
+    webm = b"\x1a\x45\xdf\xa3" + b"x" * 64
+    r = client.post(f"/api/v1/rooms/{code}/recording", data={"consent_acknowledged": "true", "cloud": "true"}, files={"audio": ("a.webm", webm, "audio/webm"), "video": ("v.webm", webm, "video/webm")}, headers=bh)
+    assert r.status_code == 200, r.text and "saved on your computer" in r.json()["message"] and "cloud" not in r.json()["message"].lower().replace("cloud copy", "")
+    assert client.get("/api/v1/recordings", headers=bh).json() == []                      # nothing was stored on the server for a Basic host
     uid = user_id(client, ah, client.email)
-    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"recording": True}}, headers=ah)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"recording": False}}, headers=ah)
     code2 = make(client, bh)["code"]
     ws, w = join(client, code2, name="Ben", token=bh["Authorization"].split()[1])
-    try: assert w.receive_json()["can_record"] is True
+    try:
+        assert w.receive_json()["can_record"] is False
+        w.send_json({"type": "record", "on": True}); got = w.receive_json(); assert got["type"] == "notice" and got["kind"] == "record"
+    finally: ws.__exit__(None, None, None)
+    client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"cloud_recording": True}}, headers=ah)
+    code3 = make(client, bh)["code"]; ws, w = join(client, code3, name="Ben", token=bh["Authorization"].split()[1])
+    try: assert w.receive_json()["cloud_rec"] is True                                       # an administrator can allow cloud recording for one person
     finally: ws.__exit__(None, None, None)
 
 def test_basic_meeting_warns_then_ends(client, monkeypatch):
@@ -513,7 +520,7 @@ def test_cloud_recording_emails_the_host_a_download_link(client, monkeypatch, tm
 def test_administrator_sets_limits_and_modules_for_a_whole_plan(client, monkeypatch):
     ah, _ = login(client); bh = basic_user(client, monkeypatch)
     cfg = client.get("/api/v1/admin/plan-config", headers=ah).json()
-    assert [p["id"] for p in cfg["plans"]] == ["basic", "individual", "business"] and cfg["plans"][0]["defaults"]["max_participants"] == 100 and any(m["id"] == "chat" for m in cfg["modules"])
+    assert [p["id"] for p in cfg["plans"]] == ["basic", "individual", "business"] and cfg["plans"][0]["defaults"]["max_participants"] == 25 and any(m["id"] == "chat" for m in cfg["modules"])
     r = client.put("/api/v1/admin/plan-config", json={"plan": "basic", "limits": {"recording": True, "max_participants": 5, "storage_mb": 250}, "modules_off": ["chat", "whiteboard", "nonsense"]}, headers=ah)
     assert r.status_code == 200, r.text
     me = client.get("/api/v1/me/limits", headers=bh).json()
@@ -527,7 +534,7 @@ def test_administrator_sets_limits_and_modules_for_a_whole_plan(client, monkeypa
     client.put("/api/v1/admin/plan-config", json={"plan": "basic", "limits": {"recording": None, "max_participants": None, "storage_mb": None}, "modules_off": []}, headers=ah)
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": None}}, headers=ah)
     back = client.get("/api/v1/me/limits", headers=bh).json()
-    assert back["recording"] is False and back["max_participants"] == 100 and back["storage_mb"] == 100 and back["modules_off"] == []
+    assert back["recording"] is True and back["max_participants"] == 25 and back["storage_mb"] == 100 and back["modules_off"] == []
 
 
 

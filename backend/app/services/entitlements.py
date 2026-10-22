@@ -1,16 +1,16 @@
 """What each person may do, by plan, with the administrator's per-person changes on top.
 
-Basic: 100 MB of storage, 20 hours of hosted meetings a month, 3 AI minutes summaries a month, 1 booking page, no calls, no Commbox (mail, calendar, contacts), no open room, meetings of up to 70 minutes, no recording, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
+Basic: 100 MB of storage, 20 hours of hosted meetings a month, 3 AI minutes summaries a month, 1 booking page, no calls, no Commbox (mail, calendar, contacts), no open room, meetings of up to 70 minutes, recording saved on the host's own computer only, 5 new documents or whiteboards a day, PDFs of up to 5 pages.
 Standard / Business: everything on. Administrators: everything on, no limits.
 The administrator can raise or lower any of these for a single person (Admin > Users > Limits). A count of 0 means "no limit"."""
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": False, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25, "multi_share": False, "watch_together": False}
-OPEN = {"calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0, "multi_share": True, "watch_together": True}
+BASIC = {"cloud_recording": False, "calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": True, "meeting_minutes": 70, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25, "multi_share": False, "watch_together": False}
+OPEN = {"cloud_recording": True, "calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0, "multi_share": True, "watch_together": True}
 PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Standard and Business (5 GB, 300 hours)
 WARN_MINUTES = 10
-FIELDS = {"calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int, "storage_mb": int, "meeting_hours_per_month": int, "max_participants": int, "multi_share": bool, "watch_together": bool}
+FIELDS = {"cloud_recording": bool, "calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int, "storage_mb": int, "meeting_hours_per_month": int, "max_participants": int, "multi_share": bool, "watch_together": bool}
 
 def _key(email: str) -> str: return store.hkey("profile", email)
 

@@ -481,7 +481,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
     if switching:
         if state.get("groups"): await _close_groups(state, "closed")
         state["sfu"] = True                      # from now on this meeting uses the Cloudflare video server
-    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
+    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "cloud_rec": state.get("cloud_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
@@ -531,7 +531,7 @@ async def room_socket(ws: WebSocket, code: str):
         if left is not None: host_lim = {**host_lim, "meeting_minutes": min(host_lim["meeting_minutes"] or left, left)}     # the meeting cannot run past the hours left this month
         state = HUB.setdefault(code, {"host_email": host_user.email, "max_people": host_lim.get("max_participants") or 0, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
-        state.update(max_people=host_lim.get("max_participants") or 0, multi_ok=bool(host_lim.get("multi_share", True)), watch_ok=bool(host_lim.get("watch_together", True)), rec_ok=bool(host_lim["recording"]))      # the host's plan as it is now: an upgrade or a lapse applies to the next person who joins
+        state.update(cloud_ok=bool(host_lim.get("cloud_recording", True)), max_people=host_lim.get("max_participants") or 0, multi_ok=bool(host_lim.get("multi_share", True)), watch_ok=bool(host_lim.get("watch_together", True)), rec_ok=bool(host_lim["recording"]))      # the host's plan as it is now: an upgrade or a lapse applies to the next person who joins
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         client = str(first.get("client") or "")[:40]
         if client:                                         # the same browser tab joining again (refresh, network drop): drop its old, dead connection first
@@ -680,7 +680,7 @@ async def room_socket(ws: WebSocket, code: str):
                     except Exception: pass
                 await _tell_hosts(state)
             elif _rank(state["peers"][pid]) == 2 and t == "record" and msg.get("on") and not state.get("rec_ok", True):
-                await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you."})
+                await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not allowed for this account. Ask an administrator to allow recording for you."})
             elif _rank(state["peers"][pid]) == 2 and t == "record":
                 state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
             elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape", "lock", "hidepics", "multishare"):
@@ -862,7 +862,9 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
     if not consent_acknowledged: raise HTTPException(400, "Confirm that participants were told the meeting was recorded.")
     room = await _host_room(db, code, user)
     from app.services import entitlements as ent
-    if not (await ent.limits(db, user))["recording"]: raise HTTPException(403, "Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you.")
+    lim = await ent.limits(db, user)
+    if not lim["recording"]: raise HTTPException(403, "Recording is not included in your plan. Ask an administrator to allow recording for you.")
+    if cloud and not lim.get("cloud_recording", True): cloud = False          # Basic: the recording stays with the host, saved on their own computer
     base = Path(settings.audio_storage_dir) / "recordings"; base.mkdir(parents=True, exist_ok=True)
     rid = str(uuid.uuid4()); keep = base / f"{rid}.webm"
     audio_path = Path(settings.audio_storage_dir) / f"{rid}-speech.webm"; Path(settings.audio_storage_dir).mkdir(parents=True, exist_ok=True)
