@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight} from 'lucide-react';
+import {Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight,Pin,Check} from 'lucide-react';
 import {getPrefs,setPref} from './prefs';
 import {help} from './notify';
 import {JoinDialog} from './Connections';
@@ -60,21 +60,19 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
   type It={k:string;label:string;note:string;icon:any;c:string;run:()=>void;mod?:string};
   const off=(i:It)=>!!i.mod&&!modOn(i.mod);
   const tap=(i:It)=>{if(off(i)){help(`${i.label} is not switched on for your account. Ask your administrator to turn it on, or see the plans to upgrade.`,`${i.label} is not available`);return}i.run()};
-  const big:It[]=[
-    {k:'host',label:'Start a meeting',note:'Open your room now',icon:Video,c:'ember',run:onHost,mod:'meetings'},
-    {k:'join',label:'Join a meeting',note:'Paste a link or ID',icon:Plus,c:'cobalt',run:()=>setJoinOpen(true),mod:'meetings'},
-    {k:'sched',label:'Plan for later',note:'Pick a date and time',icon:CalendarPlus,c:'cobalt',run:onSchedule,mod:'meetings'},
-    {k:'book',label:'Booking page',note:'Let people book you',icon:CalendarDays,c:'cobalt',run:()=>go('Booking'),mod:'scheduling'},
-    {k:'notes',label:'Notes',note:'Write and share',icon:FileText,c:'teal',run:()=>go('Notes'),mod:'docs'},
-    {k:'pdf',label:'PDFs and signing',note:'Edit, sign, send',icon:FileSignature,c:'teal',run:()=>go('Sign & Edit PDF'),mod:'docs'},
-  ];
-  const rest:{group:string;items:It[]}[]=[
+  const ALL:{group:string;items:It[]}[]=[
     {group:'Meetings',items:[
+      {k:'host',label:'Start a meeting',note:'Open your room now',icon:Video,c:'ember',run:onHost,mod:'meetings'},
+      {k:'join',label:'Join a meeting',note:'Paste a link or ID',icon:Plus,c:'cobalt',run:()=>setJoinOpen(true),mod:'meetings'},
+      {k:'sched',label:'Schedule',note:'Pick a date and time',icon:CalendarPlus,c:'cobalt',run:onSchedule,mod:'meetings'},
+      {k:'book',label:'Booking page',note:'Let people book you',icon:CalendarDays,c:'cobalt',run:()=>go('Booking'),mod:'scheduling'},
       {k:'call',label:'Call',note:'Ring an iSift user',icon:Phone,c:'cobalt',run:()=>window.dispatchEvent(new Event('isift:call'))},
       {k:'rec',label:'Recordings',note:'Your recorded meetings',icon:Play,c:'cobalt',run:()=>go('Recordings'),mod:'meetings'},
       {k:'share',label:'Share booking link',note:'Email it to someone',icon:Send,c:'cobalt',run:onShareLink,mod:'scheduling'},
       {k:'sync',label:'Sync calendar',note:'Pull in today’s events',icon:RefreshCw,c:'cobalt',run:onSync,mod:'calendar'}]},
     {group:'Documents',items:[
+      {k:'notes',label:'Notes',note:'Write and share',icon:FileText,c:'teal',run:()=>go('Notes'),mod:'docs'},
+      {k:'pdf',label:'PDFs and signing',note:'Edit, sign, send',icon:FileSignature,c:'teal',run:()=>go('Sign & Edit PDF'),mod:'docs'},
       {k:'wp',label:'WordPerfect',note:'Documents',icon:FileText,c:'teal',run:()=>go('WordPerfect'),mod:'docs'},
       {k:'sheet',label:'SpreadTable',note:'Spreadsheets',icon:Table2,c:'teal',run:()=>go('SpreadTable'),mod:'docs'},
       {k:'deck',label:'PowerPresentation',note:'Slides',icon:Presentation,c:'teal',run:()=>go('PowerPresentation'),mod:'docs'},
@@ -83,19 +81,25 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
       ...(standalone()?[]:[{k:'inst',label:'Install iSift app',note:'Pin to taskbar or home screen',icon:Download,c:'plain',run:install} as It]),
       {k:'test',label:'Test audio and video',note:'Check camera and microphone',icon:Headphones,c:'plain',run:onTest}]},
   ];
+  const flat=ALL.flatMap(g=>g.items);
+  const [pins,setPins]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem('isift.pins')||'null');if(Array.isArray(v))return v}catch{}return ['host','join','sched','book']});
+  const savePins=(p:string[])=>{setPins(p);try{localStorage.setItem('isift.pins',JSON.stringify(p))}catch{}};
+  const pinned=pins.map(k=>flat.find(i=>i.k===k)).filter(Boolean) as It[];
+  const choose=(i:It)=>{if(!pins.includes(i.k))savePins([...pins,i.k]);setMore(false);setAdded(i.label)};
+  const [added,setAdded]=useState('');useEffect(()=>{if(!added)return;const t=setTimeout(()=>setAdded(''),3500);return()=>clearTimeout(t)},[added]);
   const meetings=(today?.meetings||[]).slice(0,4);
-  const Btn=({i}:{i:It})=><button type="button" className={`ws-btn${off(i)?' locked':''}`} onClick={()=>tap(i)}><span className={`ws-ic ${i.c}`}><i.icon size={32}/>{off(i)&&<em className="ws-lock"><Lock size={12}/></em>}</span><span className="ws-lb">{i.label}</span><span className="ws-nt">{i.note}</span></button>;
+  const Btn=({i}:{i:It})=><div className="ws-cardwrap"><button type="button" className={`ws-btn${off(i)?' locked':''}`} onClick={()=>tap(i)}><span className={`ws-ic ${i.c}`}><i.icon size={32}/>{off(i)&&<em className="ws-lock"><Lock size={12}/></em>}</span><span className="ws-lb">{i.label}</span><span className="ws-nt">{i.note}</span></button><button type="button" className="ws-unpin" onClick={()=>savePins(pins.filter(k=>k!==i.k))} aria-label={`Remove ${i.label} from the workspace`} title="Remove from workspace"><X size={14}/></button></div>;
   return <section className="ws" aria-label="iSift workspace">
     <div className="ws-main">
-      <div className="ws-grid" role="group" aria-label="Quick actions">{big.map(i=><Btn key={i.k} i={i}/>)}
-        <button type="button" className="ws-btn" onClick={()=>setMore(m=>!m)} aria-expanded={more}><span className="ws-ic more"><MoreHorizontal size={32}/></span><span className="ws-lb">More tools</span><span className="ws-nt">Everything else</span></button></div>
-      {more&&<div className="ws-more" role="region" aria-label="More tools">{rest.map(g=><div key={g.group}><h4>{g.group}</h4><div className="ws-list">{g.items.map(i=><button type="button" key={i.k} className={`ws-row${off(i)?' locked':''}`} onClick={()=>tap(i)}><span className={`ws-ic sm ${i.c}`}><i.icon size={20}/></span><span><b>{i.label}</b><small>{off(i)?'Not switched on for your account':i.note}</small></span>{off(i)?<Lock size={14}/>:<ChevronRight size={16}/>}</button>)}</div></div>)}</div>}
+      <div className="ws-grid" role="group" aria-label="Your tools">{pinned.map(i=><Btn key={i.k} i={i}/>)}
+        <button type="button" className="ws-btn ws-more-btn" onClick={()=>setMore(true)}><span className="ws-ic more"><MoreHorizontal size={32}/></span><span className="ws-lb">More tools</span><span className="ws-nt">{pinned.length?'Add tools to this page':'Choose the tools you want here'}</span></button></div>
+      {added&&<p className="ws-added" role="status">{added} added to your workspace. Remove it any time with the × on its card.</p>}
     </div>
+    {more&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setMore(false)}}><section className="ws-pop" role="dialog" aria-modal="true" aria-label="More tools"><button type="button" className="st-x" onClick={()=>setMore(false)} aria-label="Close"><X size={18}/></button><h3>Add tools to your workspace</h3><p className="ws-popnote">Choose a tool to put it on your workspace page. Remove it again with the × on its card.</p>{ALL.map(g=>g.items.length>0&&<div key={g.group}><h4>{g.group}</h4><div className="ws-list">{g.items.map(i=>{const on=pins.includes(i.k);return <div key={i.k} className="ws-row"><button type="button" className="ws-rowmain" onClick={()=>on?savePins(pins.filter(k=>k!==i.k)):choose(i)}><span className={`ws-ic sm ${i.c}`}><i.icon size={20}/></span><span><b>{i.label}</b><small>{i.note}</small></span></button>{on?<button type="button" className="ws-pinned" onClick={()=>savePins(pins.filter(k=>k!==i.k))}><Check size={14}/> On workspace · Remove</button>:<button type="button" className="ws-add" onClick={()=>choose(i)}><Pin size={14}/> Add</button>}</div>})}</div></div>)}</section></div>}
     <aside className="ws-side" aria-label="Today">
       <div className="ws-clock"><button type="button" className="ws-gear" onClick={()=>setSetOpen(true)} aria-label="Settings" title="Settings"><Gear size={20}/></button><em className="ws-sunmark"><Sun size={22}/></em><b>{fmt({hour:'numeric',minute:'2-digit'})}</b><span>{fmt({weekday:'long',month:'long',day:'numeric'})}</span></div>
       <div className="ws-day"><h3>Coming up</h3>{meetings.length?meetings.map((m:any)=><button type="button" key={m.id} className="ws-ev" onClick={()=>go('Meetings')}><b>{m.title}</b><small>{timeOf(m.start_at)}</small></button>):<p>Nothing planned today. Choose <b>Start a meeting</b> to begin one, or <b>Plan for later</b>.</p>}</div>
-      <button type="button" className="ws-set" onClick={()=>setSetOpen(true)}><Gear size={16}/> Settings</button>
-    </aside>
+          </aside>
     {joinOpen&&<JoinDialog request={request} name={name} onClose={()=>setJoinOpen(false)}/>}
     {help_&&<InstallHelp onClose={()=>setHelp(false)}/>}
     {setOpen&&<SettingsDialog onClose={()=>setSetOpen(false)} plan={plan} onTest={onTest} go={go} onSignOut={onSignOut} userName={name}/>}
