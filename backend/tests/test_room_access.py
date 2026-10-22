@@ -2060,6 +2060,8 @@ def read_until(w, pred, n=40):
 
 def test_one_person_shares_at_a_time(client):
     h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    ws_h, host = join(client, r["code"], name="Host", token=tok); assert read_until(host, lambda m: m["type"] == "welcome")["multi_share"] is True       # several shares are allowed unless the host switches them off
+    host.send_json({"type": "multishare", "on": False})
     ws_a, a = join(client, r["code"], name="Ann"); read_until(a, lambda m: m["type"] == "welcome")
     ws_b, b = join(client, r["code"], name="Bob"); read_until(b, lambda m: m["type"] == "welcome")
     share = lambda on: {"type": "state", "mic": True, "cam": True, "screen": on}
@@ -2118,7 +2120,8 @@ def test_multi_share_and_pen(client):
     ws_a, a = join(client, r["code"], name="Ann"); wa = read_until(a, lambda m: m["type"] == "welcome"); aid = wa["id"]
     ws_b, b = join(client, r["code"], name="Bob"); wb = read_until(b, lambda m: m["type"] == "welcome"); bid = wb["id"]
     host.send_json({"type": "state", "mic": True, "cam": True, "screen": True})
-    a.send_json({"type": "state", "mic": True, "cam": True, "screen": True}); assert read_until(a, lambda m: m["type"] == "share-denied")   # default: one at a time
+    host.send_json({"type": "multishare", "on": False}); assert read_until(a, lambda m: m["type"] == "multishare")["on"] is False
+    a.send_json({"type": "state", "mic": True, "cam": True, "screen": True}); assert read_until(a, lambda m: m["type"] == "share-denied")   # switched off by the host: one at a time
     host.send_json({"type": "multishare", "on": True}); assert read_until(a, lambda m: m["type"] == "multishare")["on"] is True
     b.send_json({"type": "multishare", "on": False})                                # only a host can switch it
     a.send_json({"type": "state", "mic": True, "cam": True, "screen": True})
@@ -2156,3 +2159,17 @@ def test_participant_tiers_price_and_limit(client):
 def test_basic_allows_25_people():
     from app.services import entitlements as ent
     assert ent.plan_defaults("basic")["max_participants"] == 25 and ent.plan_defaults("individual")["max_participants"] == 100
+
+
+def test_share_a_cloud_document_link(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    ws_a, a = join(client, r["code"], name="Ann"); read_until(a, lambda m: m["type"] == "welcome")
+    ws_b, b = join(client, r["code"], name="Bob"); read_until(b, lambda m: m["type"] == "welcome")
+    a.send_json({"type": "video", "op": "web", "url": "https://evil.example.com/login"}); assert "cannot be shown" in read_until(a, lambda m: m["type"] == "video-error")["message"]
+    a.send_json({"type": "video", "op": "web", "url": "http://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQ/edit"}); read_until(a, lambda m: m["type"] == "video-error")       # not https
+    a.send_json({"type": "video", "op": "web", "url": "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQ/edit#gid=0"})
+    m = read_until(b, lambda m: m["type"] == "video"); assert m["kind"] == "web" and m["url"] == "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQ/preview" and m["label"] == "Google Sheet"
+    b.send_json({"type": "video", "op": "web", "url": "https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQ/edit"})        # someone else cannot replace it
+    ws_c, c = join(client, r["code"], name="Cy"); w = read_until(c, lambda m: m["type"] == "welcome"); assert w["video"]["kind"] == "web" and w["video"]["label"] == "Google Sheet"
+    a.send_json({"type": "video", "op": "stop"}); assert read_until(b, lambda m: m["type"] == "video").get("stopped") is True
+    for x in (ws_c, ws_b, ws_a): x.__exit__(None, None, None)

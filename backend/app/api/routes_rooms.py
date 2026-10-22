@@ -11,7 +11,7 @@ refuses signalling and chat across groups), so every browser connects to a handf
 import asyncio, hmac, json, logging, os, re, secrets, shutil, time, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote as _urlquote, urlsplit, urlunsplit
 from fastapi import APIRouter, Header, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -250,10 +250,40 @@ async def _pen_clear(state: dict, sharer: str, code: str):
     if (state.get("pen") or {}).pop(sharer, None) is not None:
         await _broadcast(code, {"type": "pen", "sharer": sharer, "holder": None, "name": ""})
 
+_DOC_HOSTS = ("onedrive.live.com", "sharepoint.com", "office.com", "dropbox.com", "notion.site", "notion.so", "canva.com", "miro.com", "lucid.app", "airtable.com", "figma.com")
+
+def _doc_url(raw: str):
+    """A link to a cloud document that may be shown inside the meeting: only https, and only well-known document services (a guest cannot push any web page onto everyone's screen).
+    Returns (address to embed, label) or None. Google links are turned into their read-only preview, which scrolls and pages on its own."""
+    raw = (raw or "").strip()
+    if len(raw) > 800: return None
+    try: u = urlsplit(raw)
+    except ValueError: return None
+    h = (u.hostname or "").lower()
+    if u.scheme != "https" or not h: return None
+    names = {"document": "Google Doc", "spreadsheets": "Google Sheet", "presentation": "Google Slides"}
+    if h == "docs.google.com":
+        m = re.match(r"^/(document|spreadsheets|presentation)/d/e/([A-Za-z0-9_-]+)", u.path)                      # published to the web
+        if m:
+            kind, key = m.groups()
+            tail = {"document": "pub?embedded=true", "spreadsheets": "pubhtml?widget=true&headers=false", "presentation": "embed?start=false&loop=false"}[kind]
+            return f"https://docs.google.com/{kind}/d/e/{key}/{tail}", names[kind]
+        m = re.match(r"^/(document|spreadsheets|presentation)/d/([A-Za-z0-9_-]{10,})", u.path)
+        if m: return f"https://docs.google.com/{m.group(1)}/d/{m.group(2)}/preview", names[m.group(1)]
+        return None
+    if h == "drive.google.com":
+        m = re.match(r"^/file/d/([A-Za-z0-9_-]{10,})", u.path)
+        return (f"https://drive.google.com/file/d/{m.group(1)}/preview", "Google Drive file") if m else None
+    if any(h == d or h.endswith("." + d) for d in _DOC_HOSTS):
+        if h.endswith("figma.com"): return "https://www.figma.com/embed?embed_host=isift&url=" + _urlquote(raw, safe=""), "Figma"
+        label = next(n for d, n in (("sharepoint.com", "SharePoint"), ("onedrive", "OneDrive"), ("office.com", "Microsoft 365"), ("dropbox.com", "Dropbox"), ("notion", "Notion"), ("canva.com", "Canva"), ("miro.com", "Miro"), ("lucid.app", "Lucid"), ("airtable.com", "Airtable")) if d in h)
+        return urlunsplit(u._replace(fragment="")), label
+    return None
+
 def _video_view(v: dict) -> dict:
     """What everyone needs to join a shared video: which one, whether it plays, and where it is right now."""
     t = v["t"] + ((time.time() - v["at"]) if v["playing"] else 0)
-    return {"vid": v["vid"], "by": v["by"], "by_id": v["by_id"], "playing": v["playing"], "t": round(t, 2)}
+    return {"kind": v.get("kind", "yt"), "vid": v.get("vid", ""), "url": v.get("url", ""), "label": v.get("label", ""), "by": v["by"], "by_id": v["by_id"], "playing": v["playing"], "t": round(t, 2)}
 
 def _pub(i: str, p: dict) -> dict:
     d = {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
@@ -451,7 +481,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
-                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": bool(state.get("multi_share")), "pens": dict(state.get("pen") or {})})
+                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": bool(state.get("multi_share", True)), "pens": dict(state.get("pen") or {})})
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
@@ -551,8 +581,8 @@ async def room_socket(ws: WebSocket, code: str):
                 state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); want_screen = bool(msg.get("screen"))
-                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not state.get("multi_share") else None
-                if rival:                                   # one person shares at a time: the second one waits until the first stops
+                rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not state.get("multi_share", True) else None
+                if rival:                                   # when the host has switched several shares off, one person shares at a time: the second one waits until the first stops
                     await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
                 if me.get("screen") and not want_screen: await _pen_clear(state, pid, code)     # sharing stopped: the pen goes back
                 me["screen"] = want_screen
@@ -592,8 +622,14 @@ async def room_socket(ws: WebSocket, code: str):
                     else: await _to_view(state, me.get("group"), {"type": "draw_clear", "sharer": sid, "by": pid}, skip=pid)
             elif t == "video":                       # watch a YouTube video together: the starter (or a host) loads, plays, pauses and skips for everyone
                 me = state["peers"][pid]; op = msg.get("op"); cur = state.get("video"); vid = str(msg.get("vid") or "")
-                if op == "load" and re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) and (not cur or cur["by_id"] == pid or _rank(me) >= 1):
-                    state["video"] = cur = {"vid": vid, "by": me["name"], "by_id": pid, "playing": True, "t": 0.0, "at": time.time()}
+                if op == "web" and (not cur or cur["by_id"] == pid or _rank(me) >= 1):                  # a cloud document (Google Docs, Sheets, Slides, Drive, Microsoft 365, ...) shown to everyone
+                    d = _doc_url(str(msg.get("url") or ""))
+                    if not d: await _send(ws, {"type": "video-error", "message": "That link cannot be shown inside the meeting. Use a share link from Google Docs, Sheets, Slides or Drive, Microsoft 365 / OneDrive / SharePoint, Dropbox, Notion, Canva, Figma or Miro, and make sure it is open to anyone with the link."})
+                    else:
+                        state["video"] = cur = {"kind": "web", "url": d[0], "label": d[1], "by": me["name"], "by_id": pid, "playing": False, "t": 0.0, "at": time.time()}
+                        await _broadcast(code, {"type": "video", **_video_view(cur)})
+                elif op == "load" and re.fullmatch(r"[A-Za-z0-9_-]{11}", vid) and (not cur or cur["by_id"] == pid or _rank(me) >= 1):
+                    state["video"] = cur = {"kind": "yt", "vid": vid, "by": me["name"], "by_id": pid, "playing": True, "t": 0.0, "at": time.time()}
                     await _broadcast(code, {"type": "video", **_video_view(cur)})
                 elif cur and op in ("play", "pause", "seek", "stop") and (cur["by_id"] == pid or _rank(me) >= 1):
                     if op == "stop":
