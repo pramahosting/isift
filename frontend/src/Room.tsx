@@ -154,7 +154,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   const local=useRef<{audio?:MediaStreamTrack;mixed?:MediaStreamTrack;video?:MediaStreamTrack;cam?:MediaStreamTrack;raw?:MediaStreamTrack;proc?:BgProcessor}>({});
   const iceRef=useRef<any[]>([]);const peerStreams=useRef<Record<string,MediaStream>>({});const peerShots=useRef<Record<string,MediaStream>>({});
   const sfuRef=useRef<SfuClient|null>(null);const sfuOnRef=useRef(false);const [sfuOn,setSfuOn]=useState(false);const [stage,setStage]=useState<string[]>([]);const stageRef=useRef<string[]>([]);const sfuInfo=useRef<Record<string,any>>({});const resubT=useRef<any>(null);
-  const [cloud,setCloud]=useState(false);const [recPlan,setRecPlan]=useState('');
+  const [cloud,setCloud]=useState(false);const cloudRec=useRef(true);const pendRec=useRef<null|{blob:Blob;name:string}>(null);const [pend,setPend]=useState<null|{blob:Blob;name:string}>(null);const [pendSaved,setPendSaved]=useState(false);const [recPlan,setRecPlan]=useState('');
   const rec=useRef<any>(null);const wasRecording=useRef(false);
   // discussion groups, boardroom table and active speaker
   const [group,setGroup]=useState<{id:string;name:string}|null>(null);const [groupEnds,setGroupEnds]=useState<string|null>(null);const [roster,setRoster]=useState<any>(null);const [groupsOpen,setGroupsOpen]=useState(false);const [banner,setBanner]=useState<{name:string;text:string}|null>(null);
@@ -323,7 +323,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
       if(m.type==='waiting'){setPhase('waiting')}
       else if(m.type==='denied'){setErr('The host did not let you in.');setPhase('ended')}
       else if(m.type==='waiting-list'){setWaitList(m.list||[]);if((m.list||[]).length)setNotice(`${m.list[m.list.length-1].name} is waiting to join`)}
-      else if(m.type==='welcome'){setWaitList(m.waiting||[]);if(m.roster)setRoster(m.roster);if(m.host)loadHostInfo();myId.current=m.id;setIsHost(!!m.host);setCohost(!!m.cohost);setPolicy(m.policy||{audio:true,video:true});setRecording(!!m.recording);setLocked(!!m.locked);setHidePics(!!m.hide_pics);setMultiShare(!!m.multi_share);setPens(m.pens||{});if(m.video){setWatch({...m.video,at:Date.now()});setWatchOpen(true)};setCapsActive(!!m.captions);setCanRec(m.can_record!==false);if(typeof m.ends_in==='number'&&m.ends_in<=600)setEndWarn({at:Date.now()+m.ends_in*1000,msg:'This meeting will end soon because the host\u2019s plan limits its length.'});setPhase('room');{let jo:any={};try{jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');sessionStorage.removeItem('isift.join')}catch{}rememberRoom(code,info?.title||'Meeting');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}const o=m.options||{};setVrOn(o.virtual_room!==false);setVrAllowed(m.vroom_allowed!==false);if(m.shape)setShapeState(m.shape==="round"?"round":"rect");if(!m.host){if((o.mute_on_entry||m.policy?.audio===false)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((o.video_off_on_entry||m.policy?.video===false)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}}else{let so:any={};try{so=JSON.parse(sessionStorage.getItem('isift.start')||'{}');sessionStorage.removeItem('isift.start')}catch{}if((so.video===false||o.host_video_off)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(so.screen)setTimeout(()=>screenRef.current?.(),500);if(o.auto_record&&!m.recording)setTimeout(()=>autoRec.current?.(),800)}}for(const p of m.peers){upsert(p.id,{name:p.name,host:p.host,cohost:p.cohost,hand:!!p.hand,...(p.sfu?{screen:!!p.screen}:{})});if(p.sfu)sfuInfo.current[p.id]=p.sfu;if(!m.sfu)await callPeer(p.id)}if(m.sfu){stageRef.current=m.stage||[];setStage(m.stage||[]);await enterSfu()}send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
+      else if(m.type==='welcome'){setWaitList(m.waiting||[]);if(m.roster)setRoster(m.roster);if(m.host)loadHostInfo();myId.current=m.id;setIsHost(!!m.host);setCohost(!!m.cohost);setPolicy(m.policy||{audio:true,video:true});setRecording(!!m.recording);setLocked(!!m.locked);setHidePics(!!m.hide_pics);setMultiShare(!!m.multi_share);setPens(m.pens||{});if(m.video){setWatch({...m.video,at:Date.now()});setWatchOpen(true)};setCapsActive(!!m.captions);setCanRec(m.can_record!==false);cloudRec.current=m.cloud_rec!==false;if(typeof m.ends_in==='number'&&m.ends_in<=600)setEndWarn({at:Date.now()+m.ends_in*1000,msg:'This meeting will end soon because the host\u2019s plan limits its length.'});setPhase('room');{let jo:any={};try{jo=JSON.parse(sessionStorage.getItem('isift.join')||'{}');sessionStorage.removeItem('isift.join')}catch{}rememberRoom(code,info?.title||'Meeting');if(jo.audio===false&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if(jo.video===false&&local.current.cam){local.current.cam.enabled=false;setCam(false)}const o=m.options||{};setVrOn(o.virtual_room!==false);setVrAllowed(m.vroom_allowed!==false);if(m.shape)setShapeState(m.shape==="round"?"round":"rect");if(!m.host){if((o.mute_on_entry||m.policy?.audio===false)&&local.current.audio){local.current.audio.enabled=false;setMic(false)}if((o.video_off_on_entry||m.policy?.video===false)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}}else{let so:any={};try{so=JSON.parse(sessionStorage.getItem('isift.start')||'{}');sessionStorage.removeItem('isift.start')}catch{}if((so.video===false||o.host_video_off)&&local.current.cam){local.current.cam.enabled=false;setCam(false)}if(so.screen)setTimeout(()=>screenRef.current?.(),500);if(o.auto_record&&!m.recording)setTimeout(()=>autoRec.current?.(),800)}}for(const p of m.peers){upsert(p.id,{name:p.name,host:p.host,cohost:p.cohost,hand:!!p.hand,...(p.sfu?{screen:!!p.screen}:{})});if(p.sfu)sfuInfo.current[p.id]=p.sfu;if(!m.sfu)await callPeer(p.id)}if(m.sfu){stageRef.current=m.stage||[];setStage(m.stage||[]);await enterSfu()}send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
       else if(m.type==='peer-joined'){upsert(m.id,{name:m.name,host:m.host,cohost:m.cohost});if(!sfuOnRef.current)setNotice(`${m.name} joined`);send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.video?.enabled,screen:false})}
       else if(m.type==='renamed'){if(m.id===myId.current)setName(m.name);else upsert(m.id,{name:m.name})}
       else if(m.type==='peer-left'){if(!sfuOnRef.current)setPeers(p=>{if(p[m.id])setNotice(`${p[m.id].name} left`);return p});dropPeer(m.id)}
@@ -381,15 +381,16 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
       else if(m.type==='kicked'){leaveLocal();setErr('You were removed from the meeting by the host.');setPhase('ended')}
       else if(m.type==='title'){setInfo((i:any)=>i?{...i,title:m.title}:i)}
       else if(m.type==='notice'){if(m.kind==='ending')setEndWarn({at:Date.now()+(m.ends_in||0)*1000,msg:m.message});else if(m.message)setNotice(m.message)}
-      else if(m.type==='ended'){if(m.reason==='limit')setEndWhy('The time limit of the host\u2019s plan was reached, so this meeting has ended.');leaveLocal();setPhase('ended')}
+      else if(m.type==='ended'){if(rec.current)stopRecording(true);if(m.reason==='limit')setEndWhy('The time limit of the host\u2019s plan was reached, so this meeting has ended.');leaveLocal();setPhase('ended')}
       else if(m.type==='error'){setErr(m.message);sock.close()}
     };
     sock.onclose=()=>{clearTimeout(slow);setPhase(p=>{if(p==='lobby'){setErr(e=>e||'Could not connect to the meeting. Press Join again.');setJoining(false)}return p==='room'||p==='waiting'?'ended':p})};
     sock.onerror=()=>{setJoining(false)};
   };
   const leaveLocal=()=>{if(tabAud.current){try{tabAud.current.track.stop();tabAud.current.ctx.close().catch(()=>{})}catch{}tabAud.current=null;local.current.mixed=undefined}sfuRef.current?.close();sfuRef.current=null;Object.keys(pcs.current).forEach(id=>{pcs.current[id].close();delete pcs.current[id]});local.current.audio?.stop();local.current.cam?.stop();local.current.video?.stop();local.current.raw?.stop();local.current.proc?.stop();ws.current?.close()};
-  const leave=async()=>{if(rec.current)await stopRecording(false);leaveLocal();onLeave()};
-  const endAll=async()=>{if(rec.current)await stopRecording(true);send({type:'end'});leaveLocal();onLeave()};
+  const finishOut=()=>{leaveLocal();if(pendRec.current)setPhase('ended');else onLeave()};
+  const leave=async()=>{if(rec.current)await stopRecording(false);finishOut()};
+  const endAll=async()=>{if(rec.current)await stopRecording(true);send({type:'end'});finishOut()};
 
   // ---- controls ----
   const toggleMic=()=>{const t=local.current.audio;if(!t)return;if(!t.enabled&&phase==='room'&&!isHost&&!policy.audio){setNotice('The host has not allowed participants to unmute. Ask the host.');return}t.enabled=!t.enabled;setMic(t.enabled);send({type:'state',mic:t.enabled,cam:!!local.current.video?.enabled,screen})};
@@ -513,12 +514,14 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
   const recorderRefresh=()=>{const r=rec.current;if(!r)return;const have=new Set<string>(r.sources.keys());
     const streams:Record<string,MediaStream>={...peerStreams.current,__me:localStream||new MediaStream()};if(tabAud.current)streams.__tab=new MediaStream([tabAud.current.track]);
     for(const [k,s] of Object.entries(streams)){const t=s.getAudioTracks()[0];if(t&&!have.has(k+t.id)){try{const src=r.ctx.createMediaStreamSource(new MediaStream([t]));src.connect(r.dest);r.sources.set(k+t.id,src)}catch{}}}};
+  useEffect(()=>{if(!pend||pendSaved)return;const h=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[pend,pendSaved]);
+  const savePend=()=>{const p=pendRec.current;if(!p)return;const a=document.createElement('a');a.href=URL.createObjectURL(p.blob);a.download=p.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);setPendSaved(true)};
   useEffect(()=>{if(!recording)return;const h=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue=''};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[recording]);
   const autoRec=useRef<null|(()=>void)>(null);const screenRef=useRef<null|(()=>void)>(null);
   const startRecording=async(auto?:boolean)=>{
     if(!isHost||rec.current)return;
-    if(!canRec){if(auto!==true)setNotice('Recording is not included in the Basic plan. Upgrade your plan, or ask an administrator to allow recording for you.');return}
-    if(auto!==true&&!window.confirm('Start recording? Everyone in the meeting is told it is being recorded. Keep this tab open while recording (it may stay in the background).'))return;
+    if(!canRec){if(auto!==true)setNotice('Recording is not allowed for your account. Ask an administrator to allow recording for you.');return}
+    if(auto!==true&&!window.confirm('Start recording? Everyone in the meeting is told it is being recorded. Keep this tab open while recording (it may stay in the background).'+(cloudRec.current?' When the meeting ends the recording is stored in the cloud and a download link is emailed to you.':' On your plan the recording is saved on this computer: you will get the Save button when the meeting ends.')))return;
     const ctx=new AudioContext();const dest=ctx.createMediaStreamDestination();const r:any={ctx,dest,sources:new Map(),audioChunks:[],videoChunks:[]};rec.current=r;
     await ctx.resume().catch(()=>{});
     const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;const g=canvas.getContext('2d')!;
@@ -556,14 +559,18 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
     await Promise.all([stopOne(r.audioRec),stopOne(r.videoRec)]);(typeof r.timer?.terminate==='function'?r.timer.terminate():clearInterval(r.timer));r.ctx.close().catch(()=>{});
     send({type:'record',on:false});setRecording(false);
     try{
-      // The recording is always saved to the host's own computer first.
-      try{const whole=r.videoChunks.length?new Blob(r.videoChunks,{type:'video/webm'}):new Blob(r.audioChunks,{type:'audio/webm'});const a=document.createElement('a');a.href=URL.createObjectURL(whole);a.download=`${(info?.title||'meeting').replace(/[^\w .-]+/g,'_').slice(0,50)} ${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}.webm`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000)}catch{}
-      const form=new FormData();form.append('consent_acknowledged','true');form.append('cloud',cloud?'true':'false');
+      const whole=r.videoChunks.length?new Blob(r.videoChunks,{type:'video/webm'}):new Blob(r.audioChunks,{type:'audio/webm'});
+      const keepLocal=()=>{const prev=pendRec.current;const nm=`${(info?.title||'meeting').replace(/[^\w .-]+/g,'_').slice(0,50)} ${new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')}${prev?' (2)':''}.webm`;pendRec.current={blob:whole,name:nm};setPend(pendRec.current);setPendSaved(false)};
+      const toCloud=cloudRec.current;
+      const form=new FormData();form.append('consent_acknowledged','true');form.append('cloud',toCloud?'true':'false');
       form.append('audio',new Blob(r.audioChunks,{type:'audio/webm'}),'speech.webm');
-      if(cloud&&r.videoChunks.length)form.append('video',new Blob(r.videoChunks,{type:'video/webm'}),'meeting.webm');
+      if(toCloud&&r.videoChunks.length)form.append('video',new Blob(r.videoChunks,{type:'video/webm'}),'meeting.webm');
+      if(!toCloud)keepLocal();
       const res=await fetch(`${api}/rooms/${code}/recording`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:form});const j=await res.json().catch(()=>({}));
-      setNotice(res.ok?j.message:(j.detail||'The recording could not be saved.'));
-    }catch{setNotice('The recording could not be uploaded. Check the connection.')}finally{setRecBusy(false)}
+      if(res.ok&&!toCloud)setNotice('Recording stopped. You can save it to this computer when the meeting ends.');
+      else if(res.ok)setNotice(j.message);
+      else{if(toCloud)keepLocal();setNotice((j.detail||'The recording could not be saved.')+(toCloud?' Your copy can be saved to this computer when the meeting ends.':''))}
+    }catch{{setNotice('The recording could not be uploaded. You can save it to this computer when the meeting ends.')}}finally{setRecBusy(false)}
   };
   useEffect(()=>{if(!isHost||!token)return;fetch(`${api}/billing/me`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).then(j=>j&&setRecPlan(j.plan||'')).catch(()=>{})},[isHost,token]);
   useEffect(()=>{if(notice){const t=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(t)}},[notice]);
@@ -594,7 +601,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive}:
 
   // ---------- views ----------
   if(err&&phase!=='ended'&&!info)return <div className="rm-center"><div className="rm-card"><h1>Meeting not available</h1><p>{err}</p><button className="primary" onClick={onLeave}>Back to the app</button></div></div>;
-  if(phase==='ended')return <div className="rm-center"><div className="rm-card"><h1>{err?'You left the meeting':'This meeting has ended'}</h1><p>{err||endWhy||'Thanks for joining.'}</p><button className="primary" onClick={onLeave}>{token?'Back to the app':'Close'}</button></div></div>;
+  if(phase==='ended')return <div className="rm-center"><div className="rm-card"><h1>{err?'You left the meeting':'This meeting has ended'}</h1><p>{err||endWhy||'Thanks for joining.'}</p>{pend&&<div style={{margin:'12px 0'}}><p><b>Your recording is ready.</b> {pendSaved?'Saved to this computer.':'Save it to this computer now: it is not stored anywhere else.'}</p><button className="primary" onClick={savePend}>{pendSaved?'Save again':'Save recording to this computer'}</button></div>}<button className={pend&&!pendSaved?'':'primary'} onClick={()=>{if(pend&&!pendSaved&&!window.confirm('You have not saved the recording yet. Leave without saving it?'))return;onLeave()}}>{token?'Back to the app':'Close'}</button></div></div>;
   if(!info)return <div className="rm-center"><div className="rm-card">Loading…</div></div>;
   if(phase==='lobby')return <div className="rm-center"><div className="rm-card lobby"><button type="button" className="rm-x" aria-label="Close and leave this meeting" title="Close" onClick={()=>{leaveLocal();onLeave()}}><X size={20}/></button>
     <h1>{info.title}{info.you_are_host&&!!token&&<button type="button" className="rm-editname dark" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{const t=window.prompt('Meeting name',info.title);if(t&&t.trim())renameTo(t)}}><Pencil size={17}/></button>}</h1><p className="muted">Hosted by {info.host||'the organizer'} · {info.people_now} {info.people_now===1?'person':'people'} in the meeting</p>

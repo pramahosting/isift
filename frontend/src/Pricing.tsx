@@ -26,14 +26,14 @@ export function useLivePlans(){
 }
 type PlanDef={id:PlanId;name:string;tag:string;cta:string;popular?:boolean;features:string[]};
 const PLANS:PlanDef[]=[
- {id:'basic',name:'Basic',tag:'Free for ever, to get started',cta:'Start for free',features:['Video meetings in the browser: up to 25 people, meetings of up to 70 minutes','Chat, screen sharing, reactions, raise hand and live captions','Zoom-style phone view: you large, others on the next screens','Receive calls from other iSift users','3 AI meeting summaries a month and 1 booking page','5 new Docs files or whiteboards a day, 100 MB of storage','Transcripts and action items','Community support']},
+ {id:'basic',name:'Basic',tag:'Free for ever, to get started',cta:'Start for free',features:['Video meetings in the browser: up to 25 people, meetings of up to 70 minutes','Chat, screen sharing, reactions, raise hand and live captions','Meeting recording, saved on the host\u2019s own computer when the meeting ends','Zoom-style phone view: you large, others on the next screens','Receive calls from other iSift users','3 AI meeting summaries a month and 1 booking page','5 new Docs files or whiteboards a day, 100 MB of storage','Transcripts and action items','Community support']},
  {id:'individual',name:'Standard',tag:'For people who meet every day',cta:'Choose Standard',popular:true,features:['Everything in Basic, with meetings of any length and up to the number of people you pick (10 to 300)','Several people share their screen or window at once, with a pointer and pen you can hand over','Watch a YouTube video together, in sync on every device, and share a browser tab with its sound','Meeting recording, open room, co-hosts, mute and remove, waiting room and lock meeting','Commbox: mail, calendar and contacts for all your accounts','Unlimited AI minutes, action items and morning briefings','Unlimited booking pages, like Calendly','Call other iSift users: ring them, they accept, you are in a private room','Schedule Zoom, Teams and Google Meet from one place','5 GB of storage per person and email support']},
  {id:'business',name:'Business',tag:'For teams and companies',cta:'Choose Business',features:['Everything in Standard','A company account with all your people under one plan and one card','Team booking pages: one link that shares bookings across your people, round robin','Team action items: everyone sees and updates actions from teammates’ meetings','Microsoft Entra single sign-on','Switch whole modules on and off for everyone','Audit log, data retention and review rules','Priority support']}];
 
 const FAQ:[string,string][]=[
  ['What does the number of participants change?','It is the most people your meetings can hold at once. Pick the size that fits your biggest meeting. You can move to a bigger or smaller size at any time and only the difference is charged, with unused days credited.'],
  ['Is the price per person in my team?','Prices are per host: the person who starts the meetings. The people they invite join free, even without an account. Business gives your whole company one plan and one card.'],
- ['What do I get free in Basic?','Meetings of up to 25 people for up to 70 minutes, chat, screen sharing, reactions, captions, and a taste of the AI features.'],
+ ['What do I get free in Basic?','Meetings of up to 25 people for up to 70 minutes, chat, screen sharing, reactions, captions, meeting recording (saved on the host\u2019s own computer when the meeting ends; paid plans store it in the cloud and email the host a download link), and a taste of the AI features.'],
  ['Can I cancel?','Yes, any time. You keep your plan until the end of the period you paid for. If you end it early, the unused time can be refunded once an administrator approves it.'],
  ['How do I pay?','By card through Square. iSift never sees your card number. Yearly plans are about 5% to 20% cheaper than paying monthly.'],
  ['Can I share my screen from a phone?','Phones do not allow websites to share the screen, so on a phone you share photos, PDFs, documents, the whiteboard or a video link. From a laptop you can share the whole screen, one window or one browser tab.']];
@@ -44,7 +44,7 @@ const ROWS:[string,string,string,string][]=[
  ['Chat, reactions, raise hand, captions','Yes','Yes','Yes'],
  ['Several people sharing at once, pointer and pen','No','Yes','Yes'],
  ['Watch a video together','No','Yes','Yes'],
- ['Recording','No','Yes','Yes'],
+ ['Recording','Yes: saved on the host\u2019s computer at the end of the meeting','Yes: stored in the cloud, download link emailed to the host','Yes: stored in the cloud, download link emailed to the host'],
  ['Waiting room, lock meeting, co-hosts','Basic','Full','Full'],
  ['Open room, Commbox, booking pages','No','Yes','Yes'],
  ['AI summaries and action items','3 a month','Unlimited','Unlimited'],

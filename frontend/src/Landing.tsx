@@ -29,7 +29,7 @@ const WHY=[
  {i:PlayCircle,t:'Watch a video together',d:'Paste a YouTube link and everyone watches in sync on their own device, phones included. You play, pause and skip for the whole meeting.'},
  {i:Armchair,t:'Meeting rooms people enjoy',d:'A virtual boardroom with a wooden table, name plates, windows and your own background, or a simple gallery view. Switch with one button.'},
  {i:Phone,t:'Call a teammate in one click',d:'Ring another iSift user like a phone call. They accept and you are in a private room together.'},
- {i:Lock,t:'You stay in control',d:'Recordings save on the host’s own computer by default. Administrators set what each person may use: call time, recording, documents, Commbox and more.'},
+ {i:Lock,t:'You stay in control',d:'Basic hosts save recordings on their own computer when the meeting ends; paid plans store them in the cloud and email a download link. Administrators set what each person may use: call time, recording, documents, Commbox and more.'},
  {i:BadgeDollarSign,t:'Plain, local pricing',d:'Free, Standard and Business. Pick how many participants you need from a dropdown, in your currency, and yearly saves you money. No per-feature add-ons to work out.'},
 ];
 export function WhySection(){
@@ -46,7 +46,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Video meetings in the browser',cells:[Y,Y,Y,Y,Y,Y,Y]},
  {label:'Free plan: group meeting length',cells:['70 minutes','40 minutes','60 minutes','40 minutes','Trial only','60 minutes','60 minutes']},
  {label:'People in one meeting on paid plans',cells:['10 to 300, the size you choose and pay for','100 (Pro)','10 to 250, by size','150 to 1,000, by plan','150 to 250, by plan','300','100 to 500, by plan']},
- {label:'Meeting recording',cells:['Yes (paid plans)','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
+ {label:'Meeting recording',cells:['Yes. Basic: saved on the host\u2019s computer at the end of the meeting. Paid: stored in the cloud, download link emailed to the host','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
  {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)',null,'AI Assistant (paid plans)','Business plan','Needs Copilot add-on','Gemini, paid plans']},
  {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','Zoho Mail, separate',N,N,'Outlook, separate','Gmail, separate']},
  {label:'Whiteboard',cells:[Y,Y,Y,Y,'Drawing tools','Paid plans','Separate app']},
@@ -88,7 +88,7 @@ export function CompareSection(){
 export function TrustSection(){
   const items=[
    ['Encrypted connection','All traffic uses HTTPS. Passwords are stored as salted hashes, and saved API keys are encrypted.'],
-   ['Recordings stay with you','Recordings save on the host’s own computer by default. A cloud copy is only made if the host chooses it.'],
+   ['Recordings stay with you','Basic hosts save the recording on their own computer when the meeting ends. On paid plans it is stored in the cloud and a download link is emailed to the host.'],
    ['Your files are not kept','PDFs you edit or sign are processed for your request and sent straight back. They are not stored.'],
    ['A person approves the AI','Minutes and action items are drafts until someone reviews them. The Privacy page lists every provider we use and what it does.'],
   ];
