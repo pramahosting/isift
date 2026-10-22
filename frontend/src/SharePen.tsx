@@ -43,7 +43,7 @@ export function SharePen({sharer,isSharer,holder,holderName,myId,candidates,ink,
   return <div className="rm-pen" ref={root}>
     {box&&<div className={`rm-pen-area${mode!=='off'&&canDraw?' live':''}${mode==='draw'?' drawing':''}`} style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onPointerLeave={leave}>
       <canvas ref={cv}/>
-      {live.map(p=><span key={p.by} className="rm-penpt" style={{left:`${p.x*100}%`,top:`${p.y*100}%`,['--c' as any]:colorOf(p.by)}}><i/><b>{p.name}</b></span>)}
+      {live.map(p=><span key={p.by} className="rm-penpt" style={{left:`${p.x*100}%`,top:`${p.y*100}%`,['--c' as any]:colorOf(p.by)}}><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><path d="M2 2 L2 21 L7.5 16 L11.5 24.5 L15 23 L11 14.5 L18.5 14.5 Z" fill={colorOf(p.by)} stroke="#fff" strokeWidth="1.6" strokeLinejoin="round"/></svg><b>{p.name}</b></span>)}
     </div>}
     <div className="rm-pentools" onPointerDown={e=>e.stopPropagation()}>
       {!open?<button type="button" className={`rm-penbtn${canDraw?' mine':''}`} onClick={()=>setOpen(true)} title="Pointer and pen on the shared screen"><Pencil size={14}/> Pen{holder&&holder!==myId?` · ${holderName}`:canDraw&&!isSharer?' · you':''}</button>

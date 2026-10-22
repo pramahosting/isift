@@ -1666,3 +1666,9 @@ label.chk{display:inline-flex;flex-direction:row;align-items:center;gap:8px;font
 .pr-tablewrap{overflow-x:auto;max-width:980px;margin:0 auto}.pr-table{width:100%;border-collapse:collapse;font-size:14px}.pr-table th,.pr-table td{padding:10px 12px;border-bottom:1px solid var(--line,#e2e8f0);text-align:left;vertical-align:top}.pr-table thead th{font-size:15px}.pr-table tbody th{font-weight:600}.pr-table td:nth-child(3){background:#2563eb0d}
 .pr-faq{max-width:760px;margin:0 auto}.pr-faq details{border-bottom:1px solid var(--line,#e2e8f0);padding:12px 4px}.pr-faq summary{cursor:pointer;font-weight:600}.pr-faq p{margin:8px 0 0;color:var(--muted,#64748b)}
 .bill-tier{display:flex;align-items:center;gap:10px;margin:10px 0}.bill-tier select{padding:8px 10px;border-radius:9px;border:1px solid var(--line,#d6deea);font:inherit}
+
+/* the pointer looks like a pointer (an arrow), and the pen like a pen */
+.rm-pen-area.live{cursor:default;outline:none}
+.rm-pen-area.live.drawing{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M3 21l1.2-4.6L16.6 4a2 2 0 0 1 2.8 0l1.6 1.6a2 2 0 0 1 0 2.8L8.6 20.8z' fill='%23fff' stroke='%23000' stroke-width='1.6' stroke-linejoin='round'/></svg>") 3 21,crosshair}
+.rm-penpt{transform:none;filter:drop-shadow(0 2px 3px #0008)}.rm-penpt svg{display:block;animation:none}.rm-penpt b{left:16px;top:18px}
+.rm-penpt{margin:-2px 0 0 -2px}
