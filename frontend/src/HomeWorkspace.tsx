@@ -114,7 +114,7 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
   const choose=(i:It)=>{if(!pins.includes(i.k))savePins([...pins,i.k]);setMore(false);setAdded(i.label)};
   const [added,setAdded]=useState('');useEffect(()=>{if(!added)return;const t=setTimeout(()=>setAdded(''),3500);return()=>clearTimeout(t)},[added]);
   const meetings=(today?.meetings||[]).slice(0,4);
-  const Btn=({i}:{i:It})=><div className="ws-cardwrap"><button type="button" className={`ws-btn${off(i)?' locked':''}`} onClick={()=>tap(i)}><span className={`ws-ic ${i.c}`}><i.icon size={32}/>{off(i)&&<em className="ws-lock"><Lock size={12}/></em>}</span><span className="ws-lb">{i.label}</span><span className="ws-nt">{i.note}</span></button><button type="button" className="ws-unpin" onClick={()=>savePins(pins.filter(k=>k!==i.k))} aria-label={`Remove ${i.label} from the workspace`} title="Remove from workspace"><X size={14}/></button></div>;
+  const Btn=({i}:{i:It})=><div className="ws-cardwrap"><button type="button" data-k={i.k} className={`ws-btn${off(i)?' locked':''}`} onClick={()=>tap(i)}><span className={`ws-ic ${i.c}`}><i.icon size={32}/>{off(i)&&<em className="ws-lock"><Lock size={12}/></em>}</span><span className="ws-lb">{i.label}</span><span className="ws-nt">{i.note}</span></button><button type="button" className="ws-unpin" onClick={()=>savePins(pins.filter(k=>k!==i.k))} aria-label={`Remove ${i.label} from the workspace`} title="Remove from workspace"><X size={14}/></button></div>;
   return <section className="ws" aria-label="iSift workspace">
     <div className="ws-main">
       <div className="ws-grid" role="group" aria-label="Your tools">{pinned.map(i=><Btn key={i.k} i={i}/>)}
