@@ -7,9 +7,13 @@ fails) it answers from the fixed answers below, so the chat icon always works. M
 import re, time
 from fastapi import APIRouter, HTTPException, Request
 from app.services import groq
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from app.core.db import get_db
 
 router = APIRouter(prefix="/api/v1", tags=["support"])
 SUPPORT_EMAIL = "info@isift.au"
+OWNER_NAME, OWNER_ABN, OWNER_SITE = "Headstart Finances Australia Pty Ltd", "88 656 265 860", "https://hsfinances.com.au"
 
 KNOWLEDGE = f"""You are the iSift assistant on the iSift website (www.isift.au). Answer visitors' questions about iSift helpfully and briefly
 (2 to 4 sentences unless asked for more). Use only the facts below. Never invent features, prices, dates, certifications or promises.
@@ -23,29 +27,74 @@ VIDEO MEETINGS: start an instant meeting or join with a link or meeting ID. Gues
 a passcode or signed-in-only access, co-hosts, mute people, switch off video, remove people, and decide whether participants may unmute or start video.
 Screen sharing, group and private chat, and inviting people by email are included. Larger meetings can be split into discussion groups:
 people in a group only see, hear and chat with their group, the host can move people, send announcements and bring everyone back; groups of 10 or fewer can use a boardroom table view.
-RECORDING: the host can record. Everyone sees a clear Recording banner. The recording is saved to the host's own computer by default; the host can also tick a box to keep a copy in the cloud.
-On the Basic plan a cloud copy is kept for 2 days.
+RECORDING: the host can record. Everyone sees a clear Recording banner. When the meeting ends, a Basic host is offered the recording to save on their own computer (it is not stored by iSift). On paid plans the recording is stored in the cloud and a download link is emailed to the host.
 
 BOOKING: booking pages you share by email, like Calendly, an embeddable booking widget for other websites, and an Outlook add-in. Schedule Zoom, Teams and Google Meet meetings from one place.
 
 AI: minutes, action items and morning briefings are drafted by AI and must be reviewed by a person. Transcripts of recordings can be produced. AI can be wrong, so check it.
 
-PLANS (prices per user per month, shown in the website's currency; Standard and Business are paid by card through Square and renew automatically):
-- Basic: free for ever. Browser video meetings with chat and screen sharing, shared notes and whiteboard, Commbox, transcripts and action items.
-- Standard: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page for the current monthly and yearly price (yearly is cheaper). Adds AI minutes and briefings, booking pages, recording and full host controls, scheduling across Zoom, Teams and Google Meet.
-- Business: the price is set by iSift and can change, so do not quote an amount; point to the Pricing page. Adds a company account under one plan, Microsoft Entra single sign-on, switching modules on and off, audit log and retention rules, priority support.
-You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.
+@@PLANS@@
+
+WHO RUNS iSIFT: iSift is owned and operated by {OWNER_NAME} (ABN {OWNER_ABN}), website {OWNER_SITE}. Contact: {SUPPORT_EMAIL}. Say this if asked who runs, owns or is behind iSift.
 
 SAFETY AND LEGAL PAGES: the Terms, Privacy, Trust Center, Acceptable Use Guidelines and Legal & Compliance pages are linked in the footer of the website.
 Do not claim security certifications (such as SOC 2 or ISO 27001); iSift does not state any.
 """
 
+
+PLAN_NAMES = {"basic": "Basic", "individual": "Standard", "business": "Business"}
+
+async def plan_facts(db) -> dict:
+    """What each plan includes RIGHT NOW: the built-in limits with the administrator's plan changes on top, so the assistant never repeats old information."""
+    from app.services import entitlements as E
+    cfg = await E.plan_config(db); out = {}
+    for pid in E.PLAN_IDS:
+        lim = E.plan_defaults(pid); lim.update({k: v for k, v in (cfg.get(pid, {}).get("limits") or {}).items() if k in E.FIELDS})
+        out[pid] = {"limits": lim, "modules_off": list(cfg.get(pid, {}).get("modules_off") or [])}
+    return out
+
+def _n(v, unit="", none="unlimited"): return none if not v else f"{v}{unit}"
+
+def plans_text(facts: dict) -> str:
+    lines = ["PLANS (these facts are generated from the live plan settings and are always current; if a feature is not listed for a plan, the plan does not include it).",
+             "Prices are per host per month, shown in the website's currency. Do NOT quote an amount: point to the Pricing page for current monthly and yearly prices. Standard and Business are paid by card through Square and renew automatically."]
+    for pid, f in facts.items():
+        l = f["limits"]; yes, no = [], []
+        (yes if l.get("commbox") else no).append("Commbox (mail, calendar and contacts in one place)")
+        (yes if l.get("open_room") else no).append("open room")
+        (yes if l.get("calls") else no).append("calling other iSift users (they can still receive calls)" if pid == "basic" else "calling other iSift users")
+        (yes if l.get("recording") else no).append("meeting recording, " + ("stored in the cloud with a download link emailed to the host" if l.get("cloud_recording") else "saved on the host's own computer when the meeting ends"))
+        (yes if l.get("multi_share") else no).append("several people sharing their screen at once")
+        (yes if l.get("watch_together") else no).append("watch a video together")
+        txt = (f"- {PLAN_NAMES[pid]}: up to {_n(l.get('max_participants'), ' people', 'a chosen number of people')} per meeting" if pid == "basic" else f"- {PLAN_NAMES[pid]}: 10 to 300 people per meeting (the host chooses)")
+        txt += f"; meetings of {_n(l.get('meeting_minutes'), ' minutes', 'any length')}; AI summaries {_n(l.get('ai_per_month'), ' a month')}; booking pages {_n(l.get('booking_pages'))}; storage {_n(l.get('storage_mb'), ' MB')}."
+        txt += " Includes: " + "; ".join(yes) + "." if yes else ""
+        txt += " Does NOT include: " + "; ".join(no) + "." if no else ""
+        if f["modules_off"]: txt += " Switched off on this plan: " + ", ".join(f["modules_off"]) + "."
+        if pid == "business": txt += " Also: a company account under one plan, Microsoft Entra single sign-on, switching modules on and off for everyone, audit log and retention rules, team booking pages, priority support."
+        lines.append(txt)
+    lines.append("You can cancel any time and keep the plan until the end of the paid period. When you change plan the difference is worked out by days; refunds are reviewed and approved by a person.")
+    return "\n".join(lines)
+
+def knowledge(facts: dict) -> str:
+    return KNOWLEDGE.replace("@@PLANS@@", plans_text(facts))
+
+def feature_answer(facts: dict, text: str):
+    """A plain answer straight from the live plan facts for 'which plan includes X' questions."""
+    t = (text or "").lower(); table = [("commbox", "commbox", "Commbox (mail, calendar and contacts)"), ("mail", "commbox", "Commbox (mail, calendar and contacts)"), ("open room", "open_room", "the open room"), ("call", "calls", "calling other iSift users")]
+    for key, field, label in table:
+        if key in t:
+            inc = [PLAN_NAMES[p] for p, f in facts.items() if f["limits"].get(field)]
+            exc = [PLAN_NAMES[p] for p, f in facts.items() if not f["limits"].get(field)]
+            if inc: return f"{label} is included in {' and '.join(inc)}" + (f", not in {' or '.join(exc)}." if exc else ".") + " The Pricing page lists every plan side by side."
+    return None
+
 # fixed answers, used when Groq is not set up or does not answer
 FAQ = [
     (("price", "pricing", "cost", "how much", "plan", "free", "basic", "individual", "business", "upgrade"),
-     "iSift has three plans: Basic is free for ever, Standard adds AI minutes, booking pages, recording and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows current prices in your currency, and you can cancel any time."),
+     "iSift has three plans: Basic is free for ever (browser meetings with chat, screen sharing and recording saved on the host's computer), Standard adds Commbox, unlimited AI minutes and briefings, booking pages, cloud recording and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows the current plans and prices in your currency, and you can cancel any time."),
     (("record", "recording"),
-     "The host can record a meeting and everyone sees a clear Recording banner. The recording is saved to the host's own computer by default, and the host can tick a box to also keep a copy in the cloud (on the Basic plan cloud copies are kept for 2 days)."),
+     "The host can record a meeting and everyone sees a clear Recording banner. On Basic, the recording is saved to the host's own computer when the meeting ends. On paid plans it is stored in the cloud and a download link is emailed to the host."),
     (("group", "breakout", "discussion"),
      "In a large meeting the host can split people into discussion groups. People only see, hear and chat with their own group, the host can move people, send announcements and bring everyone back, and groups of 10 or fewer get a boardroom table view."),
     (("book", "schedule", "calendly", "booking", "outlook", "embed"),
@@ -60,6 +109,8 @@ FAQ = [
      "The Terms, Privacy, Trust Center, Acceptable Use Guidelines and Legal & Compliance pages are linked in the footer of every page. I can't give legal advice, but you can email " + SUPPORT_EMAIL + " with questions."),
     (("refund", "cancel", "billing", "invoice", "payment", "card"),
      "You can change or cancel your plan any time under Plan and billing. When you change plan the difference is worked out by days, and refunds are reviewed and approved by a person. For a problem with your own account, email " + SUPPORT_EMAIL + "."),
+    (("who runs", "who owns", "owner", "company", "who is behind", "who made", "abn", "operated"),
+     f"iSift is owned and operated by {OWNER_NAME} (ABN {OWNER_ABN}), {OWNER_SITE}. You can reach a person at " + SUPPORT_EMAIL + "."),
     (("contact", "support", "help", "email", "human", "person"),
      "You can reach a person at " + SUPPORT_EMAIL + ". Include the email address you signed up with and what you were trying to do."),
 ]
@@ -83,7 +134,7 @@ def _allowed(ip: str) -> bool:
     return True
 
 @router.post("/support/chat")
-async def support_chat(payload: dict, request: Request):
+async def support_chat(payload: dict, request: Request, db: AsyncSession = Depends(get_db)):
     ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "x")).split(",")[0].strip()
     if not _allowed(ip): raise HTTPException(429, "You have sent a lot of messages. Please wait a few minutes, or email " + SUPPORT_EMAIL + ".")
     raw = payload.get("messages")
@@ -92,8 +143,9 @@ async def support_chat(payload: dict, request: Request):
     msgs = [m for m in msgs if m["content"]]
     if not msgs or msgs[-1]["role"] != "user": raise HTTPException(422, "The last message must be a question from you.")
     last = msgs[-1]["content"]
-    reply = await groq.converse(KNOWLEDGE, msgs)
-    return {"reply": reply or fallback(last), "ai": bool(reply)}
+    facts = await plan_facts(db)
+    reply = await groq.converse(knowledge(facts), msgs)
+    return {"reply": reply or feature_answer(facts, last) or fallback(last), "ai": bool(reply)}
 
 
 # ---- support request / contact / feedback forms in the page footer: emailed to the support address, nothing stored ----

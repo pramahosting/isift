@@ -16,7 +16,7 @@ def mailbox_for(email: str) -> str | None:
 class GraphClient:
     async def _token(self) -> str:
         if not all([settings.entra_tenant_id, settings.graph_client_id, settings.graph_client_secret]):
-            raise GraphUnavailable("Microsoft Graph integration is not configured")
+            raise GraphUnavailable("Your calendar isn't connected yet. Connect Outlook or Google in Connections to see your meetings here. If you can't connect it yourself, ask your administrator to connect it.")
         url=f"https://login.microsoftonline.com/{settings.entra_tenant_id}/oauth2/v2.0/token"
         data={"client_id":settings.graph_client_id,"client_secret":settings.graph_client_secret,"grant_type":"client_credentials","scope":"https://graph.microsoft.com/.default"}
         async with httpx.AsyncClient(timeout=15) as c:
@@ -52,7 +52,7 @@ class GraphClient:
 
     async def calendar(self,start: datetime,end: datetime,mailbox: str|None=None) -> list[dict]:
         mailbox=mailbox or settings.graph_user_id
-        if not mailbox: raise GraphUnavailable("Calendar principal is not configured")
+        if not mailbox: raise GraphUnavailable("Your calendar isn't connected yet. Connect Outlook or Google in Connections to see your meetings here. If you can't connect it yourself, ask your administrator to connect it.")
         url=f"{GRAPH}/users/{mailbox}/calendarView"
         params={"startDateTime":start.astimezone(timezone.utc).isoformat(),"endDateTime":end.astimezone(timezone.utc).isoformat(),"$top":"100","$select":"id,subject,organizer,start,end,isCancelled,isAllDay,sensitivity,responseStatus,onlineMeeting,onlineMeetingUrl,webLink"}
         events=[]
