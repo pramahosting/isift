@@ -33,6 +33,15 @@ function protocolLaunch(){
     const m=decodeURIComponent(u).match(/^web\+isift:\/*room\/([A-Za-z0-9]+)/i);
     history.replaceState(null,'',location.pathname+(m?'#/room/'+m[1]:''))}catch{}
 }
+function openTarget(t:string){
+  try{const u=new URL(t,location.origin);let code='';
+    const p=u.searchParams.get('isift');
+    if(p){const m=decodeURIComponent(p).match(/room\/([A-Za-z0-9]+)/i);if(m)code=m[1]}
+    else{const m=u.hash.match(/^#\/room\/([A-Za-z0-9]+)/);if(m)code=m[1]}
+    if(code){location.hash='#/room/'+code;setTimeout(()=>{if(!location.hash.includes(code))location.hash='#/room/'+code},50)}
+  }catch{}
+}
+try{(window as any).launchQueue?.setConsumer((p:any)=>{if(p&&p.targetURL)openTarget(p.targetURL)})}catch{}
 async function start(){
  protocolLaunch();
  if(await handedOver()){
