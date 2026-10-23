@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight,Pin,Check} from 'lucide-react';
+import {Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight,Pin,Check,Mail,MessageSquare,Link2,ScrollText,ListChecks,Sparkles,Contact} from 'lucide-react';
 import {getPrefs,setPref} from './prefs';
 import {help} from './notify';
 import {JoinDialog} from './Connections';
@@ -59,7 +59,7 @@ export function SettingsDialog({onClose,plan,onTest,go,onSignOut,userName}:{onCl
     </div></section></div>;
 }
 
-export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLink,onSync,today,plan,onTest,onSignOut}:{name?:string;request:any;modOn:(m:string)=>boolean;go:(p:string)=>void;onHost:()=>void;onSchedule:()=>void;onShareLink:()=>void;onSync:()=>void;today:any;plan:string;onTest:()=>void;onSignOut:()=>void}){
+export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLink,onSync,today,plan,onTest,onSignOut,isAdmin}:{isAdmin?:boolean;name?:string;request:any;modOn:(m:string)=>boolean;go:(p:string)=>void;onHost:()=>void;onSchedule:()=>void;onShareLink:()=>void;onSync:()=>void;today:any;plan:string;onTest:()=>void;onSignOut:()=>void}){
   const [joinOpen,setJoinOpen]=useState(false);const [now,setNow]=useState(new Date());const [help_,setHelp]=useState(false);const [more,setMore]=useState(false);const [setOpen,setSetOpen]=useState(false);const [canInstall,setCan]=useState(!!deferred);
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),20000);const f=()=>setCan(true);const j=()=>setJoinOpen(true);const i=()=>setHelp(true);const so=()=>setSetOpen(true);
     window.addEventListener('isift:installable',f);window.addEventListener('isift:join',j);window.addEventListener('isift:install',i);window.addEventListener('isift:settings',so);
@@ -81,6 +81,21 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
       {k:'rec',label:'Recordings',note:'Your recorded meetings',icon:Play,c:'cobalt',run:()=>go('Recordings'),mod:'meetings'},
       {k:'share',label:'Share booking link',note:'Email it to someone',icon:Send,c:'cobalt',run:onShareLink,mod:'scheduling'},
       {k:'sync',label:'Sync calendar',note:'Pull in today’s events',icon:RefreshCw,c:'cobalt',run:onSync,mod:'calendar'}]},
+    {group:'Meeting records',items:[
+      {k:'mtgs',label:'All meetings',note:'Past and upcoming',icon:CalendarDays,c:'cobalt',run:()=>go('Meetings'),mod:'meetings'},
+      {k:'trans',label:'Transcripts',note:'What was said',icon:ScrollText,c:'cobalt',run:()=>go('Transcripts'),mod:'meetings'},
+      {k:'mins',label:'Minutes',note:'Summaries of meetings',icon:FileText,c:'cobalt',run:()=>go('Minutes'),mod:'meetings'},
+      {k:'acts',label:'Action items',note:'Tasks from meetings',icon:ListChecks,c:'cobalt',run:()=>go('Action items'),mod:'meetings'},
+      {k:'brief',label:'Briefings',note:'AI briefings',icon:Sparkles,c:'cobalt',run:()=>go('Briefings'),mod:'meetings'}]},
+    {group:'Communication',items:[
+      {k:'comm',label:'Commbox',note:'Mail and messages',icon:Mail,c:'teal',run:()=>go('Commbox')},
+      {k:'cal',label:'Calendar',note:'Your calendar',icon:CalendarDays,c:'teal',run:()=>go('Calendar')},
+      {k:'cont',label:'Contacts',note:'People you know',icon:Contact,c:'teal',run:()=>go('Contacts')},
+      {k:'chat',label:'Chat',note:'Message your team',icon:MessageSquare,c:'teal',run:()=>go('Chat'),mod:'chat'},
+      {k:'phone',label:'Phone',note:'Calls and numbers',icon:Phone,c:'teal',run:()=>go('Phone')}]},
+    {group:'Settings and links',items:[
+      {k:'conn',label:'Connections',note:'Link your other apps',icon:Link2,c:'plain',run:()=>go('Connections'),mod:'connections'},
+      ...(isAdmin?[{k:'adm',label:'Admin Console',note:'Users, plans, modules',icon:Gear,c:'plain',run:()=>go('Admin Console')} as It]:[])]},
     {group:'Documents',items:[
       {k:'notes',label:'Notes',note:'Write and share',icon:FileText,c:'teal',run:()=>go('Notes'),mod:'docs'},
       {k:'pdf',label:'PDFs and signing',note:'Edit, sign, send',icon:FileSignature,c:'teal',run:()=>go('Sign & Edit PDF'),mod:'docs'},

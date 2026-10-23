@@ -15,12 +15,14 @@ let chan:BroadcastChannel|null=null;try{chan=new BroadcastChannel('isift-tabs')}
 const isRoomHash=(h:string)=>/^#\/room\//.test(h);
 function listenForHandoff(){
   if(!chan)return;
-  chan.onmessage=e=>{const m=e.data||{};if(m.type!=='open'||m.from===TAB_ID||!isRoomHash(m.hash))return;
+  chan.onmessage=e=>{const m=e.data||{};if(isApp()||m.type!=='open'||m.from===TAB_ID||!isRoomHash(m.hash))return;
     if(document.documentElement.classList.contains('in-room'))return;      // this tab is in a meeting: do not take over
     setTimeout(()=>{try{const c=localStorage.getItem('isift.claim')||'';const [cid,ct]=c.split('|');if(cid&&cid!==m.from&&Date.now()-Number(ct)<2000&&cid!==TAB_ID&&localStorage.getItem('isift.claim.for')===m.from)return;localStorage.setItem('isift.claim',TAB_ID+'|'+Date.now());localStorage.setItem('isift.claim.for',m.from)}catch{}
       chan!.postMessage({type:'taken',to:m.from,by:TAB_ID});location.hash=m.hash;try{window.focus()}catch{}},Math.random()*60)}
 }
+const isApp=()=>{try{return window.matchMedia('(display-mode: standalone)').matches||(navigator as any).standalone===true}catch{return false}};
 async function handedOver():Promise<boolean>{
+  if(isApp())return false;      // the installed app keeps its meeting; it never hands it back to a browser tab
   if(!chan||!isRoomHash(location.hash))return false;
   try{if(sessionStorage.getItem('isift.tabseen'))return false;sessionStorage.setItem('isift.tabseen','1')}catch{return false}
   const nav:any=performance.getEntriesByType?.('navigation')?.[0];if(nav&&nav.type&&nav.type!=='navigate')return false;

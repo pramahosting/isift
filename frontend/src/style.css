@@ -1912,3 +1912,6 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 @media(max-width:420px){.inst-banner{flex-wrap:wrap}.inst-tx{flex:1 1 60%}}
 .rm-card.lobby .inst-banner{margin-top:40px}
 
+
+.topbar .allapp{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#2f64f0}
+@media(max-width:640px){.shell.workspace-mode .topbar .allapp{display:inline-flex!important}.shell.workspace-mode .topbar .allapp span{display:none}}
