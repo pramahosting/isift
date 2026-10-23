@@ -1935,3 +1935,10 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .ws-grid{grid-template-columns:repeat(3,minmax(0,176px))!important;gap:14px!important;justify-content:start!important}
 @media(max-width:900px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
 .ws-allbar{margin:12px 0 8px}.ws-allbtn{width:auto;max-width:none;padding:8px 12px;gap:8px;border-radius:12px}.ws-allbtn b{font-size:.9rem}.ws-allbtn small{display:none}.ws-allbtn svg{width:16px;height:16px}
+
+.ws{align-items:stretch!important}.ws-main{display:flex!important;flex-direction:column}
+.ws-grid{gap:26px 30px!important}
+.ws-allrow{margin-top:auto;padding-top:14px;display:flex;justify-content:flex-end}
+.ws-alltools{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:#2f64f0;font:inherit;font-weight:700;font-size:.98rem;cursor:pointer;padding:6px 4px}
+.ws-alltools:hover{text-decoration:underline}
+@media(max-width:900px){.ws-grid{gap:20px 12px!important}}
