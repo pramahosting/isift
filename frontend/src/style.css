@@ -1932,12 +1932,6 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 
 .topbar .allapp{display:none!important}
 
-/* workspace tiles: three across, big rounded icons with space between, label underneath */
-.ws-grid{grid-template-columns:repeat(3,minmax(0,150px))!important;gap:34px 48px!important;justify-content:start!important}
-.ws-btn,.ws-btn.ws-more-btn{background:transparent!important;border:0!important;box-shadow:none!important;min-height:0!important;padding:0!important;gap:12px!important;border-radius:0!important}
-.ws-btn:hover{background:transparent!important;box-shadow:none!important}.ws-btn:hover .ws-ic{filter:brightness(1.06);transform:translateY(-2px)}
-.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:128px!important;height:128px!important;border-radius:34px!important;transition:transform .15s,filter .15s}
-.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:58px!important;height:58px!important}
-.ws-btn .ws-lb{font-size:1.02rem!important;font-weight:500!important}.ws-btn .ws-nt{display:none!important}
-@media(max-width:900px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:26px 14px!important;justify-content:stretch!important}.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:min(104px,26vw)!important;height:min(104px,26vw)!important;border-radius:28px!important}.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:46px!important;height:46px!important}}
-@media(max-width:420px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.ws-btn .ws-lb{font-size:.88rem!important}.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:min(86px,25vw)!important;height:min(86px,25vw)!important;border-radius:24px!important}.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:38px!important;height:38px!important}}
+.ws-grid{grid-template-columns:repeat(3,minmax(0,176px))!important;gap:14px!important;justify-content:start!important}
+@media(max-width:900px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+.ws-allbar{margin:12px 0 8px}.ws-allbtn{width:auto;max-width:none;padding:8px 12px;gap:8px;border-radius:12px}.ws-allbtn b{font-size:.9rem}.ws-allbtn small{display:none}.ws-allbtn svg{width:16px;height:16px}
