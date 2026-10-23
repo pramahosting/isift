@@ -1915,3 +1915,29 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 
 .topbar .allapp{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#2f64f0}
 @media(max-width:640px){.shell.workspace-mode .topbar .allapp{display:inline-flex!important}.shell.workspace-mode .topbar .allapp span{display:none}}
+
+/* bigger workspace tiles */
+.ws-grid{grid-template-columns:repeat(auto-fill,minmax(158px,176px))!important;gap:14px!important}
+.ws-btn,.ws-btn.ws-more-btn{padding:18px 10px 14px!important;gap:9px!important;border-radius:20px!important;min-height:150px}
+.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:76px!important;height:76px!important}
+.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:36px!important;height:36px!important}
+.ws-btn .ws-lb{font-size:1rem!important}.ws-btn .ws-nt{font-size:.8rem!important}
+@media(max-width:900px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.ws-btn,.ws-btn.ws-more-btn{min-height:136px}.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:66px!important;height:66px!important}.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:32px!important;height:32px!important}}
+@media(max-width:420px){.ws-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.ws-btn,.ws-btn.ws-more-btn{min-height:128px}.ws-btn .ws-lb{font-size:.92rem!important}}
+
+.ws-allbar{margin:18px 0 10px}.ws-allbtn{display:flex;align-items:center;gap:12px;width:100%;max-width:520px;padding:14px 16px;border:1px solid #cfdbe3;border-radius:16px;background:#fff;color:#1f3a4d;cursor:pointer;text-align:left;font:inherit}
+.ws-allbtn:hover{background:#f6fafc;box-shadow:0 6px 16px #1f3a4d1f}.ws-allbtn>span{flex:1;display:grid}.ws-allbtn b{font-size:1.02rem}.ws-allbtn small{color:#5b7080;font-size:.82rem}
+.topbar .backws{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#2f64f0;margin-right:6px;flex:none}
+@media(max-width:640px){.topbar .backws span{font-size:.85rem}}
+
+.topbar .allapp{display:none!important}
+
+/* workspace tiles: three across, big rounded icons with space between, label underneath */
+.ws-grid{grid-template-columns:repeat(3,minmax(0,150px))!important;gap:34px 48px!important;justify-content:start!important}
+.ws-btn,.ws-btn.ws-more-btn{background:transparent!important;border:0!important;box-shadow:none!important;min-height:0!important;padding:0!important;gap:12px!important;border-radius:0!important}
+.ws-btn:hover{background:transparent!important;box-shadow:none!important}.ws-btn:hover .ws-ic{filter:brightness(1.06);transform:translateY(-2px)}
+.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:128px!important;height:128px!important;border-radius:34px!important;transition:transform .15s,filter .15s}
+.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:58px!important;height:58px!important}
+.ws-btn .ws-lb{font-size:1.02rem!important;font-weight:500!important}.ws-btn .ws-nt{display:none!important}
+@media(max-width:900px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:26px 14px!important;justify-content:stretch!important}.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:min(104px,26vw)!important;height:min(104px,26vw)!important;border-radius:28px!important}.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:46px!important;height:46px!important}}
+@media(max-width:420px){.ws-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}.ws-btn .ws-lb{font-size:.88rem!important}.ws-btn .ws-ic,.ws-more-btn .ws-ic{width:min(86px,25vw)!important;height:min(86px,25vw)!important;border-radius:24px!important}.ws-btn .ws-ic svg,.ws-more-btn .ws-ic svg{width:38px!important;height:38px!important}}
