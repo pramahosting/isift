@@ -2,7 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {Sun,ArrowLeft,ArrowUp,ChevronDown,X,Mail} from 'lucide-react';
 
 // Who is behind the service. Change these two lines and every page updates.
-export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026'};
+export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026',owner:'Headstart Finances Australia Pty Ltd',abn:'88 656 265 860',ownerSite:'https://hsfinances.com.au'};
 
 export type LegalSlug='terms'|'privacy'|'trust'|'acceptable-use'|'legal-compliance';
 export const LEGAL_LINKS:{slug:LegalSlug;label:string}[]=[
@@ -112,6 +112,7 @@ export function LegalFooter(_p:{tagline?:boolean}={}){
     <div className="sf-top"><div className="sf-help"><b>Need a hand?</b>
       {(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}
       <a href={`mailto:${LEGAL.email}`}><Mail size={13}/> {LEGAL.email}</a></div></div>
+    <p className="sf-owner"><b>Who runs iSift:</b> iSift is owned and operated by <a href={LEGAL.ownerSite} target="_blank" rel="noopener noreferrer">{LEGAL.owner}</a> (ABN {LEGAL.abn}). <a href={LEGAL.ownerSite} target="_blank" rel="noopener noreferrer">hsfinances.com.au</a></p>
     {map&&<nav id="sf-sitemap" className="sf-sitemap" aria-label="Sitemap">
       <div><h4>iSift</h4><a href="#/">Home</a><a href="#/pricing">Plans and pricing</a></div>
       <div><h4>Legal</h4>{LEGAL_LINKS.map(l=><a key={l.slug} href={`#/${l.slug}`}>{l.label}</a>)}</div>
@@ -122,7 +123,7 @@ export function LegalFooter(_p:{tagline?:boolean}={}){
       <button type="button" className="sf-map" aria-expanded={map} aria-controls="sf-sitemap" onClick={()=>setMap(m=>!m)}>Sitemap <ChevronDown size={14} className={map?'up':''}/></button>
     </div>
     <div className="sf-base">
-      <span className="sf-copy">Copyright ©{new Date().getFullYear()} {LEGAL.service}. All rights reserved.</span>
+      <span className="sf-copy">Copyright ©{new Date().getFullYear()} {LEGAL.service}, owned by {LEGAL.owner} (ABN {LEGAL.abn}). All rights reserved.</span>
       <button type="button" className="sf-top-link" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})} aria-label="iSift · Back to top"><span className="sf-up"><ArrowUp size={20}/></span><span className="sf-uptxt">iSift · Back to top</span></button>
       <span className="sf-tag">Private by design · AI-empowered and Human-reviewed</span>
     </div>

@@ -1942,3 +1942,9 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .ws-alltools{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:#2f64f0;font:inherit;font-weight:700;font-size:.98rem;cursor:pointer;padding:6px 4px}
 .ws-alltools:hover{text-decoration:underline}
 @media(max-width:900px){.ws-grid{gap:20px 12px!important}}
+
+.toast .toast-go{margin-left:10px;border:0;border-radius:999px;background:#2f64f0;color:#fff;font-weight:700;padding:5px 14px;cursor:pointer}
+
+.su-need{margin:0 0 10px;padding:9px 12px;border-radius:10px;background:#eef6f9;color:#1f3a4d;font-size:.9rem}.su-req{color:#b4531e;font-weight:600;font-size:.8rem}.su-why{display:block;color:#5b7080;margin-top:4px}
+
+.sf-owner{margin:14px 0 0;font-size:.88rem;color:inherit;opacity:.9;text-align:center}.sf-owner a{color:inherit;text-decoration:underline;font-weight:600}

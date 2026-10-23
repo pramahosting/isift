@@ -34,7 +34,7 @@ export function TranscriptsPage({meetings,selected,transcript,onView,onFetch,onU
     </section>
     <section className="tr-pending panel">
       <div className="panelhead"><h2>Meetings without a transcript</h2><span className="tr-count">{pending.length}</span></div>
-      {pending.length?pending.map(m=><div className="tr-prow" key={m.id}><div><b>{m.title}</b><small>{dayOf(m.start_at)} · {String(m.transcript_status).replaceAll('_',' ')}</small></div>
+      {pending.length?pending.map(m=><div className="tr-prow" key={m.id}><div><b>{m.title}</b><small>{dayOf(m.start_at)} · {({not_available:'not available yet',not_started:'not started'} as any)[String(m.transcript_status)]||String(m.transcript_status).replaceAll('_',' ')}</small></div>
         <div className="tr-acts"><button className="secondary" type="button" onClick={()=>onFetch(m.id)}><Mic size={14}/> Fetch official transcript</button>
         <label className="secondary tr-up"><Upload size={14}/> Upload audio<input type="file" accept="audio/*,video/*" hidden onChange={e=>{const f=e.target.files?.[0];if(f)onUpload(m.id,f);e.target.value=''}}/></label></div></div>):<p className="tr-empty">Every meeting has a transcript.</p>}
     </section>
