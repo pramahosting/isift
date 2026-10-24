@@ -4,6 +4,7 @@ import { PublicClientApplication } from '@azure/msal-browser';
 import App from './App.tsx';
 import './style.css';
 import {HelpToaster} from './notify.tsx';
+import InstallCallout from './InstallCallout.tsx';
 import {applyPrefs} from './prefs.ts';
 applyPrefs();
 
@@ -56,6 +57,6 @@ async function start(){
   await msal.initialize();const redirect=await msal.handleRedirectPromise();const account=redirect?.account||msal.getAllAccounts()[0];
   if(account){try{token=(await msal.acquireTokenSilent({account,scopes:[import.meta.env.VITE_ENTRA_API_SCOPE||`api://${import.meta.env.VITE_ENTRA_CLIENT_ID}/access_as_user`]})).accessToken}catch{}}
  }
- createRoot(document.getElementById('root')).render(<React.StrictMode><><App initialToken={token} msal={msal}/><HelpToaster/></></React.StrictMode>);
+ createRoot(document.getElementById('root')).render(<React.StrictMode><><App initialToken={token} msal={msal}/><HelpToaster/><InstallCallout/></></React.StrictMode>);
 }
 start();

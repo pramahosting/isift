@@ -9,6 +9,10 @@ let deferred:any=null;
 if(typeof window!=='undefined')window.addEventListener('beforeinstallprompt',(e:any)=>{e.preventDefault();deferred=e;window.dispatchEvent(new Event('isift:installable'))});
 const standalone=()=>{try{return window.matchMedia('(display-mode: standalone)').matches||(navigator as any).standalone===true}catch{return false}};
 try{if(standalone())localStorage.setItem('isift.installed','1');window.addEventListener('appinstalled',()=>{try{localStorage.setItem('isift.installed','1')}catch{}})}catch{}
+// For InstallCallout.tsx: has the browser said iSift can be installed here (so it is not installed yet), run the browser's install dialog, and is this window the installed app.
+export const installReady=()=>!!deferred;
+export const runningAsApp=()=>standalone();
+export async function runInstall():Promise<boolean>{if(!deferred)return false;try{deferred.prompt();await deferred.userChoice}catch{}deferred=null;return true}
 const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 
 export function InstallBanner({text}:{text?:string}){
@@ -59,6 +63,7 @@ export function SettingsDialog({onClose,plan,onTest,go,onSignOut,userName}:{onCl
     </div></section></div>;
 }
 
+const START_PINS=['host','join','sched','pdf','share'];const PINS_V='2';      // tile keys shown to everyone from the start; bump PINS_V to add a tile to existing browsers once more
 export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLink,onSync,today,plan,onTest,onSignOut,isAdmin,onAll}:{onAll?:()=>void;isAdmin?:boolean;name?:string;request:any;modOn:(m:string)=>boolean;go:(p:string)=>void;onHost:()=>void;onSchedule:()=>void;onShareLink:()=>void;onSync:()=>void;today:any;plan:string;onTest:()=>void;onSignOut:()=>void}){
   const [joinOpen,setJoinOpen]=useState(false);const [now,setNow]=useState(new Date());const [help_,setHelp]=useState(false);const [more,setMore]=useState(false);const [setOpen,setSetOpen]=useState(false);const [canInstall,setCan]=useState(!!deferred);
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),20000);const f=()=>setCan(true);const j=()=>setJoinOpen(true);const i=()=>setHelp(true);const so=()=>setSetOpen(true);
@@ -108,8 +113,10 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
       {k:'test',label:'Test audio and video',note:'Check camera and microphone',icon:Headphones,c:'plain',run:onTest}]},
   ];
   const flat=ALL.flatMap(g=>g.items);
-  const [pins,setPins]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem('isift.pins')||'null');if(Array.isArray(v))return v}catch{}return ['host','join','sched','book']});
-  const savePins=(p:string[])=>{setPins(p);try{localStorage.setItem('isift.pins',JSON.stringify(p))}catch{}};
+  // Every workspace starts with these tiles (Start a meeting, Join a meeting, Schedule, PDFs and signing, Share booking link); "More tools" is always shown after them.
+  // A browser that saved its own tiles before this list existed gets the missing ones added once, at the end. After that the person's own choices win, so a tile removed with its × stays removed.
+  const [pins,setPins]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem('isift.pins')||'null');if(Array.isArray(v)){if(localStorage.getItem('isift.pins.v')===PINS_V)return v;const m=[...v,...START_PINS.filter(k=>!v.includes(k))];try{localStorage.setItem('isift.pins',JSON.stringify(m));localStorage.setItem('isift.pins.v',PINS_V)}catch{}return m}}catch{}return START_PINS});
+  const savePins=(p:string[])=>{setPins(p);try{localStorage.setItem('isift.pins',JSON.stringify(p));localStorage.setItem('isift.pins.v',PINS_V)}catch{}};
   const pinned=pins.map(k=>flat.find(i=>i.k===k)).filter(Boolean) as It[];
   const choose=(i:It)=>{if(!pins.includes(i.k))savePins([...pins,i.k]);setMore(false);setAdded(i.label)};
   const [added,setAdded]=useState('');useEffect(()=>{if(!added)return;const t=setTimeout(()=>setAdded(''),3500);return()=>clearTimeout(t)},[added]);

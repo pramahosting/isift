@@ -44,7 +44,7 @@ const COLS=['iSift','Zoom','Zoho Meeting','Webex','GoTo Meeting','Microsoft Team
 const SUB=['','','','','','',''];
 const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Video meetings in the browser',cells:[Y,Y,Y,Y,Y,Y,Y]},
- {label:'Free plan: group meeting length',cells:['70 minutes','40 minutes','60 minutes','40 minutes','Trial only','60 minutes','60 minutes']},
+ {label:'Free plan: group meeting length',cells:['90 minutes','40 minutes','60 minutes','40 minutes','Trial only','60 minutes','60 minutes']},
  {label:'People in one meeting on paid plans',cells:['10 to 300, the size you choose and pay for','100 (Pro)','10 to 250, by size','150 to 1,000, by plan','150 to 250, by plan','300','100 to 500, by plan']},
  {label:'Meeting recording',cells:['Yes. Basic: saved on the host\u2019s computer at the end of the meeting. Paid: stored in the cloud, download link emailed to the host','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
  {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)',null,'AI Assistant (paid plans)','Business plan','Needs Copilot add-on','Gemini, paid plans']},

@@ -61,7 +61,7 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
    {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Special permissions for this person. They override the plan's normal permissions ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
-    <p className="muted small">Basic accounts start with: 3 AI minutes summaries a month, 1 booking page, no calling, no Commbox, no open room, no recording, 70-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
+    <p className="muted small">Basic accounts start with: 3 AI minutes summaries a month, 1 booking page, no calling, no Commbox, no open room, no recording, 90-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
     <div className="lim-box">
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.calls} onChange={e=>setForm({...form,lim:{...form.lim,calls:e.target.checked}})}/> Allow calling other people</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.commbox} onChange={e=>setForm({...form,lim:{...form.lim,commbox:e.target.checked}})}/> Allow Commbox (mail, calendar, contacts)</label>

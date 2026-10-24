@@ -285,7 +285,7 @@ The whiteboard shape library (flowchart, ER, UML, BPMN, containers, cloud and AI
 Below 900 px wide the menu slides in from the left (three-line button at the top left). It uses the same light look as the desktop menu so every module name is readable; the Docs tabs wrap onto two lines on a phone; upload buttons are grey with dark text.
 
 ### Plan limits (Basic, paid, administrator)
-- **Basic:** meetings of up to **70 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **3 AI minutes summaries a month**; **1 booking page**; **no calling other people** (Basic can still receive calls); **no Commbox**; **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
+- **Basic:** meetings of up to **90 minutes** (everyone in the room is warned 10 minutes before the end, then the meeting closes); **3 AI minutes summaries a month**; **1 booking page**; **no calling other people** (Basic can still receive calls); **no Commbox**; **no meeting recording**; **no open room**; **5 new Docs files or whiteboards a day** (Notes, Docs, Sheets, Slides, Whiteboard and uploads to Sign & Edit count together); PDFs of up to **5 pages**.
 - **Standard / Business:** open room, recording, any meeting length, no daily document limit. **Administrators** are never limited.
 - **Per person:** Admin > Users > Edit > *Plan limits for this person* changes any of these for one account (0 = no limit). The code is `backend/app/services/entitlements.py`.
 
