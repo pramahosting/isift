@@ -52,8 +52,8 @@ body{background:#f9fbfd}
 .hero-assurance{display:flex;align-items:center;gap:7px;margin-top:18px;color:#7693a7;font-size:11.5px}.hero-assurance svg{color:var(--v1)}
 .hero-art{position:relative;min-height:380px;display:flex;align-items:center;justify-content:center}
 .art-glow{position:absolute;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,#d1dae1 0%,#c6d2dbaa 50%,transparent 72%);right:3%;top:0}.art-glow.two{width:260px;height:260px;left:0;top:auto;bottom:0;background:radial-gradient(circle,#a9bbc8 0%,#b6c6d177 50%,transparent 72%)}
-.brief-preview{position:relative;width:min(100%,410px);padding:24px 25px 20px;background:#fff;border:1px solid #eef4f9;border-radius:22px;box-shadow:0 30px 70px #65859c3a;transform:rotate(1.5deg);animation:floaty 6s ease-in-out infinite}
-@keyframes floaty{50%{transform:rotate(1.5deg) translateY(-8px)}}
+.brief-preview{position:relative;width:min(100%,410px);padding:24px 25px 20px;background:#fff;border:1px solid #eef4f9;border-radius:22px;box-shadow:0 30px 70px #65859c3a;animation:floaty 6s ease-in-out infinite}
+@keyframes floaty{50%{transform:translateY(-8px)}}
 .preview-top{display:flex;justify-content:space-between;align-items:center}.preview-top>div:first-child{display:grid;gap:7px}.preview-label{color:var(--v2);font-size:9px;letter-spacing:.13em;font-weight:800}.preview-top b{font:800 19px Manrope,'Segoe UI',sans-serif;color:var(--ink)}
 .preview-sun{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#7794a8,#6d8ca2);color:#fff;box-shadow:0 8px 18px #6d8ca255}
 .preview-date{margin:20px 0 8px;color:#87a0b2;font-size:9.5px;font-weight:800;letter-spacing:.11em}
@@ -1994,20 +1994,26 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .ws-btn[data-k="host"] .ws-ic{background:linear-gradient(145deg,#f3ae45,#dc8a2c)!important;--glow:#dc8a2c4d}
 .ws-btn.ws-more-btn .ws-ic{background:linear-gradient(145deg,#eef2f6,#d9e2ea)!important}
 
-/* Install callout: bottom right, above the Ask button. Points up and right at the browser's install button; hover shows the benefits. No close button by design. */
-.inst-callout{position:fixed;right:20px;bottom:104px;z-index:45;width:300px;font-size:13px;color:#193348}
-.inst-co-box{position:relative;display:grid;gap:8px;padding:14px 16px;background:#fff;border:1px solid #cddbe3;border-radius:14px;box-shadow:0 12px 32px #10203040;outline:none}
-.inst-co-box:focus-visible{box-shadow:0 0 0 3px #087e8b55,0 12px 32px #10203040}
-.inst-co-head{display:flex;align-items:center;gap:10px}.inst-co-head b{font:700 14px Manrope,sans-serif;color:#15364c}
-.inst-co-pt{flex:none;width:30px;height:30px;border-radius:50%;background:#e9f5f5;color:#087e8b;display:grid;place-items:center;animation:inst-nudge 1.8s ease-in-out infinite}
-@keyframes inst-nudge{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,-2px)}}
-@media (prefers-reduced-motion:reduce){.inst-co-pt{animation:none}}
-.inst-co-text{color:#4c6575;line-height:1.45}
-.inst-co-box .primary{justify-self:start;margin-top:2px;padding:8px 16px}
-.inst-co-tip{position:absolute;left:0;right:0;bottom:calc(100% + 8px);padding:12px 14px;background:#1f3a4d;color:#e8f1f5;border-radius:12px;box-shadow:0 12px 32px #10203055;opacity:0;visibility:hidden;transform:translateY(4px);transition:opacity .15s,transform .15s,visibility .15s}
-.inst-co-tip b{display:block;margin-bottom:6px;color:#fff}.inst-co-tip ul{margin:0;padding-left:18px}.inst-co-tip li{margin:3px 0}
+/* Install callout: a small one-line box right under the browser's install button (top right). Hover shows the benefits. No close button by design. */
+.inst-callout{position:fixed;top:0;left:0;right:0;height:40px;z-index:45;font-size:12px;color:#193348;background:#f6f9fb;pointer-events:none}
+.inst-co-box{position:absolute;top:6px;right:200px;pointer-events:auto;display:flex;align-items:center;gap:8px;padding:5px 6px 5px 11px;background:#fff;border:1px solid #cddbe3;border-radius:10px;box-shadow:0 6px 18px #10203038;outline:none;white-space:nowrap}
+.inst-co-box:focus-visible{box-shadow:0 0 0 3px #087e8b55,0 6px 18px #10203038}
+.inst-co-arrow{position:absolute;top:-7px;right:26px;width:12px;height:12px;background:#fff;border-left:1px solid #cddbe3;border-top:1px solid #cddbe3;transform:rotate(45deg)}
+.inst-co-text{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:#15364c}.inst-co-text svg{color:#087e8b;animation:inst-nudge 1.8s ease-in-out infinite}
+@keyframes inst-nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@media (prefers-reduced-motion:reduce){.inst-co-text svg{animation:none}}
+.inst-co-box .primary{padding:4px 11px;font-size:11px;border-radius:7px}
+.inst-co-tip{position:absolute;left:0;top:calc(100% + 6px);width:270px;white-space:normal;padding:11px 13px;background:#1f3a4d;color:#e8f1f5;border-radius:12px;box-shadow:0 12px 32px #10203055;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s,transform .15s,visibility .15s}
+.inst-co-tip b{display:block;margin-bottom:5px;color:#fff;font-size:12px}.inst-co-tip ul{margin:0;padding-left:18px}.inst-co-tip li{margin:3px 0;font-weight:400}
 .inst-co-box:hover .inst-co-tip,.inst-co-box:focus-within .inst-co-tip{opacity:1;visibility:visible;transform:none}
 .inst-done{position:fixed;right:20px;bottom:104px;z-index:45;display:flex;gap:10px;align-items:flex-start;max-width:340px;padding:13px 15px;background:#1f3a4d;color:#fff;border-radius:12px;box-shadow:0 12px 32px #10203055;font-size:13px}
 .inst-done b{display:block;margin-bottom:2px}.inst-done small{display:block;color:#cfe0e8;line-height:1.4;font-size:12px}
 .inst-done-ic{flex:none;width:26px;height:26px;border-radius:50%;background:#2fa36b;display:grid;place-items:center}
 @media(max-width:820px),(pointer:coarse){.inst-callout{display:none}}
+/* Room for the box: a 40px strip at the top while it shows, with the sticky headers sticking just below it. Desktop only, matching where the box is shown. */
+@media (min-width:821px) and (not (pointer:coarse)){
+ html.inst-on #root{padding-top:40px}
+ html.inst-on .landing>.landing-nav{top:40px}
+ html.inst-on .topbar{top:40px}
+ html.inst-on .sidebar{top:40px}
+}
