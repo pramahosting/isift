@@ -2016,3 +2016,8 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
  html.inst-on .topbar{top:40px}
  html.inst-on .sidebar{top:40px}
 }
+
+/* Sign out button in the top bar: the same gold as the Start a meeting tile */
+.topbar .topsignout{background:linear-gradient(145deg,#f3ae45,#dc8a2c);color:#fff;border-color:#dc8a2c;box-shadow:0 5px 12px #dc8a2c4d,inset 0 1px 3px #ffffff44}
+.topbar .topsignout:hover{background:linear-gradient(145deg,#f6b957,#e39434);color:#fff;border-color:#e39434;transform:translateY(-1px)}
+.topbar .topsignout:focus-visible{outline:2px solid #1f3a4d;outline-offset:2px}
