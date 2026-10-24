@@ -89,6 +89,14 @@ async def update_account(payload: dict, user: User = Depends(principal), db: Asy
     db.add(AuditLog(actor=user.email, action="account.update", resource_type="account", safe_metadata={})); await db.commit()
     return {"profile": p, "user": {"id": user.id, "email": user.email, "display_name": user.display_name, "role": user.role}, "message": "Profile saved."}
 
+@router.post("/me/app-installed")
+async def app_installed(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """iSift is installed as an app on one of this person's computers. Browsers cannot see each other's installs, so this is how another browser learns not to offer the install prompt again."""
+    key = store.hkey("profile", user.email); p = await store.get(db, key, {})
+    if not p.get("app_installed"):
+        p["app_installed"] = True; await store.put(db, key, p)
+    return {"ok": True}
+
 @router.post("/account/password")
 async def change_password(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     cur, new = str(payload.get("current") or ""), str(payload.get("new") or "")
