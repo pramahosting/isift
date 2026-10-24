@@ -1996,13 +1996,12 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 
 /* Install callout: a small one-line box right under the browser's install button (top right). Hover shows the benefits. No close button by design. */
 .inst-callout{position:fixed;top:0;left:0;right:0;height:40px;z-index:45;font-size:12px;color:#193348;background:#f6f9fb;pointer-events:none}
-.inst-co-box{position:absolute;top:6px;right:200px;pointer-events:auto;display:flex;align-items:center;gap:8px;padding:5px 6px 5px 11px;background:#fff;border:1px solid #cddbe3;border-radius:10px;box-shadow:0 6px 18px #10203038;outline:none;white-space:nowrap}
+.inst-co-box{position:absolute;top:6px;right:200px;pointer-events:auto;display:flex;align-items:center;gap:8px;padding:6px 12px;background:#fff;border:1px solid #cddbe3;border-radius:10px;box-shadow:0 6px 18px #10203038;outline:none;white-space:nowrap}
 .inst-co-box:focus-visible{box-shadow:0 0 0 3px #087e8b55,0 6px 18px #10203038}
 .inst-co-arrow{position:absolute;top:-7px;right:26px;width:12px;height:12px;background:#fff;border-left:1px solid #cddbe3;border-top:1px solid #cddbe3;transform:rotate(45deg)}
-.inst-co-text{display:inline-flex;align-items:center;gap:5px;font-weight:600;color:#15364c}.inst-co-text svg{color:#087e8b;animation:inst-nudge 1.8s ease-in-out infinite}
 @keyframes inst-nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-@media (prefers-reduced-motion:reduce){.inst-co-text svg{animation:none}}
-.inst-co-box .primary{padding:4px 11px;font-size:11px;border-radius:7px}
+.inst-co-link{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:2px 4px;margin:0;font:600 13px 'DM Sans',sans-serif;color:#087e8b;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.inst-co-link:hover{color:#045d68}.inst-co-link svg{animation:inst-nudge 1.8s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.inst-co-link svg{animation:none}}
 .inst-co-tip{position:absolute;left:0;top:calc(100% + 6px);width:270px;white-space:normal;padding:11px 13px;background:#1f3a4d;color:#e8f1f5;border-radius:12px;box-shadow:0 12px 32px #10203055;opacity:0;visibility:hidden;transform:translateY(-4px);transition:opacity .15s,transform .15s,visibility .15s}
 .inst-co-tip b{display:block;margin-bottom:5px;color:#fff;font-size:12px}.inst-co-tip ul{margin:0;padding-left:18px}.inst-co-tip li{margin:3px 0;font-weight:400}
 .inst-co-box:hover .inst-co-tip,.inst-co-box:focus-within .inst-co-tip{opacity:1;visibility:visible;transform:none}
