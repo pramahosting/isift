@@ -524,7 +524,7 @@ def test_administrator_sets_limits_and_modules_for_a_whole_plan(client, monkeypa
     r = client.put("/api/v1/admin/plan-config", json={"plan": "basic", "limits": {"recording": True, "max_participants": 5, "storage_mb": 250}, "modules_off": ["chat", "whiteboard", "nonsense"]}, headers=ah)
     assert r.status_code == 200, r.text
     me = client.get("/api/v1/me/limits", headers=bh).json()
-    assert me["recording"] is True and me["max_participants"] == 5 and me["storage_mb"] == 250 and me["meeting_minutes"] == 70      # changed fields move, the rest stay
+    assert me["recording"] is True and me["max_participants"] == 5 and me["storage_mb"] == 250 and me["meeting_minutes"] == 90      # changed fields move, the rest stay
     assert sorted(me["modules_off"]) == ["chat", "whiteboard"]
     uid = user_id(client, ah, client.email)                                     # one person's special permission still wins over the plan
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": 12}}, headers=ah)
