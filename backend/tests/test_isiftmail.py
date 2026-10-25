@@ -349,3 +349,39 @@ def test_spam_controls(client, monkeypatch, server):
     assert client.post("/api/v1/admin/isiftmail/suspend", json={"address": addr, "reason": "test"}, headers=h).status_code == 200 and send().status_code == 403
     assert client.post("/api/v1/isiftmail/report", json={"address": "nobody@elsewhere.org"}).status_code == 200      # unknown senders are accepted quietly
     assert client.post("/api/v1/isiftmail/report", json={"address": "nonsense"}).status_code == 422
+
+
+def test_easy_setup_helpers(client, monkeypatch, server):
+    from app.api import routes_isiftmail as ri, routes_isiftmail_abuse as ab
+    from app.core.config import settings
+    ri._NEW_BY_NET.clear()
+    client.put("/api/v1/admin/modules", json={"enabled": {"isiftmail": True, "mail": True}}, headers=login(client)[0])
+    h, uh = _commbox_user(client, monkeypatch, "jane.smith@mycompany.example", "Jane")
+    # name suggestions: free ones only
+    names = client.get("/api/v1/isiftmail/suggest", headers=uh).json()["names"]
+    assert 1 <= len(names) <= 4 and all(n not in server["names"] for n in names) and "jane" in names[0]
+    server["names"].add(names[0])
+    assert names[0] not in client.get("/api/v1/isiftmail/suggest", headers=uh).json()["names"]
+    # iPhone profile contains the mailbox settings and the stored password
+    made = client.post("/api/v1/isiftmail/create", json={"name": names[1]}, headers=uh).json()
+    r = client.post("/api/v1/isiftmail/mobileconfig", json={}, headers=uh).json()
+    assert r["filename"].endswith(".mobileconfig") and made["address"] in r["content"] and made["password"] in r["content"] and "com.apple.mail.managed" in r["content"]
+    assert "<key>IncomingMailServerPortNumber</key><integer>993</integer>" in r["content"]
+    # where a domain is managed
+    async def lookup(name, rtype): return ["lara.ns.cloudflare.com"] if rtype == "NS" else server["dns"].get((name, rtype), [])
+    monkeypatch.setattr(im, "lookup", lookup)
+    assert client.post("/api/v1/isiftmail/domains", json={"domain": "prama-ai.com"}, headers=uh).status_code == 200
+    w = client.post("/api/v1/isiftmail/domains/where", json={"domain": "prama-ai.com"}, headers=uh).json(); assert w["registrar"] == "Cloudflare" and "DNS only" in w["how"]
+    assert client.post("/api/v1/isiftmail/domains/where", json={"domain": "other.org"}, headers=uh).status_code == 404
+    # administrator's server test
+    async def api(method, path, json=None):
+        import httpx; return httpx.Response(200, json={"data": []})
+    monkeypatch.setattr(im, "_api", api)
+    monkeypatch.setattr(ab, "_port", lambda host, port, tls=False, greet=True: (port != 4190, "connected" if port != 4190 else "could not connect (TimeoutError)"))
+    async def lk(name, rtype): return ["mail.isiftmail.test"] if rtype == "MX" else []
+    monkeypatch.setattr(im, "lookup", lk); monkeypatch.setattr(settings, "isiftmail_mx_host", "mail.isiftmail.test")
+    assert client.get("/api/v1/admin/isiftmail/test", headers=uh).status_code == 403
+    t = client.get("/api/v1/admin/isiftmail/test", headers=h).json(); by = {c["key"]: c for c in t["checks"]}
+    assert t["ready"] and by["api"]["ok"] and by["imap"]["ok"] and by["mx"]["ok"] and not by["sieve"]["ok"] and by["sieve"]["fix"] and not by["spf"]["ok"] and not by["hook"]["ok"]
+    monkeypatch.setattr(ab, "_port", lambda *a, **k: (False, "could not connect"))
+    assert client.get("/api/v1/admin/isiftmail/test", headers=h).json()["ready"] is False
