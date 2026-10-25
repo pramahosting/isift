@@ -180,7 +180,7 @@ async def retention_sweep():
             except OSError: log.exception("Audio retention cleanup failed for an artifact")
 
 async def main():
-    last_sweep=0; last_bill=0; last_settings=0; last_cal=0.0; last_cal_date=None; sync_task=None
+    last_web=0; last_sweep=0; last_bill=0; last_settings=0; last_cal=0.0; last_cal_date=None; sync_task=None
     from app.core.runtime_settings import apply_overrides
     from app.services.calendar_sync import auto_sync, user_timezone
     while True:
@@ -205,6 +205,10 @@ async def main():
                 from app.services.billing import run_due
                 async with SessionLocal() as bdb: await run_due(bdb)
                 last_bill=datetime.now(timezone.utc).timestamp()
+            if datetime.now(timezone.utc).timestamp()-last_web>60:
+                from app.services.webinars import run_reminders
+                async with SessionLocal() as wdb: await run_reminders(wdb)
+                last_web=datetime.now(timezone.utc).timestamp()
             if not worked: await asyncio.sleep(2)
         except SQLAlchemyError: log.exception("Database error in worker"); await asyncio.sleep(5)
         except Exception: log.exception("Worker loop error"); await asyncio.sleep(5)

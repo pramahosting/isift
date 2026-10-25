@@ -24,6 +24,7 @@ from app.core import runtime_settings as rs
 from app.models import User, Meeting, Room, RoomRecording, Job, AuditLog
 
 log = logging.getLogger("isift")
+from app.services import webinar_live as _WLIVE, webinars as _WBS
 router = APIRouter(prefix="/api/v1")
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 WEBM = bytes.fromhex("1A45DFA3")
@@ -136,7 +137,7 @@ def refresh_pmi_title(room: Room, host) -> bool:
     return False
 
 @router.get("/rooms/{code}")
-async def room_info(code: str, authorization: str | None = Header(None), db: AsyncSession = Depends(get_db)):
+async def room_info(code: str, authorization: str | None = Header(None), reg: str = "", panel: str = "", db: AsyncSession = Depends(get_db)):
     room = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
     if not room: raise HTTPException(404, "This meeting link is not valid.")
     host = await db.get(User, room.host_id)
@@ -144,8 +145,14 @@ async def room_info(code: str, authorization: str | None = Header(None), db: Asy
     if refresh_pmi_title(room, host): await db.commit()
     me = await _user_from_token(authorization.split(" ", 1)[1] if authorization and authorization.lower().startswith("bearer ") else None)
     from app.services import virtual_room as vr
-    return {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": await ice_config(),
+    result = {"options": {**{k: v for k, v in (room.options or {}).items() if k != "invitees"}, "virtual_room": await vr.effective(db, host, room.options)}, "access": "open" if (room.options or {}).get("open_room") else room.access, "waiting_room": False if (room.options or {}).get("open_room") else room.waiting_room, "you_are_host": bool(me and me.id == room.host_id), "signed_in": bool(me), "title": room.title, "ended": room.ended_at is not None, "host": (host.display_name or host.email) if host else "", "ice": await ice_config(),
             "max_people": min(settings.room_max_people, HUB.get(code, {}).get("max_people") or settings.room_max_people), "allow_guests": room.allow_guests, "people_now": len(HUB.get(code, {}).get("peers", {}))}
+    w = await _WBS.get_by_room(db, code)
+    if w:
+        r = await _WBS.resolve_role(db, w, me, reg, panel)
+        result["webinar"] = {"id": w.id, "title": w.title, "description": w.description[:600], "start_at": _WBS.aware(w.start_at).isoformat(), "status": w.status, "role": r.get("role", ""), "name": r.get("name", ""), "error": r.get("error", ""), "code": r.get("code", "")}
+        result["you_are_host"] = r.get("role") == "host"
+    return result
 
 @router.post("/rooms/{code}/invite")
 async def invite_people(code: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -287,7 +294,9 @@ def _video_view(v: dict) -> dict:
 
 def _pub(i: str, p: dict) -> dict:
     d = {"id": i, "name": p["name"], "host": bool(p["host"]), "cohost": bool(p.get("cohost"))}
+    if p.get("attendee"): d["attendee"] = True
     if p.get("hand"): d["hand"] = True
+    if p.get("promoted"): d["speaker"] = True
     if p.get("sfu"): d["sfu"] = p["sfu"]; d["screen"] = bool(p.get("screen"))
     return d
 
@@ -326,6 +335,7 @@ async def _sfu_op(state: dict, pid: str, msg: dict):
     me = state["peers"][pid]; req = str(msg.get("req") or "")[:40]; t = msg.get("type")
     async def fail(text): await _send(me["ws"], {"type": "sfu-res", "req": req, "ok": False, "message": text})
     try:
+        if t == "sfu-push" and me.get("attendee"): return await fail("Attendees watch only. Ask the host to let you speak.")
         if t == "sfu-push":
             kinds = [x for x in (msg.get("tracks") or [])[:2] if isinstance(x, dict) and x.get("kind") in ("audio", "video") and isinstance(x.get("mid"), str) and 0 < len(x["mid"]) <= 16]
             sdp = msg.get("sdp")
@@ -375,6 +385,10 @@ def _view(state: dict, gid: str | None) -> list[tuple[str, dict]]:
     return [(i, p) for i, p in state["peers"].items() if p.get("group") == gid]
 
 async def _to_view(state: dict, gid: str | None, msg: dict, skip: str | None = None):
+    if state.get("webinar") and msg.get("id") in state.get("attendee_ids", ()) and msg.get("type") in _WLIVE.QUIET:
+        for i, p in _view(state, gid):                  # webinar: what a watching attendee does is told to the host side only
+            if i != skip and _WLIVE.staff(p): await _send(p["ws"], msg)
+        return
     for i, p in _view(state, gid):
         if i != skip: await _send(p["ws"], msg)
 
@@ -439,6 +453,7 @@ def _split(ids: list[str], count: int) -> list[list[str]]:
 
 async def _groups_start(state: dict, pid: str, msg: dict):
     me = state["peers"][pid]
+    if state.get("webinar"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are not available in webinars."}); return
     if state.get("sfu"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are not available in big meetings."}); return
     if state.get("groups"): await _send(me["ws"], {"type": "groups-error", "message": "Discussion groups are already open. Bring everyone back first to start again."}); return
     include_hosts = bool(msg.get("include_hosts"))
@@ -470,14 +485,21 @@ def _multi_on(state: dict) -> bool:
     """Several people may share at once when the host's plan includes it and the host has not switched it off."""
     return bool(state.get("multi_ok", True) and state.get("multi_share", True))
 
-async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_host: bool, room_options: dict | None = None, user_id: str | None = None, cohost: bool = False) -> bool:
-    cap = max(2, min(settings.room_max_people, state.get("max_people") or settings.room_max_people))
-    if len(state["peers"]) >= cap:
-        await _send(ws, {"type": "error", "message": f"This meeting is full ({cap} people is the limit for the host's plan)."}); return False
-    peers_before = [_pub(i, p) for i, p in _view(state, None)]           # a newcomer starts in the main room
-    state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None}
+async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_host: bool, room_options: dict | None = None, user_id: str | None = None, cohost: bool = False,
+                 attendee: bool = False, key: str = "", email: str = "", promoted: bool = False) -> bool:
     from app.services import sfu as _sfu
-    switching = bool(not state.get("sfu") and _sfu.configured() and len(state["peers"]) >= settings.sfu_from_people)
+    if attendee:                                                                # a webinar: watchers are counted apart from the people on the stage
+        cap = max(2, min(int(settings.webinar_max_attendees or 500), int((state["web"]["settings"] or {}).get("capacity") or 10**9), int(settings.webinar_max_attendees or 500) if _sfu.configured() else int(settings.webinar_mesh_max or 40)))
+        if sum(1 for p in state["peers"].values() if p.get("attendee")) >= cap:
+            await _send(ws, {"type": "error", "message": f"This webinar is full ({cap} people can watch)."}); return False
+    else:
+        cap = max(2, min(settings.room_max_people, state.get("max_people") or settings.room_max_people))
+        if sum(1 for p in state["peers"].values() if not p.get("attendee")) >= cap:
+            await _send(ws, {"type": "error", "message": f"This meeting is full ({cap} people is the limit for the host's plan)."}); return False
+    peers_before = [_pub(i, p) for i, p in _view(state, None) if is_host or cohost or not p.get("attendee")]           # a newcomer starts in the main room; watchers are only shown to the host side
+    state["peers"][pid] = {"ws": ws, "name": name, "host": is_host or cohost, "cohost": cohost, "user_id": user_id, "group": None, "attendee": attendee, "promoted": promoted, "key": key, "email": email, "since": time.time()}
+    if attendee: state.setdefault("attendee_ids", set()).add(pid)
+    switching = bool(not state.get("sfu") and _sfu.configured() and (state.get("webinar") or len(state["peers"]) >= settings.sfu_from_people))
     if switching:
         if state.get("groups"): await _close_groups(state, "closed")
         state["sfu"] = True                      # from now on this meeting uses the Cloudflare video server
@@ -489,14 +511,20 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
-    await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost}, skip=pid)
+    await _to_view(state, None, {"type": "peer-joined", "id": pid, "name": name, "host": is_host or cohost, "cohost": cohost, **({"attendee": True} if attendee else {}), **({"speaker": True} if promoted else {})}, skip=pid)
     await _roster_to_hosts(state)
+    if state.get("webinar"):
+        await _send(ws, _WLIVE.info_for(state, state["peers"][pid])); _WLIVE.mark_dirty(state, code)
+        if attendee or promoted:
+            try:
+                async with SessionLocal() as _d: await _WBS.attend_join(_d, (state["peers"][pid].get("key") or "") if not str(state["peers"][pid].get("key") or "").startswith("c:") else None)
+            except Exception: log.exception("attendance")
     return True
 
 @router.websocket("/ws/rooms/{code}")
 async def room_socket(ws: WebSocket, code: str):
     await ws.accept()
-    pid = None
+    pid = None; web_info = None; web_role: dict = {}
     try:
         first = json.loads(await asyncio.wait_for(ws.receive_text(), timeout=20))
         if first.get("type") != "join": await ws.close(); return
@@ -509,6 +537,8 @@ async def room_socket(ws: WebSocket, code: str):
                 from app.services import virtual_room as vr
                 vr_meeting = (room_options or {}).get("virtual_room", False) is True                          # the tick box in the meeting setup
                 host_user = await db.get(User, host_id)
+                _ww = await _WBS.get_by_room(db, code)
+                if _ww: web_info = {"id": _ww.id, "title": _ww.title, "settings": dict(_ww.settings or {}), "status": _ww.status, "start": _WBS.aware(_ww.start_at).isoformat()}
                 vr_allowed = await vr.allowed(db, host_user)                                # the service and the host's account allow it
                 from app.services import entitlements as ent
                 host_lim = await ent.limits(db, host_user)                                  # plan limits of whoever hosts: recording, meeting length, open room
@@ -525,6 +555,13 @@ async def room_socket(ws: WebSocket, code: str):
             ok, why = _passcode_ok(code, first.get("passcode"), passcode)
             if not ok: await _send(ws, {"type": "error", "code": "passcode", "message": why}); await ws.close(); return
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
+        if web_info:                                       # a webinar: who may come in, and as what, is decided by the registration and the panelist list
+            async with SessionLocal() as _wdb:
+                _w2 = await _WBS.get_by_room(_wdb, code)
+                web_role = await _WBS.resolve_role(_wdb, _w2, user, str(first.get("reg") or "")[:60], str(first.get("panel") or "")[:60])
+            if web_role.get("error"):
+                await _send(ws, {"type": "error", "code": web_role.get("code") or "webinar", "message": web_role["error"]}); await ws.close(); return
+            if web_role["role"] != "host" and web_role.get("name"): name = web_role["name"][:60]
         left = await ent.minutes_left(db, host_user) if code not in HUB else None
         if left is not None and left <= 0:
             await _send(ws, {"type": "error", "message": "The host has used all of this month's meeting hours. Ask them to upgrade their plan or contact an administrator."}); await ws.close(); return
@@ -533,6 +570,9 @@ async def room_socket(ws: WebSocket, code: str):
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
         state.update(cloud_ok=bool(host_lim.get("cloud_recording", True)), max_people=host_lim.get("max_participants") or 0, multi_ok=bool(host_lim.get("multi_share", True)), watch_ok=bool(host_lim.get("watch_together", True)), rec_ok=bool(host_lim["recording"]))      # the host's plan as it is now: an upgrade or a lapse applies to the next person who joins
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
+        if web_info:
+            state["webinar"] = True; state.setdefault("web", {}).update(id=web_info["id"], title=web_info["title"], settings=web_info["settings"], start=web_info["start"])
+            state.setdefault("attendee_ids", set()); state.setdefault("holding", {}); state.setdefault("web_live", False); state.setdefault("promoted_keys", set())
         client = str(first.get("client") or "")[:40]
         if client:                                         # the same browser tab joining again (refresh, network drop): drop its old, dead connection first
             for old_id, old in list(state["peers"].items()):
@@ -548,21 +588,41 @@ async def room_socket(ws: WebSocket, code: str):
             ranks = [_rank(p) for p in state["peers"].values()]
             if 2 not in ranks: is_host = True               # open room, nobody in charge: the first person in becomes the host
             elif 1 not in ranks: cohost_join = True         # the second person in becomes the co-host; everybody after is a normal participant   # nobody in charge is here: the first person in can run the room
+        web_att = web_promoted = False; wkey = ""
+        if web_role:
+            wkey = web_role.get("rid") or ("c:" + client)
+            if web_role["role"] == "panelist": is_host, cohost_join = False, True
+            elif web_role["role"] == "attendee":
+                is_host = cohost_join = False
+                if wkey in state.get("promoted_keys", ()): web_promoted = True
+                else: web_att = True
+        async def _wb_admit(hpid, h):
+            if await _admit(code, state, hpid, h["ws"], h["name"], False, room_options, None, False, attendee=True, key=h["key"], email=h["email"]):
+                state["peers"][hpid]["client"] = h.get("client", "")
+            else:
+                try: await h["ws"].close()
+                except Exception: pass
         if state.get("locked") and not is_host and not cohost_join:
             await _send(ws, {"type": "error", "code": "locked", "message": "The host has locked this meeting, so nobody new can join right now."}); pid = None; await ws.close(); return
         if waiting_room and not is_host and not cohost_join:
             state["waiting"][pid] = {"ws": ws, "name": name, "user_id": user.id if user else None}
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)
-        elif not await _admit(code, state, pid, ws, name, is_host, room_options, user.id if user else None, cohost_join):
+        elif web_att and not state.get("web_live"):
+            state["holding"][pid] = {"ws": ws, "name": name, "key": wkey, "email": web_role.get("email", ""), "client": client}          # the webinar has not started: wait here
+            await _send(ws, {"type": "wb-holding", "title": web_info["title"], "start": web_info["start"]}); _WLIVE.mark_dirty(state, code)
+        elif not await _admit(code, state, pid, ws, name, is_host, room_options, user.id if user else None, cohost_join, attendee=web_att, key=wkey, email=web_role.get("email", "") if web_role else "", promoted=web_promoted):
             pid = None; await ws.close(); return
         if pid in state["peers"]: state["peers"][pid]["client"] = client
+        if web_role and pid in state["peers"] and web_role["role"] == "host" and not (web_info["settings"].get("practice", True)) and not state.get("web_live"): await _WLIVE.go_live(state, code, _wb_admit)
         while True:
             msg = json.loads(await ws.receive_text()); t = msg.get("type")
             if pid not in state["peers"]:
                 continue                                  # still in the waiting room: nothing else is allowed yet
             if t == "signal":
                 target = state["peers"].get(msg.get("to"))
-                if target and target.get("group") == state["peers"][pid].get("group"): await _send(target["ws"], {"type": "signal", "from": pid, "data": msg.get("data")})
+                if target and target.get("group") == state["peers"][pid].get("group") and not (state["peers"][pid].get("attendee") and target.get("attendee")): await _send(target["ws"], {"type": "signal", "from": pid, "data": msg.get("data")})
+            elif str(t).startswith("wb_"): await _WLIVE.handle(state, pid, msg, code, _wb_admit)
+            elif t == "chat" and state.get("webinar") and await _WLIVE.chat(state, pid, msg, ws): pass
             elif t == "chat":
                 text = str(msg.get("text") or "")[:2000]
                 if text.strip():
@@ -586,6 +646,7 @@ async def room_socket(ws: WebSocket, code: str):
                 state["peers"][pid]["spoke"] = time.time(); await _stage_update(state)
             elif t == "state":      # mic / camera / screen-share indicators
                 me = state["peers"][pid]; mic, cam = bool(msg.get("mic")), bool(msg.get("cam")); want_screen = bool(msg.get("screen"))
+                if me.get("attendee"): mic = cam = want_screen = False                     # webinar attendees watch only
                 rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not _multi_on(state) else None
                 if rival:                                   # when the host has switched several shares off, one person shares at a time: the second one waits until the first stops
                     await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
@@ -739,8 +800,9 @@ async def room_socket(ws: WebSocket, code: str):
                     r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
                     if r and not (r.options or {}).get("open_room") and not (r.options or {}).get("pmi"):               # an open room is never closed for good: everyone leaves, the link keeps working
                         r.ended_at = datetime.now(timezone.utc); await finish_meeting(db, r); await db.commit()
+                    if state.get("webinar"): await _WBS.mark_ended(db, code)
                 await _broadcast(code, {"type": "ended"})
-                for p in list(state["peers"].values()) + list(state["waiting"].values()):
+                for p in list(state["peers"].values()) + list(state["waiting"].values()) + list(state.get("holding", {}).values()):
                     try: await p["ws"].close()
                     except Exception: pass
                 break
@@ -750,6 +812,7 @@ async def room_socket(ws: WebSocket, code: str):
         state = HUB.get(code)
         if state and pid:
             if state["waiting"].pop(pid, None) is not None: await _tell_hosts(state)
+            if state.get("holding", {}).pop(pid, None) is not None: _WLIVE.mark_dirty(state, code)
             if pid in state["peers"]:
                 gone = state["peers"].pop(pid, None)
                 for _s, _h in list((state.get("pen") or {}).items()):         # a leaving sharer or pen holder ends that pen
@@ -759,12 +822,20 @@ async def room_socket(ws: WebSocket, code: str):
                     _cw.discard(pid)
                     if not _cw: await _broadcast(code, {"type": "captions", "on": False})
                 await _to_view(state, gone.get("group") if gone else None, {"type": "peer-left", "id": pid})
+                if state.get("webinar") and gone and (gone.get("attendee") or gone.get("promoted")):
+                    state.get("attendee_ids", set()).discard(pid)
+                    try:
+                        _k = gone.get("key") or ""
+                        async with SessionLocal() as _d: await _WBS.attend_leave(_d, None if _k.startswith("c:") else _k, time.time() - gone.get("since", time.time()))
+                    except Exception: log.exception("attendance")
+                    _WLIVE.mark_dirty(state, code)
                 await _roster_to_hosts(state)
                 if gone and _rank(gone) == 2 and room_options.get("open_room") and state["peers"]:           # open room: the host left, so somebody must take over (after a short wait, in case it is only a refresh)
                     if state.get("succession"): state["succession"].cancel()
                     state["succession"] = asyncio.create_task(_open_room_succession(code, state))
                 if state.get("sfu"): await _stage_update(state)
-            if not state["peers"] and not state["waiting"]:
+            if not state["peers"] and not state["waiting"] and not state.get("holding"):
+                if state.get("wb_task"): state["wb_task"].cancel()
                 if state.get("succession"): state["succession"].cancel()
                 task = (state.get("groups") or {}).get("task")
                 if task: task.cancel()

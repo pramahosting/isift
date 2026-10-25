@@ -305,3 +305,69 @@ class SavedSignature(Base):
     name: Mapped[str] = mapped_column(String(80), default="")
     png: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+# ---------------------------------------------------------------- webinars (registration, panelists, view-only attendees, Q&A, polls)
+class Webinar(Base):
+    __tablename__ = "webinars"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    host_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    room_code: Mapped[str] = mapped_column(String(40), index=True, default="")
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    minutes: Mapped[int] = mapped_column(Integer, default=60)
+    tz: Mapped[str] = mapped_column(String(60), default="Australia/Sydney")
+    status: Mapped[str] = mapped_column(String(12), default="scheduled")     # scheduled | ended | cancelled
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)                # registration, approval, questions, capacity, qa, chat, practice, reminders, recording_url
+    panelists: Mapped[list] = mapped_column(JSON, default=list)               # [{email, name, token}]
+    reminder_state: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class WebinarRegistrant(Base):
+    __tablename__ = "webinar_registrants"
+    __table_args__ = (UniqueConstraint("webinar_id", "email", name="uq_webinar_registrant_email"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    webinar_id: Mapped[str] = mapped_column(ForeignKey("webinars.id", ondelete="CASCADE"), index=True)
+    email: Mapped[str] = mapped_column(String(320))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(12), default="approved")       # pending | approved | denied | cancelled
+    token: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    source: Mapped[str] = mapped_column(String(10), default="self")           # self | host
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    seconds: Mapped[int] = mapped_column(Integer, default=0)                  # total time watched
+    joins: Mapped[int] = mapped_column(Integer, default=0)
+    followup_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class WebinarQuestion(Base):
+    __tablename__ = "webinar_questions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    webinar_id: Mapped[str] = mapped_column(ForeignKey("webinars.id", ondelete="CASCADE"), index=True)
+    asker: Mapped[str] = mapped_column(String(60), default="")                # who asked (their key, so they see their own)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    email: Mapped[str] = mapped_column(String(320), default="")
+    text: Mapped[str] = mapped_column(Text)
+    anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
+    upvoters: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(12), default="open")           # open | answered | dismissed
+    answer: Mapped[str] = mapped_column(Text, default="")
+    answered_by: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+class WebinarPoll(Base):
+    __tablename__ = "webinar_polls"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    webinar_id: Mapped[str] = mapped_column(ForeignKey("webinars.id", ondelete="CASCADE"), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    multi: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(8), default="draft")           # draft | open | closed
+    share_results: Mapped[bool] = mapped_column(Boolean, default=False)      # attendees see the results
+    votes: Mapped[dict] = mapped_column(JSON, default=dict)                   # voter key -> [option numbers]
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

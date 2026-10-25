@@ -169,7 +169,7 @@ def _resolve(name: str, rtype: str) -> list[str]:
     for r in ans:
         if rtype == "TXT": out.append(b"".join(r.strings).decode("utf-8", "ignore"))
         elif rtype == "MX": out.append(str(r.exchange).rstrip(".").lower())
-        elif rtype == "CNAME": out.append(str(r.target).rstrip(".").lower())
+        elif rtype in ("CNAME", "NS"): out.append(str(r.target).rstrip(".").lower())
         elif rtype == "SRV": out.append(f"{r.priority} {r.weight} {r.port} {str(r.target).rstrip('.').lower()}")
     return out
 
@@ -286,3 +286,50 @@ def save_draft_sync(acct: dict, to: list[str], cc: list[str], subject: str, body
         except Exception: pass
 
 async def save_draft(acct, to, cc, subject, body, replace_uid=0) -> int: return await asyncio.to_thread(save_draft_sync, acct, to, cc, subject, body, replace_uid)
+
+
+# ---------------------------------------------------------------- where a domain is managed (so the wizard can say where to click)
+REGISTRARS = [  # (text found in the domain's name servers, name, where to add records)
+    ("domaincontrol.com", "GoDaddy", "Sign in to GoDaddy, open My Products, find the domain, press DNS (Manage DNS), then Add New Record."),
+    ("cloudflare.com", "Cloudflare", "Sign in to Cloudflare, choose the domain, open DNS then Records, press Add record. For the CNAME records choose DNS only (grey cloud)."),
+    ("registrar-servers.com", "Namecheap", "Sign in to Namecheap, Domain List, Manage, then Advanced DNS, press Add New Record."),
+    ("awsdns", "Amazon Route 53", "Open Route 53, Hosted zones, choose the domain, press Create record."),
+    ("googledomains.com", "Google Domains / Squarespace", "Open the domain's DNS settings, then Custom records, and add each record."),
+    ("squarespacedns.com", "Squarespace", "Open the domain's DNS settings, then Custom records, and add each record."),
+    ("wixdns.net", "Wix", "Open the domain in Wix, Manage DNS records, and add each record."),
+    ("crazydomains", "Crazy Domains", "Sign in to Crazy Domains, open the domain, DNS Settings, and add each record."),
+    ("netregistry", "Netregistry", "Sign in to Netregistry, open the domain, DNS, and add each record."),
+    ("ventraip", "VentraIP", "Sign in to VentraIP, open the domain, DNS Management, and add each record."),
+    ("ns.cloudflare", "Cloudflare", "Sign in to Cloudflare, choose the domain, open DNS then Records, press Add record."),
+]
+async def where_managed(dom: str) -> dict:
+    try: ns = await lookup(dom, "NS")
+    except MailError: ns = []
+    for key, name, how in REGISTRARS:
+        if any(key in n for n in ns): return {"registrar": name, "how": how, "ns": ns[:4]}
+    return {"registrar": "", "how": "Sign in where you bought or manage the domain (the registrar or DNS host), open its DNS settings, and add each record below.", "ns": ns[:4]}
+
+# ---------------------------------------------------------------- an iPhone / iPad / Mac mail profile (one tap, no typing)
+def mobileconfig(address: str, display: str, username: str, password: str, imap_host: str, imap_port: int, smtp_host: str, smtp_port: int) -> str:
+    from xml.sax.saxutils import escape as e
+    import uuid
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>PayloadType</key><string>Configuration</string><key>PayloadVersion</key><integer>1</integer>
+<key>PayloadIdentifier</key><string>au.isift.mail.{uuid.uuid4().hex[:8]}</string><key>PayloadUUID</key><string>{str(uuid.uuid4()).upper()}</string>
+<key>PayloadDisplayName</key><string>{e(address)}</string><key>PayloadDescription</key><string>Adds {e(address)} to Mail.</string>
+<key>PayloadContent</key><array><dict>
+<key>PayloadType</key><string>com.apple.mail.managed</string><key>PayloadVersion</key><integer>1</integer>
+<key>PayloadIdentifier</key><string>au.isift.mail.account.{uuid.uuid4().hex[:8]}</string><key>PayloadUUID</key><string>{str(uuid.uuid4()).upper()}</string>
+<key>PayloadDisplayName</key><string>{e(address)}</string>
+<key>EmailAccountType</key><string>EmailTypeIMAP</string><key>EmailAccountDescription</key><string>{e(address)}</string>
+<key>EmailAccountName</key><string>{e(display or address)}</string><key>EmailAddress</key><string>{e(address)}</string>
+<key>IncomingMailServerAuthentication</key><string>EmailAuthPassword</string><key>IncomingMailServerHostName</key><string>{e(imap_host)}</string>
+<key>IncomingMailServerPortNumber</key><integer>{int(imap_port)}</integer><key>IncomingMailServerUseSSL</key><true/>
+<key>IncomingMailServerUsername</key><string>{e(username)}</string><key>IncomingPassword</key><string>{e(password)}</string>
+<key>OutgoingMailServerAuthentication</key><string>EmailAuthPassword</string><key>OutgoingMailServerHostName</key><string>{e(smtp_host)}</string>
+<key>OutgoingMailServerPortNumber</key><integer>{int(smtp_port)}</integer><key>OutgoingMailServerUseSSL</key><true/>
+<key>OutgoingMailServerUsername</key><string>{e(username)}</string><key>OutgoingPasswordSameAsIncomingPassword</key><true/>
+</dict></array></dict></plist>
+"""

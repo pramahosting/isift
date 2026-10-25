@@ -191,6 +191,43 @@ async def create(payload: dict, request: Request, user: User = Depends(principal
     return {"account": mbx._public(acct), "address": address, "assigned_to": for_email if other else "", "note": note, "username": login, "password": pw, "username": login, "password": pw,
             "imap": {"host": acct["imap_host"], "port": acct["imap_port"]}, "smtp": {"host": acct["smtp_host"], "port": acct["smtp_port"]}, "message": f"{address} is ready."}
 
+@router.get("/suggest")
+async def suggest(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """A few free names to pick from, made from the person's own name, so getting an address is one tap."""
+    await _ready()
+    import re as _re
+    first = _re.sub(r"[^a-z0-9]", "", (user.display_name or "").split(" ")[0].lower()) if user.display_name else ""
+    last = _re.sub(r"[^a-z0-9]", "", (user.display_name or "").split(" ")[-1].lower()) if user.display_name and " " in user.display_name.strip() else ""
+    local = _re.sub(r"[^a-z0-9._-]", "", user.email.split("@")[0].lower())
+    base = [f"{first}.{last}" if first and last else "", f"{first}{last}" if first and last else "", f"{first[:1]}{last}" if first and last else "", local, first]
+    n = 0; out = []; closed = await _closed(db)
+    for b in base:
+        for cand in (b, f"{b}{(user.id or '0')[:2]}") if b else ():
+            try: name = im.valid_name(cand)
+            except ValueError: continue
+            if name in out or _held(closed, f"{name}@{im.domain()}"): continue
+            try:
+                if await im.exists(im.principal_name(name, im.domain())): continue
+            except mailer.MailError: return {"names": [], "domain": im.domain()}
+            out.append(name); n += 1
+            if n >= 4: return {"names": out, "domain": im.domain()}
+            break
+    return {"names": out, "domain": im.domain()}
+
+@router.post("/domains/where")
+async def domain_where(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    dom = str(payload.get("domain") or "").strip().lower()
+    if not await _my_domain(db, user, dom): raise HTTPException(404, "That domain was not found.")
+    return await im.where_managed(dom)
+
+@router.post("/mobileconfig")
+async def mobileconfig(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """A profile that adds the mailbox to an iPhone, iPad or Mac in one tap. It contains the mailbox password, so it is made only for the signed-in person."""
+    mine = await _need(db, user, str((payload or {}).get("aid") or ""))
+    xml = im.mobileconfig(mine["address"], user.display_name or "", mine.get("username") or mine["address"], rs._dec(mine.get("password", "")), mine["imap_host"], mine["imap_port"], mine["smtp_host"], mine["smtp_port"])
+    db.add(AuditLog(actor=user.email, action="isiftmail.profile", resource_type="mail")); await db.commit()
+    return {"filename": mine["address"].replace("@", "-") + ".mobileconfig", "content": xml}
+
 # ---------------------------------------------------------------- own domains
 @router.get("/domains")
 async def domains(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

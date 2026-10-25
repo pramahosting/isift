@@ -6,11 +6,11 @@ The administrator can raise or lower any of these for a single person (Admin > U
 from datetime import date
 from app.services import billing, store
 
-BASIC = {"cloud_recording": False, "calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": True, "meeting_minutes": 90, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25, "multi_share": False, "watch_together": False}
-OPEN = {"cloud_recording": True, "calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0, "multi_share": True, "watch_together": True}
+BASIC = {"webinars": False, "cloud_recording": False, "calls": False, "ai_per_month": 3, "booking_pages": 1, "commbox": False, "open_room": False, "recording": True, "meeting_minutes": 90, "docs_per_day": 5, "pdf_pages": 5, "storage_mb": 100, "meeting_hours_per_month": 20, "max_participants": 25, "multi_share": False, "watch_together": False}
+OPEN = {"webinars": True, "cloud_recording": True, "calls": True, "ai_per_month": 0, "booking_pages": 0, "commbox": True, "open_room": True, "recording": True, "meeting_minutes": 0, "docs_per_day": 0, "pdf_pages": 0, "storage_mb": 0, "meeting_hours_per_month": 0, "max_participants": 0, "multi_share": True, "watch_together": True}
 PAID_DEFAULT = {"pdf_pages": 0, "storage_mb": 5120, "meeting_hours_per_month": 300, "max_participants": 100}      # fair-use ceilings for Standard and Business (5 GB, 300 hours)
 WARN_MINUTES = 10
-FIELDS = {"cloud_recording": bool, "calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int, "storage_mb": int, "meeting_hours_per_month": int, "max_participants": int, "multi_share": bool, "watch_together": bool}
+FIELDS = {"webinars": bool, "cloud_recording": bool, "calls": bool, "ai_per_month": int, "booking_pages": int, "commbox": bool, "open_room": bool, "recording": bool, "meeting_minutes": int, "docs_per_day": int, "pdf_pages": int, "storage_mb": int, "meeting_hours_per_month": int, "max_participants": int, "multi_share": bool, "watch_together": bool}
 
 def _key(email: str) -> str: return store.hkey("profile", email)
 
@@ -35,7 +35,7 @@ PLAN_KEY = "plan-config"
 def plan_defaults(plan: str) -> dict:
     """The built-in limits of a plan, before the administrator's changes for the plan or for one person."""
     base = dict(BASIC if plan == "basic" else {**OPEN, **PAID_DEFAULT})
-    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"; base["calls"] = plan != "basic"
+    base["open_room"] = plan != "basic"; base["commbox"] = plan != "basic"; base["calls"] = plan != "basic"; base["webinars"] = plan != "basic"
     return base
 
 async def plan_config(db) -> dict:

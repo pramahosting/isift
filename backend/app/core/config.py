@@ -128,6 +128,8 @@ class Settings(BaseSettings):
     isiftmail_complaint_limit: int = 3      # a mailbox is suspended automatically after this many spam complaints or reports
     isiftmail_bounce_limit: int = 20        # ... or this many bounced messages
     isiftmail_hook_secret: str = ""         # the secret the outbound relay puts on its complaint and bounce notices
+    webinar_max_attendees: int = 500        # most people who may watch one webinar (the host can set a lower number)
+    webinar_mesh_max: int = 40              # watchers allowed when the big-meeting video server is not set up (browsers then connect to the speakers directly)
     isiftmail_spf: str = "v=spf1 mx ~all"   # the SPF record shown to people who bring their own domain (add your outbound relay's include here)
     audio_storage_dir: str = "/data/audio"
     audio_max_bytes: int = 25 * 1024 * 1024
