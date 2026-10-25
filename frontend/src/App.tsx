@@ -225,7 +225,7 @@ const ADMIN_TABS=[
  {id:'basics',label:'API and Settings',icon:Settings,desc:'Everything the app needs to start working: the setup checklist, API keys, email and calendar, and everyday defaults.',groups:[]},
  {id:'keys',hide:true,label:'API Keys',icon:Settings,desc:'',groups:['Groq AI (minutes, briefings, transcripts, email)','Where meeting recordings are kept (Cloudflare R2)','Power Automate']},
  {id:'other',hide:true,label:'Other Settings',icon:Settings,desc:'',groups:['Startup','Mock data']},
- {id:'mail',hide:true,label:'Email and calendar',icon:Mail,desc:'How calendars are read and how the app sends email.',groups:['Email sent by the app','Mail sign-in (Google, Microsoft, Yahoo)','Calendar']},
+ {id:'mail',hide:true,label:'Email and calendar',icon:Mail,desc:'How calendars are read and how the app sends email.',groups:['Email sent by the app','Mail sign-in (Google, Microsoft, Yahoo)','isiftmail (our own email service)','Calendar']},
  {id:'users',label:'Customers',icon:Users,desc:'People, what each person may use, what each plan includes, and which modules are on.',groups:[]},
  {id:'commercial',label:'Commercial',icon:CreditCard,desc:'What plans cost and how people pay: the price list, and the card payments set-up.',groups:[]},
  {id:'pricing',hide:true,label:'Pricing',icon:CreditCard,desc:'The price list for Standard and Business. Only active prices appear on the home page and can be bought.',groups:[]},
@@ -237,6 +237,7 @@ const GROUP_TITLES:Record<string,[string,string]>={
  'Startup':['When the app starts',''],'Mock data':['Sample data','Sample meetings and CSV import for trying the app. Turn off for real use.'],
  'Power Automate':['Power Automate','Lets a Power Automate flow trigger briefings.'],
  'Calendar':['Calendars','Each person adds their own calendar under Connections. These settings control what the app may read.'],
+ 'isiftmail (our own email service)':['isiftmail: email for anyone, and for your own domain','Gives anyone an address like name@isiftmail.com, or on their own domain (you@your-company.com) with mailboxes for their team, inside Commbox. Needs your own Stalwart mail server (steps in docs/ISIFTMAIL.md). Leave the address domain empty to keep isiftmail hidden. Switch it on or off for everyone under Customers > Modules.'],
  'Mail sign-in (Google, Microsoft, Yahoo)':['Sign in with Google, Microsoft or Yahoo','Lets people add their mailbox on the Mail page with a sign-in window, like Outlook does. Register iSift once with each provider and enter the IDs here. Redirect address to register: your app address + /api/v1/oauth/callback.'],
  'Email sent by the app':['Email sent by the app (sign-up codes, booking emails, alerts)','Needed for sign-up verification codes: without it nobody can receive one. The address the app sends from: booking confirmations to guests (with the video link) and failure alerts to you. Optional; without it, booking emails go from each person’s own Commbox mailbox.'],
  'Microsoft Entra and Graph':['Microsoft Teams and Microsoft 365','Reads Microsoft 365 calendars and official Teams transcripts. Also sets how Microsoft sign-in works.'],
@@ -362,13 +363,28 @@ function ModulesPanel({request,act,onChanged}:any){
   <div className="actions"><button className="primary" disabled={!dirty} onClick={save}><Save size={16}/> Save modules</button>{dirty&&<button className="secondary" onClick={load}>Discard changes</button>}</div>
  </section>
 }
+function MailboxesPanel({request,act}:any){
+ const [d,setD]=useState<any>(null),[msg,setMsg]=useState(''),[err,setErr]=useState('');
+ const load=()=>request('/admin/isiftmail/mailboxes').then(setD).catch((e:any)=>{setErr(e.message||'Could not load.')});
+ useEffect(()=>{load()},[]);
+ const flip=(m:any)=>act(async()=>{await request(m.suspended?'/admin/isiftmail/unsuspend':'/admin/isiftmail/suspend',{method:'POST',body:JSON.stringify({address:m.address,reason:'Suspended by an administrator'})});setMsg(m.suspended?`${m.address} is active again.`:`${m.address} is suspended.`);await load()});
+ const rows=d?.mailboxes||[],lim=d?.limits||{};
+ return <section className="panel"><div className="panelhead"><h2>isiftmail mailboxes</h2><Mail size={18}/></div>
+  <p className="hint">Open sign-up invites spam, so each mailbox is limited to {lim.hour||'?'} messages an hour and {lim.day||'?'} a day (new mailboxes start lower). A mailbox is suspended by itself after {lim.complaints||'?'} spam complaints or {lim.bounces||'?'} bounced messages; suspended mailboxes cannot send or be read until you restore them. Complaints arrive from your outbound relay and from the public abuse report; you set the limits under the isiftmail settings in Admin Console.</p>
+  {msg&&<div className="okmsg" role="status">{msg}</div>}{err&&<div className="errmsg" role="alert">{err}</div>}
+  {d&&!rows.length&&<Empty text="No isiftmail mailboxes yet."/>}
+  {!!rows.length&&<div className="plantable-wrap"><table className="modtable"><thead><tr><th>Address</th><th>Person</th><th>Sent (24h)</th><th>Complaints</th><th>Bounces</th><th>Status</th><th/></tr></thead><tbody>
+   {rows.map((m:any)=><tr key={m.address} className={m.suspended?'off':''}><td><b>{m.address}</b></td><td>{m.owner||'–'}</td><td>{m.sent_24h}</td><td>{m.complaints}</td><td>{m.bounces}</td><td>{m.suspended?<span title={m.suspended.reason}>Suspended: {m.suspended.reason}</span>:'Active'}</td>
+    <td><button className="secondary" onClick={()=>flip(m)}>{m.suspended?'Restore':'Suspend'}</button></td></tr>)}</tbody></table></div>}
+ </section>
+}
 function RunHistoryPanel({request}:any){
  const [runs,setRuns]=useState<any[]|null>(null);
  useEffect(()=>{let live=true;request('/runs').then((r:any)=>{if(live)setRuns(Array.isArray(r)?r:[])}).catch(()=>{if(live)setRuns([])});return()=>{live=false}},[]);
  return <section className="panel"><div className="panelhead"><h2>Run history</h2><History size={18}/></div>{runs===null?<p className="hint">Loading…</p>:runs.length?runs.map((r:any)=><div className="statusrow" key={r.id}><div><b>{r.workflow_name}</b><p className="muted">{fmt(r.created_at)}{r.safe_error?` · ${r.safe_error}`:''}</p></div><Badge tone={r.status==='completed'?'green':r.status==='failed'?'red':'amber'}>{r.status}</Badge></div>):<Empty text="No workflow runs yet."/>}</section>
 }
 function AdminSettings({settings,request,act,load,onModules,user,download,features,onUsers}:any){
- const [sub,setSub]=useState<'users'|'permissions'|'plans'|'modules'>('users');const [ops,setOps]=useState<'data'|'runs'|'meetings'>('meetings');
+ const [sub,setSub]=useState<'users'|'permissions'|'plans'|'modules'|'mailboxes'>('users');const [ops,setOps]=useState<'data'|'runs'|'meetings'>('meetings');
  const [t0]=useState(()=>{try{const t=sessionStorage.getItem('isift.admintab')||'';sessionStorage.removeItem('isift.admintab');return t}catch{return ''}});
  const [tab,setTab]=useState(()=>t0==='modules'||t0==='planfeatures'?'users':t0==='allmeetings'||t0==='runs'?'ops':t0==='pricing'||t0==='payments'||t0==='commercial'?'commercial':['mail','keys','other','basics'].includes(t0)||!t0?'basics':(ADMIN_TABS.some(x=>x.id===t0)?t0:'basics'));
  const [apiSub,setApiSub]=useState<'setup'|'keys'|'mail'|'other'>(()=>t0==='mail'||t0==='keys'||t0==='other'?t0:'setup');
@@ -425,10 +441,11 @@ function AdminSettings({settings,request,act,load,onModules,user,download,featur
    {ops==='data'&&(features?.mock_data?<DataImport request={request} download={download} isAdmin={user?.role==='admin'} onDone={load}/>:<section className="panel"><div className="panelhead"><h2>Data import</h2></div><Empty text="Sample data is switched off. Turn it on under Run the app to load sample meetings or import a CSV."/></section>)}
   </>}
   {tab==='users'&&<>
-   <div className="tabs subtabs" role="tablist" aria-label="Users sections">{([['users','Users'],['permissions','Permissions'],['plans','Plans'],['modules','Modules']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={sub===id} className={sub===id?'on':''} onClick={()=>setSub(id)}>{l}</button>)}</div>
+   <div className="tabs subtabs" role="tablist" aria-label="Users sections">{([['users','Users'],['permissions','Permissions'],['plans','Plans'],['modules','Modules'],['mailboxes','Mailboxes']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={sub===id} className={sub===id?'on':''} onClick={()=>setSub(id)}>{l}</button>)}</div>
    {sub==='users'&&<UsersPage view="list" request={request} download={download} me={user} canCreate={!!features?.user_management} onChanged={onUsers}/>}
    {sub==='permissions'&&<UsersPage view="permissions" request={request} download={download} me={user} canCreate={!!features?.user_management} onChanged={onUsers}/>}
    {sub==='modules'&&<><p className="hint">What is switched off here is off for everyone, whatever their plan. To change what one plan includes, use the Plans tab. A person's own special permission is set under Permissions, Edit.</p><ModulesPanel request={request} act={act} onChanged={onModules}/></>}
+   {sub==='mailboxes'&&<MailboxesPanel request={request} act={act}/>}
    {sub==='plans'&&<PlanFeaturesPanel request={request} act={act}/>}
   </>}
   {!!gt&&gt!=='users'&&gt!=='pricing'&&gt!=='ops'&&<section className="panel"><div className="panelhead"><h2>{curG?.label||'Settings'}</h2><ShieldCheck size={18}/></div>

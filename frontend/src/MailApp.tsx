@@ -1,7 +1,8 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
-import {Mail,CalendarDays,Users,Inbox,Send,FileText,Trash2,Archive,ShieldAlert,Folder,ChevronRight,ChevronDown,Plus,PenSquare,RefreshCw,Reply,ReplyAll,Forward,MailOpen,Search,Paperclip,Star,LogIn,X,UserPlus,Pencil} from 'lucide-react';
+import {Mail,CalendarDays,Users,Inbox,Send,FileText,Trash2,Archive,ShieldAlert,Folder,ChevronRight,ChevronDown,Plus,PenSquare,RefreshCw,Reply,ReplyAll,Forward,MailOpen,Search,Paperclip,Star,LogIn,X,UserPlus,Pencil,Settings as Gear,Globe} from 'lucide-react';
 import {Modal} from './Workspace';
 import {outlookSignIn,outlookError} from './Connections';
+import {IsiftmailOffer,IsiftmailSetup,IsiftmailSettings,IsiftmailDomains,useSignature,withSignature} from './IsiftMail';
 
 const ROLE_ICON:any={inbox:Inbox,sent:Send,drafts:FileText,trash:Trash2,junk:ShieldAlert,archive:Archive};
 const ROLE_LABEL:any={inbox:'Inbox',sent:'Sent Items',drafts:'Drafts',trash:'Deleted Items',junk:'Junk Email',archive:'Archive'};
@@ -19,9 +20,11 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const [rows,setRows]=useState<any[]>([]);const [more,setMore]=useState(false);const [q,setQ]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [note,setNote]=useState('');
   const [sel,setSel]=useState<string[]>([]);const [msg,setMsg]=useState<any>(null);const [favOpen,setFavOpen]=useState(true);
   const pending=React.useRef('');const picked=React.useRef(false);const [compose,setCompose]=useState<any>(null);const [adding,setAdding]=useState(false);const [editing,setEditing]=useState<any>(null);const [tab,setTab]=useState<'Home'|'View'>('Home');const [pane,setPane]=useState(true);
+  const [ism,setIsm]=useState<any>(null);const [ismSetup,setIsmSetup]=useState(false);const [ismSet,setIsmSet]=useState<any>(null);const [ismDom,setIsmDom]=useState(false);const [ismPreset,setIsmPreset]=useState('');   // isiftmail: free iSift address for people with no email
 
   const loadAccts=useCallback(async()=>{try{const [a,m]=await Promise.all([request('/mailbox/accounts'),request('/connections/microsoft/mail').catch(()=>null)]);setAccts(a.accounts);setPresets(a.presets);setMs(m&&m.connected?m:null)}catch(e:any){setErr(e.message)}finally{setLoaded(true)}},[request]);
   useEffect(()=>{loadAccts()},[loadAccts]);
+  const loadIsm=useCallback(()=>{request('/isiftmail/status').then(setIsm).catch(()=>setIsm(null))},[request]);useEffect(()=>{loadIsm()},[loadIsm]);
   const loadFolders=useCallback(async(aid:string)=>{try{const r=await request(`/mailbox/accounts/${aid}/folders`);setFold(f=>({...f,[aid]:r.folders}));return r.folders}catch(e:any){setErr(e.message);setFold(f=>({...f,[aid]:[]}));return []}},[request]);
   const fetchRows=useCallback(async(c:{aid:string;folder:string},query:string,before=0)=>{
     setBusy(true);setErr('');
@@ -65,6 +68,8 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const reply=(all:boolean,fwd=false)=>{if(!msg||!msg.aid||msg.aid==='ms')return;const own=acct(msg.aid)?.address||'';const quoted=`\n\n— On ${msg.at?new Date(msg.at).toLocaleString():''}, ${msg.from} wrote:\n`+(msg.text||'').split('\n').map((l:string)=>'> '+l).join('\n');
     const strip=(s:string)=>(s||'').split(',').map(x=>x.trim()).filter(x=>x&&!x.toLowerCase().includes(own.toLowerCase())).join(', ');
     setCompose({aid:msg.aid,to:fwd?'':msg.reply_to||msg.from,cc:all?strip(`${msg.to||''}, ${msg.cc||''}`):'',subject:(fwd?'Fw: ':'Re: ')+String(msg.subject).replace(/^(re|fw|fwd):\s*/i,''),body:quoted,irt:fwd?'':msg.message_id||''})};
+  const isDraft=(m:any)=>acct(m.aid)?.provider==='isiftmail'&&(fold[m.aid]||[]).find((f:any)=>f.name===m.folder)?.role==='drafts';
+  const editDraft=()=>{if(!msg)return;setCompose({aid:msg.aid,to:msg.to||'',cc:msg.cc||'',subject:msg.subject==='(no subject)'?'':msg.subject,body:msg.text||'',irt:'',draftUid:msg.uid,noSig:true})};
   const selRow=rows.find(r=>rk(r)===sel[0]);
   const favs=useMemo(()=>accts.map(a=>({a,unread:(fold[a.id]||[]).find((f:any)=>f.role==='inbox')?.unread})),[accts,fold]);
   const curAcct=cur?(cur.aid==='ms'?{address:ms?.account||'Microsoft 365'}:cur.aid==='all'?{address:`${accts.length+(ms?1:0)} accounts`}:acct(cur.aid)):null;
@@ -108,11 +113,13 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
             {!favs.length&&!ms&&<p className="muted small pad">Add an account to see your inbox.</p>}</>}
           {accts.map(a=><div key={a.id}>
             <div className="ol-acctrow"><button className="ol-h acct" onClick={()=>toggleAcct(a.id)} title={a.address}>{open[a.id]?<ChevronDown size={14}/>:<ChevronRight size={14}/>} <b>{a.address}</b></button>
-            <button className="ol-rm" title={`Edit ${a.address}`} aria-label={`Edit ${a.address}`} onClick={()=>setEditing(a)}><Pencil size={14}/></button><button className="ol-rm" title={`Remove ${a.address}`} aria-label={`Remove ${a.address}`} onClick={()=>removeAcct(a)}><Trash2 size={14}/></button></div>
+            {a.provider==='isiftmail'?<button className="ol-rm" title="isiftmail settings: signature, auto-reply" aria-label="isiftmail settings" onClick={()=>setIsmSet(a)}><Gear size={14}/></button>:<><button className="ol-rm" title={`Edit ${a.address}`} aria-label={`Edit ${a.address}`} onClick={()=>setEditing(a)}><Pencil size={14}/></button><button className="ol-rm" title={`Remove ${a.address}`} aria-label={`Remove ${a.address}`} onClick={()=>removeAcct(a)}><Trash2 size={14}/></button></>}</div>
             {open[a.id]&&(fold[a.id]?fold[a.id].map((f:any)=>{const I=ROLE_ICON[f.role]||Folder;return <button key={f.name} className={`ol-f${cur?.aid===a.id&&cur.folder===f.name?' on':''}`} onClick={()=>pick(a.id,f.name)}><I size={15}/><span className="t">{fname(f)}</span>{f.unread?<em>{f.unread}</em>:null}</button>}):<p className="muted small pad">Loading…</p>)}
           </div>)}
           {ms&&<div><button className="ol-h acct" onClick={()=>pick('ms','INBOX')}><ChevronRight size={14}/> <b>{ms.account}</b></button></div>}
           <button className="ol-add" onClick={()=>setAdding(true)}><UserPlus size={16}/> Add account</button>
+          {ism?.can_create&&<button className="ol-add" onClick={()=>{setIsmPreset('');setIsmSetup(true)}}><Mail size={16}/> {ism.eligible?'Get a free email address':'Add a mailbox'}</button>}
+          {ism?.available&&<button className="ol-add" onClick={()=>setIsmDom(true)}><Globe size={16}/> Use my own domain</button>}
         </aside>
         <section className="ol-list" aria-label="Messages">
           <form className="ol-search" onSubmit={search}><Search size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder={cur?`Search ${cur.aid==='all'?'all inboxes':cur.aid==='ms'?'Inbox':fname({role:'',name:cur.folder})}`:'Search'} aria-label="Search mail" disabled={!cur}/>{q&&<button type="button" className="x" aria-label="Clear search" onClick={()=>{setQ('');cur&&fetchRows(cur,'')}}><X size={14}/></button>}</form>
@@ -128,7 +135,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
             {busy&&<p className="muted pad">Loading…</p>}
             {more&&!busy&&<button className="secondary ol-more" onClick={()=>cur&&fetchRows(cur,q,rows[rows.length-1]?.uid)}>Load older messages</button>}
           </div>
-          {loaded&&!accts.length&&!ms&&<div className="ol-empty"><Mail size={34}/><h3>Connect your mail</h3><p className="muted">Add Gmail, Yahoo, iCloud, Outlook.com or any IMAP account and read, reply, delete and archive from here.</p><button className="primary" onClick={()=>setAdding(true)}>Add account</button></div>}
+          {loaded&&!accts.length&&!ms&&<div className="ol-empty"><Mail size={34}/><h3>Connect your mail</h3><p className="muted">Add Gmail, Yahoo, iCloud, Outlook.com or any IMAP account and read, reply, delete and archive from here.</p><button className="primary" onClick={()=>setAdding(true)}>Add account</button>{ism?.can_create&&<IsiftmailOffer domain={ism.domain} onStart={()=>{setIsmPreset('');setIsmSetup(true)}} onDomain={()=>setIsmDom(true)}/>}</div>}
         </section>
         {pane&&<section className="ol-read" aria-label="Reading pane">
           {!msg&&<div className="ol-empty"><Mail size={40}/><p className="muted">Select an item to read</p></div>}
@@ -136,6 +143,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
             <h2>{msg.subject}</h2>
             {msg.loading?<p className="muted">Loading…</p>:<>
               <div className="ol-from"><span className="av lg" style={{background:hue(msg.from||'?')}}>{initial(msg.from||'?')}</span><div><b>{msg.from}</b><small className="muted">{msg.to?`To: ${msg.to}`:''}{msg.cc?` · Cc: ${msg.cc}`:''}</small></div><time>{msg.at?new Date(msg.at).toLocaleString():''}</time></div>
+              {!msg.readonly&&isDraft(msg)&&<div className="ol-qa"><button className="primary" onClick={editDraft}><Pencil size={14}/> Edit draft</button></div>}
               {!msg.readonly&&<div className="ol-qa"><button className="secondary" onClick={()=>reply(false)}><Reply size={14}/> Reply</button><button className="secondary" onClick={()=>reply(true)}><ReplyAll size={14}/> Reply all</button><button className="secondary" onClick={()=>reply(false,true)}><Forward size={14}/> Forward</button></div>}
               {msg.attachments?.length>0&&<div className="ol-att">{msg.attachments.map((a:any,i:number)=><span key={i}><Paperclip size={13}/> {a.name} <small>{Math.max(1,Math.round(a.size/1024))} KB</small></span>)}</div>}
               <div className="ol-text">{msg.text||'(no text)'}</div>
@@ -146,27 +154,34 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
         </section>}
       </div>
     </div>
-    {compose&&<Compose accts={accts} init={compose} request={request} onClose={()=>setCompose(null)} onSent={m=>{setCompose(null);setNote(m);if(cur&&cur.aid===compose.aid)loadFolders(cur.aid)}}/>}
+    {compose&&<Compose accts={accts} fold={fold} init={compose} request={request} onClose={()=>setCompose(null)} onDraft={()=>{loadFolders(compose.aid);if(cur&&cur.aid===compose.aid&&(fold[cur.aid]||[]).find((f:any)=>f.name===cur.folder)?.role==='drafts')fetchRows(cur,q)}} onSent={(m,hadDraft)=>{setCompose(null);setNote(m);if(cur&&cur.aid===compose.aid){loadFolders(cur.aid);if(hadDraft&&cur.aid!=='all')setTimeout(()=>fetchRows(cur,q),400)}}}/>}
+    {ismSetup&&ism&&<IsiftmailSetup status={ism} presetDomain={ismPreset} request={request} onClose={()=>setIsmSetup(false)} onDomains={()=>{setIsmSetup(false);setIsmDom(true)}} onCreated={async(id)=>{setIsmSetup(false);await loadAccts();loadIsm();if(id){setOpen(s=>({...s,[id]:true}));await loadFolders(id);pick(id,'INBOX')}}}/>}
+    {ismSet&&<IsiftmailSettings aid={ismSet.id} request={request} onClose={()=>setIsmSet(null)} onChanged={()=>{}} onDomains={()=>{setIsmSet(null);setIsmDom(true)}} onClosed={async()=>{setIsmSet(null);setCur(null);setRows([]);setMsg(null);await loadAccts();loadIsm()}}/>}
+    {ismDom&&<IsiftmailDomains request={request} onChanged={loadIsm} onClose={()=>{setIsmDom(false);loadIsm();loadAccts()}} onAddress={d=>{setIsmDom(false);setIsmPreset(d);setIsmSetup(true)}}/>}
     {editing&&<AddAccount edit={editing} presets={presets} request={request} onClose={()=>setEditing(null)} onAdded={async(id,m)=>{setEditing(null);await loadAccts();setOpen(s=>({...s,[id]:true}));await loadFolders(id);pending.current=m||'';pick(id,'INBOX')}} onPulled={()=>{}}/>}
-    {adding&&<AddAccount presets={presets} request={request} onClose={()=>setAdding(false)} onAdded={async(id,m)=>{setAdding(false);await loadAccts();setOpen(s=>({...s,[id]:true}));await loadFolders(id);pending.current=m||'';pick(id,'INBOX');onPulled()}} onPulled={async()=>{await loadAccts();onPulled();setAdding(false);pick('ms','INBOX')}}/>}
+    {adding&&<AddAccount isift={ism?.can_create?{domain:ism.domain,start:()=>{setAdding(false);setIsmPreset('');setIsmSetup(true)},domains:()=>{setAdding(false);setIsmDom(true)}}:null} presets={presets} request={request} onClose={()=>setAdding(false)} onAdded={async(id,m)=>{setAdding(false);await loadAccts();setOpen(s=>({...s,[id]:true}));await loadFolders(id);pending.current=m||'';pick(id,'INBOX');onPulled()}} onPulled={async()=>{await loadAccts();onPulled();setAdding(false);pick('ms','INBOX')}}/>}
   </div>;
 }
 
-function Compose({accts,init,request,onClose,onSent}:{accts:any[];init:any;request:any;onClose:()=>void;onSent:(m:string)=>void}){
+function Compose({accts,fold,init,request,onClose,onSent,onDraft}:{accts:any[];fold?:Record<string,any[]>;init:any;request:any;onClose:()=>void;onSent:(m:string,hadDraft?:boolean)=>void;onDraft?:()=>void}){
   const [f,setF]=useState({aid:init.aid||accts[0]?.id||'',to:init.to||'',cc:init.cc||'',subject:init.subject||'',body:init.body||''});const [cc,setCc]=useState(!!init.cc);const [err,setErr]=useState('');const [busy,setBusy]=useState(false);
-  const send=async(e:React.FormEvent)=>{e.preventDefault();setErr('');setBusy(true);try{const r=await request(`/mailbox/accounts/${f.aid}/send`,{method:'POST',body:JSON.stringify({to:f.to,cc:f.cc,subject:f.subject,body:f.body,in_reply_to:init.irt||''})});onSent(r.message)}catch(x:any){setErr(x.message)}finally{setBusy(false)}};
+  // isiftmail only: signature on new messages, and drafts
+  const isIm=accts.find(a=>a.id===f.aid)?.provider==='isiftmail';const sig=useSignature(request,isIm,f.aid);const sigDone=React.useRef(!!init.noSig);const taRef=React.useRef<HTMLTextAreaElement>(null);const draftUid=React.useRef<number>(init.draftUid||0);const [dnote,setDnote]=useState('');
+  useEffect(()=>{if(isIm&&sig&&!sigDone.current){sigDone.current=true;setF(x=>({...x,body:withSignature(x.body,sig)}));setTimeout(()=>taRef.current?.setSelectionRange(0,0),0)}},[isIm,sig]);
+  const saveDraft=async()=>{setErr('');setDnote('');setBusy(true);try{const r=await request('/isiftmail/draft',{method:'POST',body:JSON.stringify({aid:f.aid,to:f.to,cc:f.cc,subject:f.subject,body:f.body,replace_uid:draftUid.current||0})});draftUid.current=r.uid||0;setDnote('Draft saved.');onDraft?.()}catch(x:any){setErr(x.message)}finally{setBusy(false)}};
+  const send=async(e:React.FormEvent)=>{e.preventDefault();setErr('');setBusy(true);try{const r=await request(`/mailbox/accounts/${f.aid}/send`,{method:'POST',body:JSON.stringify({to:f.to,cc:f.cc,subject:f.subject,body:f.body,in_reply_to:init.irt||''})});const dfold=((fold||{})[f.aid]||[]).find((x:any)=>x.role==='drafts')?.name;if(isIm&&draftUid.current&&dfold)request(`/mailbox/accounts/${f.aid}/action`,{method:'POST',body:JSON.stringify({folder:dfold,uids:[draftUid.current],action:'delete'})}).catch(()=>{});onSent(r.message,isIm&&!!draftUid.current)}catch(x:any){setErr(x.message)}finally{setBusy(false)}};
   return <Modal title="New message" onClose={onClose} wide><form className="ws-form ol-compose" onSubmit={send}>
     <label>From<select value={f.aid} onChange={e=>setF({...f,aid:e.target.value})}>{accts.map(a=><option key={a.id} value={a.id}>{a.address}</option>)}</select></label>
     <label>To<input value={f.to} onChange={e=>setF({...f,to:e.target.value})} placeholder="name@example.com, another@example.com" autoFocus={!f.to}/>{!cc&&<button type="button" className="textbtn" onClick={()=>setCc(true)}>Cc</button>}</label>
     {cc&&<label>Cc<input value={f.cc} onChange={e=>setF({...f,cc:e.target.value})}/></label>}
     <label>Subject<input value={f.subject} onChange={e=>setF({...f,subject:e.target.value})}/></label>
-    <textarea aria-label="Message" rows={12} value={f.body} onChange={e=>setF({...f,body:e.target.value})} autoFocus={!!f.to}/>
-    {err&&<p className="syncerr" role="alert">{err}</p>}
-    <div className="actions"><button className="primary" disabled={busy||!f.to.trim()}><Send size={15}/> {busy?'Sending…':'Send'}</button><button type="button" className="secondary" onClick={onClose}>Discard</button></div>
+    <textarea ref={taRef} aria-label="Message" rows={12} value={f.body} onChange={e=>setF({...f,body:e.target.value})} autoFocus={!!f.to}/>
+    {err&&<p className="syncerr" role="alert">{err}</p>}{dnote&&<p className="ism-ok" role="status">{dnote}</p>}
+    <div className="actions"><button className="primary" disabled={busy||!f.to.trim()}><Send size={15}/> {busy?'Sending…':'Send'}</button>{isIm&&<button type="button" className="secondary" disabled={busy} onClick={saveDraft}>Save draft</button>}<button type="button" className="secondary" onClick={onClose}>{isIm&&draftUid.current?'Close':'Discard'}</button></div>
   </form></Modal>;
 }
 
-function AddAccount({presets,request,onClose,onAdded,onPulled,edit}:{edit?:any;presets:any;request:any;onClose:()=>void;onAdded:(id:string,message?:string)=>void;onPulled:()=>void}){
+function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift}:{edit?:any;isift?:any;presets:any;request:any;onClose:()=>void;onAdded:(id:string,message?:string)=>void;onPulled:()=>void}){
   // Same steps as Outlook: type your email address, press Continue, sign in in the window that opens.
   const E=edit?.settings||{};const [addr,setAddr]=useState(edit?.address||'');const [step,setStep]=useState<'email'|'which'|'password'|'unavailable'>(edit?'password':'email');const [which,setWhich]=useState('');
   const [prov,setProv]=useState(edit?.provider||'other');const [un,setUn]=useState(E.username||'');const [pw,setPw]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');
@@ -197,6 +212,7 @@ function AddAccount({presets,request,onClose,onAdded,onPulled,edit}:{edit?:any;p
       <label>Email<input type="email" value={addr} onChange={e=>setAddr(e.target.value)} placeholder="name@example.com" autoComplete="email" autoFocus required/></label>
       {err&&<p className="syncerr" role="alert">{err}</p>}{busy&&<p className="muted small" role="status">Waiting for the sign-in window…</p>}
       <div className="actions"><button className="primary" disabled={busy||!addr.trim()}>Continue</button><button type="button" className="secondary" onClick={onClose}>Cancel</button></div>
+      {isift&&<><hr/><IsiftmailOffer compact domain={isift.domain} onStart={isift.start} onDomain={isift.domains}/></>}
       <hr/><p className="muted small">Outlook is installed on this Windows laptop?</p><div className="actions"><button type="button" className="secondary" disabled={busy} onClick={desktop}>Read Outlook on this computer</button></div>
     </form>}
     {step==='which'&&<div>

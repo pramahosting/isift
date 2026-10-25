@@ -2019,3 +2019,37 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 
 /* Sign out button in the top bar: only the icon is gold, the same gold as the Start a meeting tile */
 .topbar .topsignout svg{color:#e0922f}
+
+/* ===== isiftmail (free iSift address inside Commbox > Mail) ===== */
+.ism-offer{display:flex;gap:12px;align-items:center;justify-content:center;margin:14px auto 0;max-width:440px;padding:12px 14px;border:1px solid #dce5e8;border-radius:12px;background:#fff;text-align:left;color:#193348}
+.ism-offer p{margin:2px 0 0}.ism-offer>svg{flex:none;color:#087e8b}.ism-offer .primary{flex:none;white-space:nowrap}
+.ism-offer.compact{max-width:none;margin:0;padding:10px 12px}
+.ism-form h3{margin:0 0 4px;overflow-wrap:anywhere}.ism-form h4{margin:0 0 4px}
+.ism-addr{display:flex;align-items:center;gap:6px}.ism-addr input{flex:1;min-width:0}.ism-addr b{white-space:nowrap;color:#193348}
+.ism-ok{color:#0f766e;margin:4px 0;font-size:13px}
+.ism-copy{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;margin:8px 0}.ism-copy small{grid-column:1/-1}
+.ism-copy code{background:#f1f6f8;border:1px solid #dce5e8;border-radius:7px;padding:7px 9px;overflow-wrap:anywhere;font-size:13px}
+.ism-sec{border-top:1px solid #e3eaed;padding-top:12px;margin-top:12px;display:grid;gap:8px}
+.ism-sec.danger h4{color:#be123c}
+.ism-row{display:flex;align-items:center;gap:8px}.ism-row input{width:auto}
+.ism-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.ism-offer{flex-wrap:wrap}.ism-dates{grid-template-columns:1fr}}
+.ol-empty .ism-offer{flex-direction:column;text-align:center;gap:8px;max-width:300px}
+.ws-form label.ism-row{display:flex;flex-direction:row;align-items:center;gap:8px}.ws-form label.ism-row input{width:auto;margin:0}
+.ism-sec label>span{display:block;margin-bottom:4px}
+.ism-form,.ism-form form{min-width:0;max-width:100%}.ism-addr input{width:100%}
+@media(max-width:560px){.ism-addr{flex-direction:column;align-items:stretch;gap:2px}}
+.ism-offer-btns{display:flex;flex-direction:column;gap:6px;flex:none}.ism-offer-btns .secondary{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.ol-empty .ism-offer-btns{flex-direction:row;flex-wrap:wrap;justify-content:center}
+.ism-dom{border:1px solid #dce5e8;border-radius:12px;padding:14px;margin-top:14px;display:grid;gap:10px;background:#fbfdfe}
+.ism-dom-h{display:flex;align-items:center;justify-content:space-between;gap:8px}.ism-dom-h h4{margin:0;display:flex;align-items:center;gap:6px;overflow-wrap:anywhere}
+.ism-badge{font-size:12px;font-weight:700;border-radius:999px;padding:3px 9px}.ism-badge.ok{background:#d7f3ea;color:#0f766e}.ism-badge.wait{background:#fdecc8;color:#8a5a00}
+.ism-recs{display:grid;gap:10px}.ism-rec{border:1px solid #e3eaed;border-radius:10px;padding:10px;background:#fff}
+.ism-rec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ism-rec-h .ism-ok,.ism-rec-h .syncerr{display:inline-flex;align-items:center;gap:3px;margin:0}
+.ism-rec-grid{display:grid;grid-template-columns:90px 1fr;gap:4px 10px;align-items:center;margin:6px 0}.ism-rec-grid>code{justify-self:start;background:#f1f6f8;border:1px solid #dce5e8;border-radius:7px;padding:4px 8px}
+.ism-rec-grid .ism-copy{margin:0;grid-template-columns:1fr auto}.ism-rec-grid .ism-copy small{display:none}
+.ism-adddom{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.ism-boxes{border-top:1px solid #e3eaed;padding-top:10px;display:grid;gap:8px}.ism-boxes h5{margin:0}
+.ism-box{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;border:1px solid #e3eaed;border-radius:10px;padding:8px 10px;background:#fff}.ism-box b{overflow-wrap:anywhere}
+.ism-box-btns{display:flex;gap:6px}.ism-box-pw{grid-column:1/-1}
+@media(max-width:560px){.ism-rec-grid{grid-template-columns:1fr}.ism-adddom{grid-template-columns:1fr}.ism-offer-btns{width:100%}}
