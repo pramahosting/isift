@@ -21,8 +21,12 @@ export function InstallBanner({text}:{text?:string}){
   const [have,setHave]=useState(()=>{try{return localStorage.getItem('isift.installed')==='1'}catch{return false}});
   useEffect(()=>{try{(navigator as any).getInstalledRelatedApps?.().then((l:any[])=>{if(l&&l.length)setHave(true)}).catch(()=>{})}catch{}},[]);
   // Already installed: no banner. On a meeting link, hand it to the installed app by itself, once per link.
-  useEffect(()=>{if(!have||standalone())return;const m=location.hash.match(/^#\/room\/([A-Za-z0-9]+)/);if(!m)return;const k='isift.handoff.'+m[1];try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1')}catch{}
-    try{location.href=`web+isift://room/${m[1]}`}catch{}},[have]);
+  useEffect(()=>{if(!have||standalone()||localStorage.getItem('isift.handoff')!=='1')return;   // off unless switched on: a web page cannot close its own tab, so handing over leaves two windows
+    const m=location.hash.match(/^#\/room\/([A-Za-z0-9]+)/);if(!m)return;const k='isift.handoff.'+m[1];try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1')}catch{}
+    const done=()=>{try{window.close()}catch{}setTimeout(()=>{if(!document.hidden)document.body.innerHTML='<div style="font:16px system-ui;padding:48px;text-align:center"><b>This meeting opened in the iSift app.</b><p>You can close this tab.</p></div>'},300)};   // the tab that handed it over is closed (browsers allow that only for some tabs, so it is also cleared)
+    const go=()=>{try{location.href=`web+isift://room/${m[1]}`}catch{};const h=()=>{if(document.hidden||!document.hasFocus()){window.removeEventListener('blur',h);document.removeEventListener('visibilitychange',h);done()}};window.addEventListener('blur',h);document.addEventListener('visibilitychange',h)};go();       // browsers only allow this after a click or key press, so it is tried again on the first one
+    const once=()=>{go();window.removeEventListener('pointerdown',once,true);window.removeEventListener('keydown',once,true)};window.addEventListener('pointerdown',once,true);window.addEventListener('keydown',once,true);
+    return()=>{window.removeEventListener('pointerdown',once,true);window.removeEventListener('keydown',once,true)}},[have]);
   if(standalone()||hide)return null;
   if(have)return null;
   const go=async()=>{if(deferred){try{deferred.prompt();await deferred.userChoice}catch{}deferred=null;setCan(false)}else setHelp(true)};

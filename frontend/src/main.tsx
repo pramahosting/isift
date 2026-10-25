@@ -7,6 +7,8 @@ import {HelpToaster} from './notify.tsx';
 import InstallCallout from './InstallCallout.tsx';
 import {applyPrefs} from './prefs.ts';
 applyPrefs();
+// A meeting link handed over from the browser arrives as /?isift=web+isift://room/CODE (or a shortcut /#/start): open that meeting.
+try{const q=new URLSearchParams(location.search).get('isift')||'';const m=decodeURIComponent(q).match(/room\/([A-Za-z0-9]+)/);if(m){history.replaceState(null,'',location.pathname+'#/room/'+m[1])}}catch{}
 
 const cfg={auth:{clientId:import.meta.env.VITE_ENTRA_CLIENT_ID||'00000000-0000-0000-0000-000000000000',authority:`https://login.microsoftonline.com/${import.meta.env.VITE_ENTRA_TENANT_ID||'common'}`,redirectUri:window.location.origin},cache:{cacheLocation:'sessionStorage'}};
 const msal=new PublicClientApplication(cfg);
