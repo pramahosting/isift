@@ -335,3 +335,8 @@ Notes: the secret stays on the server (browsers talk to iSift, iSift talks to Cl
 ## Recording ready email
 
 When a host keeps a recording **in the cloud**, iSift emails them a download link as soon as it is stored. The link downloads the file without signing in (so the email should be kept private), is signed so it cannot be guessed or edited, and expires after 7 days, or sooner when a Basic plan's cloud copy is removed (2 days). It needs the app's email account to be set up (Admin Console > Email and calendar, or Resend); without it the recording is still saved and the host sees a note saying no email was sent. The recording also stays under Meetings > Recordings.
+
+
+## isiftmail (optional free email addresses)
+
+Email addresses for anyone (free name@your-domain), or on a person's own domain with mailboxes for their team, inside Commbox > Mail. It needs your own mail server (Stalwart) and is hidden until set up. Full steps, DNS records and costs: [ISIFTMAIL.md](ISIFTMAIL.md). Switch it on or off under Admin Console > Customers > Modules.
