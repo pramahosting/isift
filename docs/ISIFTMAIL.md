@@ -88,6 +88,13 @@ iSift answers the requests itself, with no sign-in: `/autodiscover/autodiscover.
 * The **Auto-setup name** (setting `isiftmail_autoconfig_host`, default is the mail name) must be a name with a valid HTTPS certificate that reaches those two addresses, for example your reverse proxy forwarding them to the iSift app.
 * Outlook connects to `https://autodiscover.<their-domain>/...`, and a CNAME cannot give that name a certificate for the customer's domain. Outlook therefore follows the SRV record and asks the person once to **allow the redirect** to your Auto-setup name. That prompt is normal. Without it, people still can set up by hand from the server details iSift shows.
 
+## Easy setup, for people and for you
+
+* **Free address:** the person sees a few free names made from their own name, taps one, and the address is in their Mail. Nothing to type.
+* **Own domain:** iSift looks up where the domain is managed (GoDaddy, Cloudflare, Namecheap and others) and says where to click, offers **Copy all records**, and re-checks the DNS every 20 seconds by itself while the window is open, showing how many records are found. When the ownership record appears, the domain verifies and mailboxes can be made. (One-click connection to a registrar's account is not built in.)
+* **Phone and Outlook:** **Use this address on your phone or in Outlook** gives iPhone, iPad and Mac a one-tap profile (a `.mobileconfig` that contains the mailbox password, made only for the signed-in person). Outlook and Android find their settings from the address (see auto-setup above).
+* **You, the administrator:** in Admin Console, API and Settings, Email and calendar, press **Test my mail server**. It checks the management login, the IMAP, SMTP and auto-reply ports, and your MX, SPF and DMARC records, and says in plain words what to fix.
+
 ## What people get
 
 Inbox, Sent, Drafts, Junk and Deleted folders; reading, replying, forwarding, deleting and moving; **Save draft** and **Edit draft** (isiftmail addresses); a **signature** added to new messages; an **auto-reply** with optional start and end dates (a Sieve "vacation" rule on the server, once a day per sender); a **new password** for using the mailbox in Outlook or a phone app; and **Close this mailbox**. Each address has its own signature and auto-reply. Spam filtering is Stalwart's built-in filter; "Junk" in Commbox moves a message to the Junk folder.
