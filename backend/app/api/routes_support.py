@@ -6,7 +6,7 @@ fails) it answers from the fixed answers below, so the chat icon always works. M
 """
 import re, time
 from fastapi import APIRouter, HTTPException, Request
-from app.services import groq
+from app.services import groq, kb
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from app.core.db import get_db
@@ -28,6 +28,12 @@ a passcode or signed-in-only access, co-hosts, mute people, switch off video, re
 Screen sharing, group and private chat, and inviting people by email are included. Larger meetings can be split into discussion groups:
 people in a group only see, hear and chat with their group, the host can move people, send announcements and bring everyone back; groups of 10 or fewer can use a boardroom table view.
 RECORDING: the host can record. Everyone sees a clear Recording banner. When the meeting ends, a Basic host is offered the recording to save on their own computer (it is not stored by iSift). On paid plans the recording is stored in the cloud and a download link is emailed to the host.
+
+WEBINARS (paid plans): schedule a webinar under Meetings, Webinars. People register on a page (with your own questions, optional approval), panelists speak like the host, attendees are view-only (the server keeps their mic, camera and screen off),
+a practice session lets the host prepare before pressing Go live, attendee chat goes to the host only by default, Q&A with upvotes and anonymous questions, polls, raise hand, letting one or several attendees speak, muting and turning off video, reports (CSV) and follow-up emails.
+GIVE CONTROL: share a PDF or photo through iSift (More, Share a file) and give one participant control of it so they page and scroll it for everyone; the host takes it back or stops sharing at any time. It does not control a whole screen or other programs.
+OWN EMAIL: isiftmail gives an address on iSift or on your own domain with team mailboxes, set up on phones and in Outlook or Thunderbird from one page (Commbox).
+USER MANUALS: step-by-step PDF manuals with screenshots are on the website under User manuals (meetings and sharing, webinars, booking and follow-up, mail and calendar, documents and whiteboard).
 
 BOOKING: booking pages you share by email, like Calendly, an embeddable booking widget for other websites, and an Outlook add-in. Schedule Zoom, Teams and Google Meet meetings from one place.
 
@@ -123,6 +129,30 @@ def fallback(text: str) -> str:
         if n > hits: best, hits = answer, n
     return best or ("I can answer questions about iSift's meetings, recording, booking pages, AI minutes and plans. For anything else, please email " + SUPPORT_EMAIL + " and a person will help.")
 
+def _faq_hits(text: str):
+    t = " " + (text or "").lower() + " "; best, hits = None, 0
+    for keys, answer in FAQ:
+        n = sum(1 for k in keys if k in t)
+        if n > hits: best, hits = answer, n
+    return best, hits
+
+def _local_answer(last: str, ask: str, admin: bool) -> str:
+    """No language model: a fixed answer when the question clearly matches one, otherwise the best page of the documentation."""
+    faq, hits = _faq_hits(last)
+    if faq and hits >= 2: return faq
+    return kb.best_answer(last, admin) or kb.best_answer(ask, admin) or faq or fallback(last)
+
+async def _is_admin(request: Request, db) -> bool:
+    """Is the person asking a signed-in administrator? (Administration material is only for them.)"""
+    h = request.headers.get("authorization") or ""
+    if not h.lower().startswith("bearer "): return False
+    try:
+        from fastapi.security import HTTPAuthorizationCredentials
+        from app.core.security import principal
+        u = await principal(request, HTTPAuthorizationCredentials(scheme="Bearer", credentials=h[7:].strip()), db)
+        return u.role == "admin"
+    except Exception: return False
+
 _SEEN: dict[str, list[float]] = {}
 LIMIT, WINDOW = 20, 600          # 20 messages per 10 minutes per address
 
@@ -144,8 +174,12 @@ async def support_chat(payload: dict, request: Request, db: AsyncSession = Depen
     if not msgs or msgs[-1]["role"] != "user": raise HTTPException(422, "The last message must be a question from you.")
     last = msgs[-1]["content"]
     facts = await plan_facts(db)
-    reply = await groq.converse(knowledge(facts), msgs)
-    return {"reply": reply or feature_answer(facts, last) or fallback(last), "ai": bool(reply)}
+    admin = await _is_admin(request, db)
+    ask = " ".join(m["content"] for m in msgs if m["role"] == "user")[-600:]          # the question and what led to it, so follow-ups still find the right pages
+    ref = kb.excerpts(ask, admin)
+    system = knowledge(facts) + ("\nREFERENCE EXCERPTS from the iSift manuals, website and guides. They are accurate: use them to answer in detail, and point to the User manuals section of the website for step-by-step PDFs:\n" + ref if ref else "")
+    reply = await groq.converse(system, msgs)
+    return {"reply": reply or feature_answer(facts, last) or _local_answer(last, ask, admin), "ai": bool(reply)}
 
 
 # ---- support request / contact / feedback forms in the page footer: emailed to the support address, nothing stored ----

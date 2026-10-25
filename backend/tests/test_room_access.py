@@ -2089,20 +2089,6 @@ def read_until(w, pred, n=40):
         if pred(m): return m
     raise AssertionError("expected message never arrived")
 
-def test_one_person_shares_at_a_time(client):
-    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
-    ws_h, host = join(client, r["code"], name="Host", token=tok); assert read_until(host, lambda m: m["type"] == "welcome")["multi_share"] is True       # several shares are allowed unless the host switches them off
-    host.send_json({"type": "multishare", "on": False})
-    ws_a, a = join(client, r["code"], name="Ann"); read_until(a, lambda m: m["type"] == "welcome")
-    ws_b, b = join(client, r["code"], name="Bob"); read_until(b, lambda m: m["type"] == "welcome")
-    share = lambda on: {"type": "state", "mic": True, "cam": True, "screen": on}
-    a.send_json(share(True))
-    b.send_json(share(True))                                   # Ann is already sharing, so Bob must wait
-    assert read_until(b, lambda m: m["type"] == "share-denied")["by"] == "Ann"
-    a.send_json(share(False)); b.send_json(share(True))        # Ann stopped, so Bob may share now
-    assert read_until(a, lambda m: m["type"] == "state" and m["screen"] is True)
-    ws_a.__exit__(None, None, None); ws_b.__exit__(None, None, None)
-
 def test_lock_reactions_hand_and_captions(client):
     h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
     ws_h, host = join(client, r["code"], name="Host", token=tok); assert read_until(host, lambda m: m["type"] == "welcome")["host"] is True

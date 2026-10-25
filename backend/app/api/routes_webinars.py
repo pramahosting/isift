@@ -3,7 +3,7 @@
 The live part (view-only attendees, Q&A and poll messages) runs inside the meeting room, see routes_rooms.py.
 The module can be switched off in Admin Console (Customers > Modules) and per plan; the host's plan must also include webinars.
 """
-import secrets, time
+import asyncio, secrets, time
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select, func
@@ -254,6 +254,10 @@ async def followup(wid: str, payload: dict, user: User = Depends(_host), db: Asy
 
 # ---------------------------------------------------------------- public registration page (no sign-in)
 _REG: dict[str, list[float]] = {}
+_RL: dict[str, asyncio.Lock] = {}
+def _reg_lock(wid: str) -> asyncio.Lock:
+    if len(_RL) > 2000: _RL.clear()
+    return _RL.setdefault(wid, asyncio.Lock())
 
 async def _pub(db: AsyncSession, wid: str) -> Webinar:
     await _module_on(db)
@@ -291,9 +295,11 @@ async def register(wid: str, payload: dict, request: Request, db: AsyncSession =
     if existing:
         if existing.status in ("approved", "pending"): await wb.tell_registration(db, w, existing); return {"status": existing.status, "message": "You are already registered. We sent your link again."}
         raise HTTPException(409, "This registration was cancelled or declined. Contact the host.")
-    if await _room_left(db, w) <= 0: raise HTTPException(409, "This webinar is full.")
-    r = WebinarRegistrant(webinar_id=w.id, email=email, name=name, answers=answers, status="pending" if s.get("approval") == "manual" else "approved", source="self", token=secrets.token_urlsafe(18))
-    db.add(r); await db.commit(); await wb.tell_registration(db, w, r)
+    async with _reg_lock(w.id):            # check and add as one step, so a rush of registrations cannot go past the limit
+        if await _room_left(db, w) <= 0: raise HTTPException(409, "This webinar is full.")
+        r = WebinarRegistrant(webinar_id=w.id, email=email, name=name, answers=answers, status="pending" if s.get("approval") == "manual" else "approved", source="self", token=secrets.token_urlsafe(18))
+        db.add(r); await db.commit()
+    await wb.tell_registration(db, w, r)
     return {"status": r.status, "token": r.token if r.status == "approved" else "", "message": "Thank you. The host will review your registration and email you." if r.status == "pending" else "You are registered. We emailed your personal link."}
 
 @pub.get("/{wid}/me")

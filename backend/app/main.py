@@ -18,6 +18,7 @@ from app.api.routes_autoconfig import router as autoconfig_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_booking import router as booking_router
 from app.api.routes_modules import router as modules_router
+from app.api.routes_manuals import router as manuals_router
 from app.api.routes_account import router as account_router
 from app.api.routes_billing import router as billing_router
 from app.api.routes_support import router as support_router
@@ -57,6 +58,7 @@ app.include_router(autoconfig_router)
 app.include_router(oauth_router)
 app.include_router(booking_router)
 app.include_router(modules_router)
+app.include_router(manuals_router)
 app.include_router(account_router)
 app.include_router(billing_router)
 app.include_router(support_router)

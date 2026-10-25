@@ -4,7 +4,7 @@ A webinar is an ordinary meeting room (so video, chat, recording and the big-mee
 one extra record: who registered, who the panelists are, and the Q&A and polls. The live part (view-only attendees, Q&A and poll
 messages) is in routes_rooms.py and uses the functions here for everything that touches the database.
 """
-import csv, io, logging, secrets
+import asyncio, csv, io, logging, secrets
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
@@ -187,10 +187,18 @@ async def ask(db: AsyncSession, w: Webinar, key: str, name: str, email: str, tex
     q = WebinarQuestion(webinar_id=w.id, asker=key, name=name[:120], email=email[:200], text=text, anonymous=bool(anonymous and (w.settings or {}).get("qa_anonymous", True)), upvoters=[])
     db.add(q); await db.commit(); return q
 
+# Votes and upvotes are kept in one JSON column per poll or question, so two people voting at the same moment would overwrite each other.
+# One lock per row (this server) plus a row lock in the database (several servers) makes every vote count.
+_LOCKS: dict[str, asyncio.Lock] = {}
+def _lock(key: str) -> asyncio.Lock:
+    if len(_LOCKS) > 5000: _LOCKS.clear()
+    return _LOCKS.setdefault(key, asyncio.Lock())
+
 async def upvote(db: AsyncSession, wid: str, qid: str, key: str) -> bool:
-    q = await db.get(WebinarQuestion, qid)
-    if not q or q.webinar_id != wid or q.status == "dismissed": return False
-    ups = list(q.upvoters or []); ups = [u for u in ups if u != key] if key in ups else ups + [key]; q.upvoters = ups; await db.commit(); return True
+    async with _lock("q" + qid):
+        q = await db.get(WebinarQuestion, qid, with_for_update=True, populate_existing=True)
+        if not q or q.webinar_id != wid or q.status == "dismissed": return False
+        ups = list(q.upvoters or []); ups = [u for u in ups if u != key] if key in ups else ups + [key]; q.upvoters = ups; await db.commit(); return True
 
 async def answer(db: AsyncSession, wid: str, qid: str, by: str, text: str = "", live: bool = False, dismiss: bool = False, reopen: bool = False) -> bool:
     q = await db.get(WebinarQuestion, qid)
@@ -215,11 +223,12 @@ def poll_view(p: WebinarPoll, me: str, staff: bool) -> dict | None:
     return d
 
 async def vote(db: AsyncSession, wid: str, pid: str, key: str, choices) -> bool:
-    p = await db.get(WebinarPoll, pid)
-    if not p or p.webinar_id != wid or p.status != "open": return False
-    ch = sorted({int(c) for c in (choices or []) if isinstance(c, int) and 0 <= c < len(p.options or [])})
-    if not ch or (len(ch) > 1 and not p.multi): return False
-    p.votes = {**(p.votes or {}), key: ch}; await db.commit(); return True
+    async with _lock("p" + pid):
+        p = await db.get(WebinarPoll, pid, with_for_update=True, populate_existing=True)
+        if not p or p.webinar_id != wid or p.status != "open": return False
+        ch = sorted({int(c) for c in (choices or []) if isinstance(c, int) and 0 <= c < len(p.options or [])})
+        if not ch or (len(ch) > 1 and not p.multi): return False
+        p.votes = {**(p.votes or {}), key: ch}; await db.commit(); return True
 
 async def snapshot(db: AsyncSession, wid: str) -> tuple[list[WebinarQuestion], list[WebinarPoll]]:
     qs = (await db.execute(select(WebinarQuestion).where(WebinarQuestion.webinar_id == wid).order_by(WebinarQuestion.created_at))).scalars().all()
