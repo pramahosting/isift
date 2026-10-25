@@ -115,8 +115,8 @@ export function NewSection(){
    {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes.',m:'mail-calendar-contacts'},
    {i:Users,t:'Simple host controls',d:'Mute people, turn off video or invite someone to speak, all from one small menu beside each person.',m:'meetings-and-sharing'},
   ];
-  return <section className="landing-section" id="whats-new"><p className="eyebrow">WHAT’S NEW</p><h2>New in iSift.</h2>
-    <div className="why-grid four new-grid">{items.map(w=><article key={w.t} className="why-card new-card"><span className="why-ic"><w.i size={20}/></span><span className="new-tag">New</span><h3>{w.t}</h3><p>{w.d}</p><a className="new-link" href={`#/manual/${w.m}`}>Read the manual <ArrowRight size={14}/></a></article>)}</div></section>;
+  return <section className="landing-section" id="whats-new"><p className="eyebrow">WHAT’S EXTRA</p><h2>Inbuilt in iSift.</h2>
+    <div className="why-grid four new-grid">{items.map(w=><article key={w.t} className="why-card new-card"><span className="why-ic"><w.i size={20}/></span><h3>{w.t}</h3><p>{w.d}</p><a className="new-link" href={`#/manual/${w.m}`}>Read the manual <ArrowRight size={14}/></a></article>)}</div></section>;
 }
 
 export function BetterSection(){
