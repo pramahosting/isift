@@ -80,7 +80,7 @@ export function CompareSection(){
   const price:Cell[]=[best?`${money(best.v,live.currency)} a month (${best.n} people)`:'Free','US$14.16 (Pro)','From US$1 (10 people)','A$17.50 (Starter)','From about US$12 (Professional)','Part of Microsoft 365','US$7 (Workspace Starter)'];
   return <section className="landing-section" id="compare"><p className="eyebrow">HOW ISIFT COMPARES</p><h2>Where iSift fits next to the tools you already know.</h2>
     <p className="why-lead">Zoom, Webex, GoTo Meeting and Teams are built for large and managed meetings, and Zoho Meeting is the closest on price. iSift brings meetings, notes, whiteboard, booking and mail together for one person or a small team, and you pay only for the number of people you need in a meeting.</p>
-    <div className="cmp-wrap" role="region" aria-label="Comparison table" tabIndex={0}><table className="cmp">
+    <p className="cmp-swipe">Swipe sideways to see every product.</p><div className="cmp-wrap" role="region" aria-label="Comparison table" tabIndex={0}><table className="cmp">
       <thead><tr><th scope="col"></th>{COLS.map((c,i)=><th key={c} scope="col" className={i===0?'me':''}>{c}{SUB[i]&&<small>{SUB[i]}</small>}</th>)}</tr></thead>
       <tbody>{ROWS.map(r=><tr key={r.label}><th scope="row">{r.label}</th>{r.cells.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr>)}
         <tr><th scope="row">Paid plan from (billed yearly, per host)</th>{price.map((c,i)=><td key={i} className={i===0?'me':''}><Mark v={c}/></td>)}</tr></tbody></table></div>
