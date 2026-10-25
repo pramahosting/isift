@@ -110,13 +110,13 @@ export const MANUALS:{slug:string;t:string;d:string;pages:number}[]=[
 
 export function NewSection(){
   const items=[
-   {i:Presentation,t:'Webinars',d:'Registration pages, panelists, a practice session, view-only attendees, private questions to the host, Q&A with upvotes, polls, raise hand, reports and follow-up emails.'},
-   {i:Hand,t:'Give control of a shared file',d:'Share a PDF or photo through iSift and hand one person the controls: they page and scroll it for everyone. You take it back, or stop sharing, at any time.'},
-   {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes, set up on phones and in Outlook or Thunderbird from one page.'},
-   {i:Users,t:'Host controls that stay out of the way',d:'Mute people or turn off their video, invite one person or a group to speak, and a small arrow beside each person holds Chat, Ask to unmute and more.'},
+   {i:Presentation,t:'Webinars',d:'Run webinars with registration, panelists, polls, Q&A and reports. Attendees only watch.',m:'webinars'},
+   {i:Hand,t:'Give control of a file',d:'Share a PDF or photo and let one person page and scroll it for everyone. Take it back any time.',m:'meetings-and-sharing'},
+   {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes.',m:'mail-calendar-contacts'},
+   {i:Users,t:'Simple host controls',d:'Mute people, turn off video or invite someone to speak, all from one small menu beside each person.',m:'meetings-and-sharing'},
   ];
   return <section className="landing-section" id="whats-new"><p className="eyebrow">WHAT’S NEW</p><h2>New in iSift.</h2>
-    <div className="why-grid four">{items.map(w=><article key={w.t} className="why-card"><span className="why-ic"><w.i size={20}/></span><h3>{w.t}</h3><p>{w.d}</p></article>)}</div></section>;
+    <div className="why-grid four new-grid">{items.map(w=><article key={w.t} className="why-card new-card"><span className="why-ic"><w.i size={20}/></span><span className="new-tag">New</span><h3>{w.t}</h3><p>{w.d}</p><a className="new-link" href={`#/manual/${w.m}`}>Read the manual <ArrowRight size={14}/></a></article>)}</div></section>;
 }
 
 export function BetterSection(){
