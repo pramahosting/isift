@@ -2102,3 +2102,12 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .wb-panel input[type=text],.wb-panel input:not([type]),.wb-panel textarea{width:100%;box-sizing:border-box}.wb-person{flex-wrap:wrap}
 /* participant dropdown: smaller text and a narrower, tighter menu */
 .rm-pmenu{align-self:flex-end;width:max-content;min-width:150px;max-width:100%;margin-top:4px;font-size:12px}.rm-pmenu button{padding:5px 10px;font-size:12px;line-height:1.3}
+/* control of a shared file */
+.rm-ctl{position:absolute;left:10px;bottom:48px;z-index:6;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:#0f1b27e6;color:#fff;border:1px solid #ffffff2e;border-radius:10px;padding:5px 8px;font-size:12px;max-width:calc(100% - 20px)}
+.rm-ctl span{display:inline-flex;align-items:center;gap:5px}.rm-ctl button,.rm-ctl select{font-size:12px;padding:4px 8px;border-radius:7px;border:1px solid #ffffff3a;background:#ffffff14;color:#fff;cursor:pointer}.rm-ctl select option{color:#111}.rm-ctl.mine{background:#1d4ed8e6}
+/* pop-up menus sit above their dimmed backdrop, so their items can be clicked */
+.rm-pop{z-index:90!important}
+/* manuals */
+.man-card{display:flex;flex-direction:column;align-items:flex-start;text-align:left}.man-card .why-ic{margin-bottom:6px}.man-act{display:flex;gap:8px;margin-top:auto;padding-top:12px}.man-act a{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 14px;border-radius:10px;font:inherit}
+.man-view{display:flex;flex-direction:column;height:100dvh;background:#f4f7fa}.man-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #dbe3ee;flex-wrap:wrap}.man-bar .sp{flex:1}.man-bar a{display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:8px 14px;border-radius:10px}
+.man-frame{flex:1;width:100%;border:0;background:#fff}.man-fallback{margin:0;padding:6px 16px;text-align:center}

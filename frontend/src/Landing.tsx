@@ -1,5 +1,5 @@
 import React from 'react';
-import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,ArrowRight,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
+import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 
 /** Landing page sections: what happens after a meeting, why iSift, an honest comparison, and how data is handled. */
@@ -62,7 +62,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Reactions, raise hand and live captions',cells:[Y,Y,null,Y,null,Y,Y]},
  {label:'Several people sharing at once, with pointer and pen',cells:['Yes (paid plans)','Yes (host option)',null,null,null,null,null]},
  {label:'Watch a YouTube video together, in sync',cells:['Yes (paid plans)',null,null,null,null,null,null]},
- {label:'Take control of someone’s computer',cells:['Not yet (pointer and pen instead)',Y,Y,Y,Y,Y,null]},
+ {label:'Take control of someone’s computer',cells:['Give anyone control of a shared PDF or photo to page and scroll it, or hand them the pen on a shared screen. Take it back any time',Y,Y,Y,Y,Y,null]},
  {label:'Call another user inside the app',cells:['Yes (paid plans)',Y,null,Y,null,Y,Y]},
  {label:'Webinars: registration, panelists, private Q&A, polls, reports',cells:['Yes, built in (paid plans)','Separate product','Separate product','Webex Webinars','GoTo Webinar (separate)','Teams Premium','Paid plans']},
 ];
@@ -96,4 +96,55 @@ export function TrustSection(){
   ];
   return <section className="landing-section" id="trust"><p className="eyebrow">TRUST</p><h2>Clear about your data.</h2>
     <div className="why-grid four">{items.map(([t,d])=><article key={t} className="why-card"><span className="why-ic"><ShieldCheck size={20}/></span><h3>{t}</h3><p>{d}</p></article>)}</div></section>;
+}
+
+
+/* ---------------------------------------------------------------- what is new, why iSift, manuals */
+export const MANUALS:{slug:string;t:string;d:string;pages:number}[]=[
+ {slug:'meetings-and-sharing',t:'Meetings and sharing',d:'Start and join meetings, manage people, share a file and give someone control of it.',pages:7},
+ {slug:'webinars',t:'Webinars',d:'Register people, run a practice session, answer private questions, run polls and let people speak.',pages:10},
+ {slug:'booking-and-follow-up',t:'Booking, minutes and action items',d:'Booking pages, reviewed minutes, owned action items and the morning briefing.',pages:4},
+ {slug:'mail-calendar-contacts',t:'Mail, calendar and contacts',d:'Commbox: add a mail account, use your calendar and look after contacts.',pages:3},
+ {slug:'documents-and-whiteboard',t:'Documents, PDF signing and whiteboard',d:'WordPerfect, SpreadTable, PowerPresentation, Sign and Edit PDF and the whiteboard.',pages:4},
+ {slug:'administration',t:'Administration',d:'Admin Console, people and plans, modules and meeting platforms.',pages:4},
+];
+
+export function NewSection(){
+  const items=[
+   {i:Presentation,t:'Webinars',d:'Registration pages, panelists, a practice session, view-only attendees, private questions to the host, Q&A with upvotes, polls, raise hand, reports and follow-up emails.'},
+   {i:Hand,t:'Give control of a shared file',d:'Share a PDF or photo through iSift and hand one person the controls: they page and scroll it for everyone. You take it back, or stop sharing, at any time.'},
+   {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes, set up on phones and in Outlook or Thunderbird from one page.'},
+   {i:Users,t:'Host controls that stay out of the way',d:'Mute people or turn off their video, invite one person or a group to speak, and a small arrow beside each person holds Chat, Ask to unmute and more.'},
+  ];
+  return <section className="landing-section" id="whats-new"><p className="eyebrow">WHAT’S NEW</p><h2>New in iSift.</h2>
+    <div className="why-grid four">{items.map(w=><article key={w.t} className="why-card"><span className="why-ic"><w.i size={20}/></span><h3>{w.t}</h3><p>{w.d}</p></article>)}</div></section>;
+}
+
+export function BetterSection(){
+  const rows=[
+   ['Everything in one place','Zoom, Zoho, Teams, Webex, GoTo and Meet each cover meetings; notes, whiteboard, documents, PDF signing, booking and mail usually mean other apps or add-ons. In iSift they sit beside the meeting.'],
+   ['Webinars are included','Webinars are a separate product or an add-on with Zoom, Zoho, GoTo and Teams. In iSift they are part of the paid plans, with registration, Q&A, polls and reports.'],
+   ['You pay for the people you need','Choose how many participants you need from a dropdown. No per-feature add-ons to work out.'],
+   ['A free plan with 90-minute meetings','Group meetings on the free plan run for 90 minutes, longer than the free plans of Zoom, Webex and Meet.'],
+   ['AI that a person approves','Minutes and action items are drafts until someone reviews them, which matters for clients, boards and regulated work.'],
+   ['Control without installing anything','Share a file and give someone control of it, mute and manage people and run a webinar, all in the browser.'],
+  ];
+  return <section className="landing-section" id="why-better"><p className="eyebrow">WHY ISIFT</p><h2>Why people choose iSift over Zoom, Zoho, Teams, Meet and the rest.</h2>
+    <div className="why-grid">{rows.map(([t,d])=><article key={t} className="why-card"><span className="why-ic"><Check size={20}/></span><h3>{t}</h3><p>{d}</p></article>)}</div>
+    <p className="cmp-note">Comparisons reflect each product’s published plans in October 2026. See the table above for details, and check each vendor before you decide.</p></section>;
+}
+
+export function ManualsSection(){
+  return <section className="landing-section" id="manuals"><p className="eyebrow">USER MANUALS</p><h2>Step-by-step manuals with screenshots.</h2>
+    <p className="why-lead">One short manual for each group of features. Open it here, or download the PDF.</p>
+    <div className="why-grid">{MANUALS.map(m=><article key={m.slug} className="why-card man-card"><span className="why-ic"><BookOpen size={20}/></span><h3>{m.t}</h3><p>{m.d}</p><small className="muted">{m.pages} pages, PDF</small>
+      <div className="man-act"><a className="primary" href={`#/manual/${m.slug}`}>Open</a><a className="secondary" href={`/manuals/${m.slug}.pdf`} download={`iSift-${m.slug}.pdf`}><Download size={14}/> Download</a></div></article>)}</div></section>;
+}
+
+export function ManualViewer({slug}:{slug:string}){
+  const m=MANUALS.find(x=>x.slug===slug);const src=`/manuals/${slug}.pdf`;
+  const back=()=>{if(history.length>1)history.back();else location.hash='#/website'};
+  return <div className="man-view"><header className="man-bar"><button type="button" className="secondary" onClick={back}><ArrowLeft size={15}/> Back</button><b>{m?m.t:'Manual'}</b>
+    <span className="sp"/>{m&&<a className="primary" href={src} download={`iSift-${slug}.pdf`}><Download size={14}/> Download PDF</a>}</header>
+    {m?<><iframe className="man-frame" title={m.t} src={src+'#view=FitH'}/><p className="muted small man-fallback">The manual does not show? <a href={src} target="_blank" rel="noopener">Open the PDF directly</a>.</p></>:<p className="syncerr" role="alert">That manual was not found.</p>}</div>;
 }
