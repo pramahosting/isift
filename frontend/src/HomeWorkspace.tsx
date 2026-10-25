@@ -92,6 +92,7 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
       {k:'book',label:'Booking page',note:'Let people book you',icon:CalendarDays,c:'cobalt',run:()=>go('Booking'),mod:'scheduling'},
       {k:'call',label:'Call',note:'Ring an iSift user',icon:Phone,c:'cobalt',run:()=>window.dispatchEvent(new Event('isift:call'))},
       {k:'rec',label:'Recordings',note:'Your recorded meetings',icon:Play,c:'cobalt',run:()=>go('Recordings'),mod:'meetings'},
+      {k:'webinar',label:'Webinars',note:'Registration, Q&A, polls',icon:Presentation,c:'cobalt',run:()=>go('Webinars'),mod:'webinars'},
       {k:'share',label:'Share booking link',note:'Email it to someone',icon:Send,c:'cobalt',run:onShareLink,mod:'scheduling'},
       {k:'sync',label:'Sync calendar',note:'Pull in today’s events',icon:RefreshCw,c:'cobalt',run:onSync,mod:'calendar'}]},
     {group:'Meeting records',items:[
