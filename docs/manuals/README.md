@@ -8,3 +8,5 @@ To change one: edit `content.py` (text and screenshot names), replace screenshot
     node print.js        # needs Node with Playwright
 
 The PDFs are rewritten in `frontend/public/manuals/`. The list on the landing page is `MANUALS` in `frontend/src/Landing.tsx`.
+
+The Administration manual is **not public**: it is written to `backend/app/private_manuals/` and served only to a signed-in administrator (`GET /api/v1/admin/manual`, shown as a button in Admin Console).
