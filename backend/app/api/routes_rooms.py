@@ -253,6 +253,11 @@ def _rank(p: dict) -> int:
     """2 = the host, 1 = a co-host, 0 = everyone else."""
     return 0 if not p.get("host") else (1 if p.get("cohost") else 2)
 
+async def _ctl_clear(state: dict, sharer: str, code: str):
+    """Control of a shared file goes back to the person sharing it."""
+    if (state.get("ctl") or {}).pop(sharer, None) is not None:
+        await _broadcast(code, {"type": "ctl", "sharer": sharer, "holder": None, "name": ""})
+
 async def _pen_clear(state: dict, sharer: str, code: str):
     if (state.get("pen") or {}).pop(sharer, None) is not None:
         await _broadcast(code, {"type": "pen", "sharer": sharer, "holder": None, "name": ""})
@@ -650,7 +655,7 @@ async def room_socket(ws: WebSocket, code: str):
                 rival = next((p for i, p in state["peers"].items() if i != pid and p.get("screen") and p.get("group") == me.get("group")), None) if want_screen and not me.get("screen") and not _multi_on(state) else None
                 if rival:                                   # when the host has switched several shares off, one person shares at a time: the second one waits until the first stops
                     await _send(ws, {"type": "share-denied", "by": rival.get("name") or "Someone"}); want_screen = False
-                if me.get("screen") and not want_screen: await _pen_clear(state, pid, code)     # sharing stopped: the pen goes back
+                if me.get("screen") and not want_screen: await _pen_clear(state, pid, code); await _ctl_clear(state, pid, code)     # sharing stopped: the pen goes back
                 me["screen"] = want_screen
                 if state.get("sfu"): asyncio.create_task(_stage_update(state))
                 if _rank(me) == 0:                          # the host's rules: a participant cannot switch on what is not allowed
@@ -664,6 +669,21 @@ async def room_socket(ws: WebSocket, code: str):
             elif t == "hand":                        # raise or lower a hand
                 me = state["peers"][pid]; me["hand"] = bool(msg.get("up"))
                 await _to_view(state, me.get("group"), {"type": "hand", "id": pid, "name": me["name"], "up": me["hand"]}, skip=pid)
+            elif t in ("ctl_give", "ctl_take", "ctl_do"):          # the sharer lets one person page and scroll the file they are sharing; only the sharer can stop the share
+                me = state["peers"][pid]; ctls = state.setdefault("ctl", {})
+                if t == "ctl_give":
+                    to = str(msg.get("to") or ""); tp = state["peers"].get(to)
+                    if me.get("screen") and tp and to != pid and tp.get("group") == me.get("group") and not tp.get("attendee"):
+                        ctls[pid] = to; await _to_view(state, me.get("group"), {"type": "ctl", "sharer": pid, "holder": to, "name": tp["name"]})
+                elif t == "ctl_take": await _ctl_clear(state, pid, code)
+                else:
+                    sid = str(msg.get("sharer") or ""); sh = state["peers"].get(sid); now = time.time()
+                    if sh and ctls.get(sid) == pid and sh.get("screen") and now - me.get("_ct", 0) >= 0.05:
+                        me["_ct"] = now; act = "scroll" if msg.get("act") == "scroll" else "page"
+                        try: val = float(msg.get("dy") if act == "scroll" else msg.get("d"))
+                        except (TypeError, ValueError): val = 0.0
+                        val = max(-3000.0, min(3000.0, val)) if act == "scroll" else (1.0 if val > 0 else -1.0 if val < 0 else 0.0)
+                        if val: await _send(sh["ws"], {"type": "ctl-do", "by": pid, "name": me["name"], "act": act, "v": val})
             elif t in ("pen_give", "pen_take", "pen_ask", "pointer", "draw", "draw_clear") and state.get("multi_ok", True):     # pointer and pen on someone's shared screen (a paid-plan facility)
                 me = state["peers"][pid]; sid = pid if t in ("pen_give", "pen_take") else str(msg.get("sharer") or "")
                 sh = state["peers"].get(sid); pens = state.setdefault("pen", {})
@@ -815,6 +835,8 @@ async def room_socket(ws: WebSocket, code: str):
             if state.get("holding", {}).pop(pid, None) is not None: _WLIVE.mark_dirty(state, code)
             if pid in state["peers"]:
                 gone = state["peers"].pop(pid, None)
+                for _s, _h in list((state.get("ctl") or {}).items()):         # a leaving sharer or controller ends that control
+                    if _s == pid or _h == pid: await _ctl_clear(state, _s, code)
                 for _s, _h in list((state.get("pen") or {}).items()):         # a leaving sharer or pen holder ends that pen
                     if _s == pid or _h == pid: await _pen_clear(state, _s, code)
                 _cw = state.get("captions_want")
