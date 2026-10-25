@@ -724,11 +724,12 @@ async def room_socket(ws: WebSocket, code: str):
                     if role == "cohost": target["host"], target["cohost"] = True, True; await _broadcast(code, {"type": "role", "id": msg["id"], "host": True, "cohost": True}); await _send(target["ws"], {"type": "role", "id": msg["id"], "host": True, "cohost": True, "self": True})
                     elif role == "participant" and _rank(target) == 1: target["host"], target["cohost"] = False, False; await _broadcast(code, {"type": "role", "id": msg["id"], "host": False, "cohost": False}); await _send(target["ws"], {"type": "role", "id": msg["id"], "host": False, "cohost": False, "self": True})
                     elif role == "host":
-                        if not target.get("user_id"): await _send(ws, {"type": "role-error", "message": "Only a signed-in person can be made the host, because hosting needs an account. Make them co-host instead."})
+                        if not target.get("user_id") and not room_options.get("open_room"): await _send(ws, {"type": "role-error", "message": "Only a signed-in person can be made the host, because hosting needs an account. Make them co-host instead."})
                         else:
-                            async with SessionLocal() as db:
-                                r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
-                                if r: r.host_id = target["user_id"]; await db.commit()
+                            if not room_options.get("open_room"):      # a normal meeting remembers its new host; an open room stays with its owner, so there the hand-over lasts only while this session runs (and a guest can take it)
+                                async with SessionLocal() as db:
+                                    r = (await db.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
+                                    if r: r.host_id = target["user_id"]; await db.commit()
                             target["host"], target["cohost"] = True, False; me["host"], me["cohost"] = False, False
                             for i, p in ((msg["id"], target), (pid, me)):
                                 await _broadcast(code, {"type": "role", "id": i, "host": p["host"], "cohost": False}); await _send(p["ws"], {"type": "role", "id": i, "host": p["host"], "cohost": False, "self": True, "transferred": True})
@@ -759,8 +760,12 @@ async def room_socket(ws: WebSocket, code: str):
                     if not _cw: await _broadcast(code, {"type": "captions", "on": False})
                 await _to_view(state, gone.get("group") if gone else None, {"type": "peer-left", "id": pid})
                 await _roster_to_hosts(state)
+                if gone and _rank(gone) == 2 and room_options.get("open_room") and state["peers"]:           # open room: the host left, so somebody must take over (after a short wait, in case it is only a refresh)
+                    if state.get("succession"): state["succession"].cancel()
+                    state["succession"] = asyncio.create_task(_open_room_succession(code, state))
                 if state.get("sfu"): await _stage_update(state)
             if not state["peers"] and not state["waiting"]:
+                if state.get("succession"): state["succession"].cancel()
                 task = (state.get("groups") or {}).get("task")
                 if task: task.cancel()
                 if state.get("timer") and not state.get("ending"): state["timer"].cancel()
@@ -771,6 +776,20 @@ async def room_socket(ws: WebSocket, code: str):
                         from app.services import entitlements as _ent
                         async with SessionLocal() as _db: await _ent.add_meeting_minutes(_db, state["host_email"], (time.time() - state["started"]) / 60)     # counts towards the host's monthly hours
                     except Exception: log.exception("Could not count meeting minutes")
+
+HOST_SUCCESSION_SECONDS = 20     # how long an open room waits for its host to come back before the next person takes over
+
+async def _open_room_succession(code: str, state: dict) -> None:
+    """Open room, and the host has left: after a short wait (a page refresh or a dropped connection brings the host straight back),
+    the co-host becomes the host, or if there is none the person who has been in the room longest. Does nothing if somebody already took over."""
+    await asyncio.sleep(HOST_SUCCESSION_SECONDS)
+    peers = state["peers"]
+    if not peers or any(_rank(p) == 2 for p in peers.values()): return
+    pick = next((i for i, p in peers.items() if _rank(p) == 1), None) or next(iter(peers))      # peers are kept in the order they joined
+    p = peers[pick]; p["host"], p["cohost"] = True, False
+    await _broadcast(code, {"type": "role", "id": pick, "host": True, "cohost": False})
+    await _send(p["ws"], {"type": "role", "id": pick, "host": True, "cohost": False, "self": True, "transferred": True})
+    await _tell_hosts(state)
 
 async def _meeting_clock(code: str, state: dict) -> None:
     """Basic hosts get meetings of a limited length: everyone is told 10 minutes before the end (like Zoom), and the meeting then closes."""

@@ -1647,6 +1647,37 @@ def test_open_room_needs_no_host_no_admit_and_never_closes(client):
     ws4, g4 = join(client, n["code"], name="Late"); m4 = g4.receive_json(); ws4.__exit__(None, None, None); assert m4["type"] == "error"
 
 
+def test_open_room_host_handover_and_succession(client, monkeypatch):
+    import app.api.routes_rooms as rr
+    monkeypatch.setattr(rr, "HOST_SUCCESSION_SECONDS", 0.2)
+    h, tok = login(client)
+    r = make(client, h, access="open", waiting_room=False, options={"open_room": True})
+    ws1, g1 = join(client, r["code"], name="First"); w1 = _until(g1, "welcome"); assert w1["host"] is True and w1["cohost"] is False
+    ws2, g2 = join(client, r["code"], name="Second"); w2 = _until(g2, "welcome"); assert w2["cohost"] is True
+    ws3, g3 = join(client, r["code"], name="Third"); w3 = _until(g3, "welcome"); assert w3["host"] is False
+    try:
+        # the host hands the room to a guest (no account needed in an open room)
+        g1.send_json({"type": "role", "id": w3["id"], "role": "host"})
+        ro = _until(g3, "role", lambda m: m.get("self")); assert ro["host"] is True and ro["cohost"] is False
+        # the new host leaves: after the short wait the co-host takes over
+        ws3.__exit__(None, None, None)
+        ro = _until(g2, "role", lambda m: m.get("self") and m.get("transferred")); assert ro["host"] is True and ro["cohost"] is False
+    finally:
+        for x in (ws1, ws2, ws3):
+            with contextlib.suppress(Exception): x.__exit__(None, None, None)
+
+
+def test_normal_room_still_refuses_guest_as_host(client):
+    h, tok = login(client); r = make(client, h, access="open", waiting_room=False)
+    hs, host = join(client, r["code"], token=tok, name="Host"); _until(host, "welcome")
+    gs, g = join(client, r["code"], name="Guest"); gw = _until(g, "welcome")
+    try:
+        host.send_json({"type": "role", "id": gw["id"], "role": "host"}); assert "signed-in" in _until(host, "role-error")["message"]
+    finally:
+        for x in (hs, gs):
+            with contextlib.suppress(Exception): x.__exit__(None, None, None)
+
+
 def test_personal_meeting_room_open_switch(client):
     h, tok = login(client)
     p = client.get("/api/v1/me/pmi", headers=h).json(); assert p["open_room"] is False and p["waiting_room"] is True
