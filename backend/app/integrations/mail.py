@@ -16,13 +16,15 @@ PRESETS = {
     "yahoo": {"label": "Yahoo Mail", "smtp": ("smtp.mail.yahoo.com", 587), "imap": ("imap.mail.yahoo.com", 993), "how": "Yahoo Account Security > Generate app password."},
     "outlook": {"label": "Outlook.com / Hotmail", "smtp": ("smtp-mail.outlook.com", 587), "imap": ("outlook.office365.com", 993), "how": "account.microsoft.com > Security > Advanced security options > App passwords (needs two-step verification). Work/school Microsoft 365 accounts usually block this; ask your administrator."},
     "icloud": {"label": "Apple iCloud Mail", "smtp": ("smtp.mail.me.com", 587), "imap": ("imap.mail.me.com", 993), "how": "appleid.apple.com > App-Specific Passwords."},
+    "isiftmail": {"label": "isiftmail", "smtp": ("", 587), "imap": ("", 993), "how": "A free iSift address. It is created and managed by iSift, not added by hand."},
     "other": {"label": "Other (SMTP / IMAP)", "smtp": ("", 587), "imap": ("", 993), "how": "Your mail provider's SMTP (sending) and IMAP (reading) server names and ports."},
 }
 ALLOWED_PORTS = {25, 465, 587, 2525, 143, 993}
 
 def _check(host: str, port: int):
     if not host or port not in ALLOWED_PORTS: raise MailError("That mail server address or port is not allowed.")
-    if not settings.calendar_feed_allow_private and not ics_feed._public(host): raise MailError("That mail server is not a public address, so it was refused.")
+    own = {h.strip().lower() for h in (settings.isiftmail_imap_host, settings.isiftmail_smtp_host) if (h or "").strip()}      # iSift's own mail server (isiftmail) may sit on a private network
+    if not settings.calendar_feed_allow_private and host.lower() not in own and not ics_feed._public(host): raise MailError("That mail server is not a public address, so it was refused.")
 
 def _smtp_connect(acct: dict):
     host, port = acct["smtp_host"], int(acct["smtp_port"]); _check(host, port)

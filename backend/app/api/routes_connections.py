@@ -35,7 +35,7 @@ async def connections(user: User = Depends(principal), db: AsyncSession = Depend
             "links": [_public_feed(i) for i in await cal.get_feeds(db, user.id)],
             "uploaded": bool(await cal.get_upload(db, user.id)),
             "computer": await cal.machine_status(db, user.id, True),
-            "mail_presets": [{"id": k, "label": v["label"], "how": v["how"], "smtp_host": v["smtp"][0], "smtp_port": v["smtp"][1], "imap_host": v["imap"][0], "imap_port": v["imap"][1]} for k, v in mailer.PRESETS.items()],
+            "mail_presets": [{"id": k, "label": v["label"], "how": v["how"], "smtp_host": v["smtp"][0], "smtp_port": v["smtp"][1], "imap_host": v["imap"][0], "imap_port": v["imap"][1]} for k, v in mailer.PRESETS.items() if k != "isiftmail"],
             "mail": await _mail_public(db, user),
             "zoom": {"configured": zoom.configured()},
             "microsoft": {"configured": cal.graph_configured()},
@@ -293,7 +293,7 @@ async def create_meeting(payload: dict, user: User = Depends(principal), db: Asy
 
 @router.post("/connections/mail")
 async def save_mail_account(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS else "other"; pre = mailer.PRESETS[prov]
+    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS and payload.get("provider") != "isiftmail" else "other"; pre = mailer.PRESETS[prov]
     address = str(payload.get("address") or "").strip().lower(); password = str(payload.get("password") or "")
     from app.services.invites import EMAIL
     if not EMAIL.match(address) or not password: raise HTTPException(422, "Enter your email address and an app password.")

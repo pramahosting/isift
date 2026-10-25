@@ -58,11 +58,11 @@ def _wrap(exc: mailer.MailError): return HTTPException(502, str(exc))
 
 @router.get("/accounts")
 async def accounts(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    return {"accounts": [_public(a) for a in await _stored(db, user)], "presets": {k: {"label": v["label"], "how": v["how"]} for k, v in mailer.PRESETS.items()}}
+    return {"accounts": [_public(a) for a in await _stored(db, user)], "presets": {k: {"label": v["label"], "how": v["how"]} for k, v in mailer.PRESETS.items() if k != "isiftmail"}}
 
 @router.post("/accounts")
 async def add_account(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
-    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS else "other"; pre = mailer.PRESETS[prov]
+    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS and payload.get("provider") != "isiftmail" else "other"; pre = mailer.PRESETS[prov]
     address = str(payload.get("address") or "").strip().lower(); password = str(payload.get("password") or "")
     if not EMAIL.match(address) or not password: raise HTTPException(422, "Enter your email address and an app password.")
     items = await _stored(db, user)
@@ -86,7 +86,8 @@ async def edit_account(aid: str, payload: dict, user: User = Depends(principal),
     items = await _stored(db, user); a = next((x for x in items if x["id"] == aid), None)
     if not a: raise HTTPException(404, "That mail account was not found.")
     if a.get("oauth"): raise HTTPException(422, "This account uses a sign-in window. Remove it and add it again to change it.")
-    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS else a.get("provider", "other"); pre = mailer.PRESETS[prov]
+    if a.get("provider") == "isiftmail": raise HTTPException(422, "An isiftmail address is managed by iSift. Use its Settings (the gear) to change it.")
+    prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS and payload.get("provider") != "isiftmail" else a.get("provider", "other"); pre = mailer.PRESETS[prov]
     try:
         new = dict(a); new.update(provider=prov, username=str(payload.get("username") or a.get("username") or a["address"]).strip(),
             smtp_host=str(payload.get("smtp_host") or pre["smtp"][0]).strip(), smtp_port=int(payload.get("smtp_port") or pre["smtp"][1]),
@@ -110,6 +111,7 @@ async def edit_account(aid: str, payload: dict, user: User = Depends(principal),
 async def remove_account(aid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     items = await _stored(db, user); a = next((x for x in items if x["id"] == aid), None)
     if not a: raise HTTPException(404, "That mail account was not found.")
+    if a.get("provider") == "isiftmail": raise HTTPException(422, "To close your isiftmail address, open its Settings (the gear) and choose Close this mailbox.")
     if aid == "primary": await cal.save_mail(db, user.id, None)
     await _save(db, user, [x for x in items if x["id"] != aid and x["address"] != a["address"]])
     return {"ok": True}
@@ -153,7 +155,12 @@ async def send(aid: str, payload: dict, user: User = Depends(principal), db: Asy
     to = _addrs(payload.get("to")); cc = _addrs(payload.get("cc"))
     if not to: raise HTTPException(422, "Add at least one recipient.")
     subject = str(payload.get("subject") or "").strip()[:300] or "(no subject)"; body = str(payload.get("body") or "")[:200_000]
+    mine = a.get("provider") == "isiftmail"
+    if mine:
+        from app.services import isiftmail_abuse as abuse
+        await abuse.check_send(db, a["address"], len(to) + len(cc))
     try: await mb.send(a, to, cc, subject, body, str(payload.get("in_reply_to") or "")[:300])
     except mailer.MailError as exc: raise _wrap(exc)
+    if mine: await abuse.record_send(db, a["address"])
     db.add(AuditLog(actor=user.email, action="mailbox.send", resource_type="mail", safe_metadata={"to": len(to)})); await db.commit()
     return {"ok": True, "message": "Message sent."}

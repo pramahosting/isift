@@ -15,6 +15,7 @@ MODULES = [
     ("briefings", "Briefings", "The morning briefing."),
     ("scheduling", "Booking", "Booking pages and the Share booking link button."),
     ("mail", "Commbox: Mail", "Read and send mail from your accounts."),
+    ("isiftmail", "Commbox: isiftmail", "Email addresses for anyone (name@isiftmail), or on your own domain with mailboxes for your team, with signature, auto-reply and drafts. Needs the mail server set up first."),
     ("calendar", "Commbox: Calendar", "The combined calendar."),
     ("contacts", "Commbox: Contacts", "People and groups."),
     ("chat", "Chat", "Messages with people and groups."),

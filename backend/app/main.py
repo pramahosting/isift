@@ -11,6 +11,9 @@ from app.api.routes_workspace import router as workspace_router
 from app.api.routes_sharing import router as sharing_router
 from app.api.routes_docedit import router as docedit_router
 from app.api.routes_mailbox import router as mailbox_router
+from app.api.routes_isiftmail import router as isiftmail_router
+from app.api.routes_isiftmail_abuse import router as isiftmail_abuse_router
+from app.api.routes_autoconfig import router as autoconfig_router
 from app.api.routes_oauth import router as oauth_router
 from app.api.routes_booking import router as booking_router
 from app.api.routes_modules import router as modules_router
@@ -45,6 +48,9 @@ app.include_router(workspace_router)
 app.include_router(sharing_router)
 app.include_router(docedit_router)
 app.include_router(mailbox_router)
+app.include_router(isiftmail_router)
+app.include_router(isiftmail_abuse_router)
+app.include_router(autoconfig_router)
 app.include_router(oauth_router)
 app.include_router(booking_router)
 app.include_router(modules_router)

@@ -109,6 +109,26 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     resend_api_key: str = ""            # sends over HTTPS (port 443) through Resend: use it when the host blocks SMTP ports
     error_email_to: str = ""
+    isiftmail_domain: str = ""          # isiftmail: the domain people get addresses on (for example isiftmail.com). Empty = isiftmail is not set up
+    isiftmail_api_url: str = ""         # the mail server's management address (Stalwart), for example https://mail.isiftmail.com
+    isiftmail_api_user: str = ""        # administrator name for that address (leave empty to use the password below as a bearer token)
+    isiftmail_api_password: str = ""
+    isiftmail_imap_host: str = ""       # where iSift reads each person's mailbox (IMAP)
+    isiftmail_imap_port: int = 993
+    isiftmail_smtp_host: str = ""       # where iSift sends from (the mail server; it passes mail on through the outbound relay)
+    isiftmail_smtp_port: int = 587
+    isiftmail_sieve_port: int = 4190    # ManageSieve (auto-reply rules) on the IMAP host
+    isiftmail_quota_mb: int = 2048      # mailbox size for each person
+    isiftmail_mx_host: str = ""         # the name people's own domains point their mail (MX) to; empty = the IMAP host above
+    isiftmail_autoconfig_host: str = ""     # the name people's domains point autodiscover / autoconfig at (Outlook, Thunderbird, phones set themselves up); empty = the mail (MX) name
+    isiftmail_send_per_hour: int = 30       # abuse control: most messages one isiftmail mailbox may send in an hour
+    isiftmail_send_per_day: int = 200       # ... and in a day
+    isiftmail_max_recipients: int = 50      # ... and to how many people in one message
+    isiftmail_new_per_day: int = 3          # ... and how many new addresses one person (or one network address) may open in a day
+    isiftmail_complaint_limit: int = 3      # a mailbox is suspended automatically after this many spam complaints or reports
+    isiftmail_bounce_limit: int = 20        # ... or this many bounced messages
+    isiftmail_hook_secret: str = ""         # the secret the outbound relay puts on its complaint and bounce notices
+    isiftmail_spf: str = "v=spf1 mx ~all"   # the SPF record shown to people who bring their own domain (add your outbound relay's include here)
     audio_storage_dir: str = "/data/audio"
     audio_max_bytes: int = 25 * 1024 * 1024
     audio_retention_days: int = 0
