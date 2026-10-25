@@ -2100,3 +2100,5 @@ html.big-text{font-size:118%}html.big-text body{font-size:1.1em}
 .wbp-card{max-width:560px;text-align:left}.wbp-brand{display:flex;align-items:center;gap:8px;font-weight:700;color:#2563eb}.wbp-desc{white-space:pre-wrap}
 .wb-panel .rm-chat-h{display:flex;justify-content:space-between;align-items:center;gap:8px}.wb-panel .rm-chat-h b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wb-panel input[type=text],.wb-panel input:not([type]),.wb-panel textarea{width:100%;box-sizing:border-box}.wb-person{flex-wrap:wrap}
+/* participant dropdown: smaller text and a narrower, tighter menu */
+.rm-pmenu{align-self:flex-end;width:max-content;min-width:150px;max-width:100%;margin-top:4px;font-size:12px}.rm-pmenu button{padding:5px 10px;font-size:12px;line-height:1.3}
