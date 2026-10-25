@@ -1,5 +1,5 @@
 import React from 'react';
-import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,ArrowRight,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
+import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,ArrowRight,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 
 /** Landing page sections: what happens after a meeting, why iSift, an honest comparison, and how data is handled. */
@@ -14,7 +14,7 @@ export function OutcomeSection(){
         <li><Check size={15}/> Minutes are drafted from the transcript, and a person reviews them before they go out.</li>
         <li><Check size={15}/> Every action item has an owner and a due date, and shows up where the work happens.</li>
         <li><Check size={15}/> A morning briefing tells you what is on today and what is still open.</li>
-        <li><Check size={15}/> Booking, mail, calendar, notes, whiteboard and PDF signing sit beside the meeting.</li></ul></div>
+        <li><Check size={15}/> Booking, webinars, your own email address, calendar, notes, whiteboard and PDF signing sit beside the meeting.</li></ul></div>
     </div></section>;
 }
 
@@ -29,6 +29,8 @@ const WHY=[
  {i:PlayCircle,t:'Watch a video together',d:'Paste a YouTube link and everyone watches in sync on their own device, phones included. You play, pause and skip for the whole meeting.'},
  {i:Armchair,t:'Meeting rooms people enjoy',d:'A virtual boardroom with a wooden table, name plates, windows and your own background, or a simple gallery view. Switch with one button.'},
  {i:Phone,t:'Call a teammate in one click',d:'Ring another iSift user like a phone call. They accept and you are in a private room together.'},
+ {i:Presentation,t:'Webinars you run like Zoom or Webex',d:'Registration pages with your own questions, panelists, a practice session before you go live, and attendees who can only watch. You mute people or turn their video off, and invite one person or a group to speak. Attendee questions come to you privately, with Q&A, upvotes, polls and raise hand. Afterwards get attendance, question and poll reports as CSV, and send follow-up emails.'},
+ {i:Mail,t:'Your own email address, set up in minutes',d:'Get a name@isift address or use your own domain with mailboxes for your team. Phones and Outlook or Thunderbird are set up from one page, with built-in spam and abuse protection, inside the same Commbox as your calendar and contacts.'},
  {i:Lock,t:'You stay in control',d:'Basic hosts save recordings on their own computer when the meeting ends; paid plans store them in the cloud and email a download link. Administrators set what each person may use: call time, recording, documents, Commbox and more.'},
  {i:BadgeDollarSign,t:'Plain, local pricing',d:'Free, Standard and Business. Pick how many participants you need from a dropdown, in your currency, and yearly saves you money. No per-feature add-ons to work out.'},
 ];
@@ -49,6 +51,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Meeting recording',cells:['Yes. Basic: saved on the host\u2019s computer at the end of the meeting. Paid: stored in the cloud, download link emailed to the host','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
  {label:'AI minutes and action items',cells:['Yes, AI drafts and a person reviews','Yes (paid plans)',null,'AI Assistant (paid plans)','Business plan','Needs Copilot add-on','Gemini, paid plans']},
  {label:'Mail, calendar and contacts in the same app',cells:['Yes (paid plans)','Some','Zoho Mail, separate',N,N,'Outlook, separate','Gmail, separate']},
+ {label:'Your own email address or domain, set up for you',cells:['Yes, with team mailboxes (paid plans)','No','Zoho Mail, separate','No','No','Outlook, separate','Gmail, separate']},
  {label:'Whiteboard',cells:[Y,Y,Y,Y,'Drawing tools','Paid plans','Separate app']},
  {label:'Notes (linked to your meetings)',cells:['Yes, linked to each meeting','Zoom Notes','Separate Zoho app',null,N,'OneNote or Loop, separate','Separate app']},
  {label:'Word processor documents (WordPerfect)',cells:['Yes, share and co-write','Zoom Docs','Zoho Writer, separate','No','No','Word, separate','Google Docs, separate']},
@@ -61,8 +64,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Watch a YouTube video together, in sync',cells:['Yes (paid plans)',null,null,null,null,null,null]},
  {label:'Take control of someone’s computer',cells:['Not yet (pointer and pen instead)',Y,Y,Y,Y,Y,null]},
  {label:'Call another user inside the app',cells:['Yes (paid plans)',Y,null,Y,null,Y,Y]},
- {label:'Calls to real phone numbers',cells:['Not yet','Zoom Phone (extra)',null,'Webex Calling (extra)','GoTo Connect (extra)','Teams Phone (extra)','Google Voice (extra)']},
- {label:'Webinars and very large events',cells:['Not yet','Separate product','Separate product','Webex Webinars','GoTo Webinar (separate)','Teams Premium','Paid plans']},
+ {label:'Webinars: registration, panelists, private Q&A, polls, reports',cells:['Yes, built in (paid plans)','Separate product','Separate product','Webex Webinars','GoTo Webinar (separate)','Teams Premium','Paid plans']},
 ];
 function Mark({v}:{v:Cell}){
   if(v===true)return <span className="cmp-yes" aria-label="Yes"><Check size={16}/></span>;

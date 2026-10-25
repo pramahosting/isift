@@ -33,6 +33,21 @@ function Copyable({label,value}:{label:string;value:string}){
     <button type="button" className="secondary" aria-label={`Copy ${label}`} onClick={()=>{navigator.clipboard?.writeText(value).then(()=>{setOk(true);setTimeout(()=>setOk(false),1500)}).catch(()=>{})}}>{ok?<Check size={14}/>:<Copy size={14}/>}</button></div>;
 }
 
+
+function PhoneSetup({aid,request,imap,smtp,username,address,pw}:{aid:string;request:any;imap:{host:string;port:number};smtp:{host:string;port:number};username:string;address:string;pw?:string}){
+  const [err,setErr]=useState('');const [busy,setBusy]=useState(false);
+  const iphone=async()=>{setErr('');setBusy(true);try{const r=await request('/isiftmail/mobileconfig',{method:'POST',body:JSON.stringify({aid})});const u=URL.createObjectURL(new Blob([r.content],{type:'application/x-apple-aspen-config'}));const a=document.createElement('a');a.href=u;a.download=r.filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000)}catch(e:any){setErr(e.message)}finally{setBusy(false)}};
+  const dom=address.split('@')[1]||'';
+  return <details className="ism-phone"><summary>Use this address on your phone or in Outlook</summary>
+    <div className="ism-phone-body">
+      <p><b>iPhone, iPad or Mac:</b> open this page on the device, press the button, then open Settings and choose <b>Profile Downloaded</b> and Install. Your mail appears in the Mail app.</p>
+      <div className="actions"><button type="button" className="secondary" disabled={busy} onClick={iphone}>{busy?'Preparing…':'Download iPhone setup'}</button></div>
+      <p><b>Outlook and Android:</b> add the account with just <b>{address}</b>{pw?' and the password above':' and a new password (use Make a new password below)'}. Outlook and Android find the rest by themselves{dom?` for ${dom}`:''}. If you are asked, use:</p>
+      <ul className="muted small"><li>Username <b>{username}</b></li><li>Incoming (IMAP): {imap.host}, port {imap.port}, SSL/TLS</li><li>Outgoing (SMTP): {smtp.host}, port {smtp.port}, STARTTLS</li></ul>
+      {err&&<p className="syncerr" role="alert">{err}</p>}
+    </div></details>;
+}
+
 /* ------------------------------------------------------------------ get an address */
 export function IsiftmailSetup({status,presetDomain,request,onClose,onCreated,onDomains}:{status:any;presetDomain?:string;request:any;onClose:()=>void;onCreated:(accountId:string)=>void;onDomains:()=>void}){
   const verified:string[]=(status.domains||[]).filter((d:any)=>d.status==='verified').map((d:any)=>d.domain);
@@ -40,7 +55,8 @@ export function IsiftmailSetup({status,presetDomain,request,onClose,onCreated,on
   const [dom,setDom]=useState(presetDomain&&choices.includes(presetDomain)?presetDomain:choices[0]||status.domain);
   const [name,setName]=useState('');const [forEmail,setForEmail]=useState('');const [display,setDisplay]=useState('');
   const [chk,setChk]=useState<{ok:boolean;message:string}|null>(null);const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [made,setMade]=useState<any>(null);
-  const own=dom!==status.domain;const seq=useRef(0);
+  const own=dom!==status.domain;const seq=useRef(0);const [sugg,setSugg]=useState<string[]>([]);
+  useEffect(()=>{if(own||!status.eligible)return;let live=true;request('/isiftmail/suggest').then((r:any)=>{if(!live)return;setSugg(r.names||[]);setName(n=>n||(r.names&&r.names[0])||'')}).catch(()=>{});return()=>{live=false}},[own,status.eligible,request]);
   useEffect(()=>{
     setChk(null);const n=name.trim();if(n.length<3)return;const id=++seq.current;
     const t=setTimeout(async()=>{try{const r=await request(`/isiftmail/check?name=${encodeURIComponent(n)}&domain=${encodeURIComponent(dom)}`);if(id===seq.current)setChk({ok:!!r.ok,message:r.message})}catch(e:any){if(id===seq.current)setChk({ok:false,message:e.message})}},350);
@@ -51,7 +67,8 @@ export function IsiftmailSetup({status,presetDomain,request,onClose,onCreated,on
   return <Modal title={made?'Your address is ready':'Get an email address'} onClose={made?done:onClose}><div className="ws-form ism-form">
     {!made&&<form onSubmit={create}>
       {choices.length>1&&<label>Domain<select value={dom} onChange={e=>{setDom(e.target.value);setChk(null)}}>{choices.map(c=><option key={c} value={c}>@{c}{c===status.domain?' (free)':''}</option>)}</select></label>}
-      <p className="muted">Choose the first part of the address. Letters, numbers, dots, dashes and underscores.</p>
+      <p className="muted">{!own&&sugg.length?'Pick a name, or type your own.':'Choose the first part of the address. Letters, numbers, dots, dashes and underscores.'}</p>
+      {!own&&sugg.length>0&&<div className="ism-sugg" role="group" aria-label="Suggested names">{sugg.map(n=><button type="button" key={n} className={`ism-chip${name===n?' on':''}`} onClick={()=>setName(n)}>{n}</button>)}</div>}
       <label>Address<span className="ism-addr"><input value={name} onChange={e=>setName(e.target.value.toLowerCase().replace(/\s/g,''))} placeholder={own?'info':'your.name'} autoFocus autoComplete="off" spellCheck={false} maxLength={30} aria-describedby="ism-chk"/><b>@{dom}</b></span></label>
       <p id="ism-chk" className={chk?(chk.ok?'ism-ok':'syncerr'):'muted small'} role="status" aria-live="polite">{chk?chk.message:name.trim().length>=3?'Checking…':''}</p>
       {own&&<><label>Display name (optional)<input value={display} onChange={e=>setDisplay(e.target.value)} maxLength={80} placeholder="Pramod Singh"/></label>
@@ -63,9 +80,8 @@ export function IsiftmailSetup({status,presetDomain,request,onClose,onCreated,on
     </form>}
     {made&&<div>
       <p><b>{made.address}</b> is open.{made.assigned_to?` ${made.note}`:' It is already added to your Mail.'}</p>
-      <p className="muted small">{made.assigned_to?'Give this password to the person only if they want to use the mailbox in another app such as Outlook or a phone. iSift keeps the password for Mail itself. It is shown once.':'iSift keeps the password for you, so you do not need it here. Save it now only if you want to read this mailbox in another app such as Outlook or on your phone. It is shown once. You can make a new one later in Settings.'}</p>
-      <Copyable label="Username" value={made.username}/><Copyable label="Password" value={made.password}/>
-      <Copyable label={`Incoming (IMAP), port ${made.imap.port}`} value={made.imap.host}/><Copyable label={`Outgoing (SMTP), port ${made.smtp.port}`} value={made.smtp.host}/>
+      {made.assigned_to&&<><p className="muted small">Give this password to the person only if they want to use the mailbox in another app such as Outlook or a phone. iSift keeps the password for Mail itself. It is shown once.</p><Copyable label="Username" value={made.username}/><Copyable label="Password" value={made.password}/></>}
+      {!made.assigned_to&&<PhoneSetup aid={made.account.id} request={request} imap={made.imap} smtp={made.smtp} username={made.username} address={made.address}/>}
       <div className="actions"><button className="primary" onClick={done}>{made.assigned_to?'Done':'Open my inbox'}</button></div>
     </div>}
   </div></Modal>;
@@ -100,7 +116,7 @@ export function IsiftmailSettings({aid,request,onClose,onChanged,onClosed,onDoma
           <p className="muted small">Each sender gets the reply once a day at most.</p></>}
         <div className="actions"><button className="primary" disabled={busy==='ar'||(ar.on&&!ar.message.trim())} onClick={saveAr}>Save auto-reply</button></div></section>
       <section className="ism-sec"><h4>Use this mailbox in another app</h4>
-        <p className="muted small">Username <b>{s.username}</b> · incoming {s.imap.host} port {s.imap.port} · outgoing {s.smtp.host} port {s.smtp.port}. Outlook and phones on your own domain set themselves up from just your address and this mailbox password.</p>
+        <PhoneSetup aid={aid} request={request} imap={s.imap} smtp={s.smtp} username={s.username} address={s.address} pw={pw?.password}/>
         {pw&&<Copyable label="New password (shown once)" value={pw.password}/>}
         <div className="actions"><button type="button" className="secondary" disabled={busy==='pw'} onClick={newPw}><KeyRound size={14}/> Make a new password</button></div></section>
       <section className="ism-sec"><h4>Your own domain</h4>
@@ -121,7 +137,8 @@ const NICE:Record<string,string>={owner:'Ownership',mx:'Mail delivery (MX)',spf:
 function DomainCard({d,request,reload,onAddress}:{d:any;request:any;reload:()=>void;onAddress:(dom:string)=>void}){
   const [res,setRes]=useState<any>(null);const [busy,setBusy]=useState('');const [err,setErr]=useState('');
   const [boxes,setBoxes]=useState<any[]|null>(null);const [pw,setPw]=useState<any>(null);const [closing,setClosing]=useState('');const [typed,setTyped]=useState('');
-  const verified=d.status==='verified';
+  const verified=d.status==='verified';const [where,setWhere]=useState<any>(null);const [copied,setCopied]=useState(false);
+  useEffect(()=>{if(verified)return;let live=true;request('/isiftmail/domains/where',{method:'POST',body:JSON.stringify({domain:d.domain})}).then((r:any)=>{if(live)setWhere(r)}).catch(()=>{});return()=>{live=false}},[verified,d.domain,request]);
   const loadBoxes=useCallback(()=>{if(verified)request(`/isiftmail/domains/mailboxes?domain=${encodeURIComponent(d.domain)}`).then((r:any)=>setBoxes(r.mailboxes)).catch((e:any)=>setErr(e.message))},[verified,d.domain,request]);
   useEffect(()=>{loadBoxes()},[loadBoxes]);
   const run=async(what:string,fn:()=>Promise<void>)=>{setErr('');setBusy(what);try{await fn()}catch(e:any){setErr(e.message)}finally{setBusy('')}};
@@ -130,9 +147,15 @@ function DomainCard({d,request,reload,onAddress}:{d:any;request:any;reload:()=>v
   const reset=(a:string)=>{if(!window.confirm(`Make a new password for ${a}?`))return;run('pw'+a,async()=>{setPw({...(await request('/isiftmail/domains/mailboxes/password',{method:'POST',body:JSON.stringify({address:a})})),address:a})})};
   const closeBox=(a:string)=>run('close',async()=>{await request('/isiftmail/domains/mailboxes',{method:'DELETE',body:JSON.stringify({address:a,confirm:typed})});setClosing('');setTyped('');loadBoxes();reload()});
   const recs:any[]=res?.records||d.records;const checks=res?.checks||null;
+  useEffect(()=>{if(verified)return;const t=setInterval(()=>{request('/isiftmail/domains/check',{method:'POST',body:JSON.stringify({domain:d.domain})}).then((r:any)=>{setRes(r);if(r.verified)reload()}).catch(()=>{})},20000);return()=>clearInterval(t)},[verified,d.domain,request,reload]);
+  const found=checks?Object.values(checks).filter(Boolean).length:0;const total=checks?Object.keys(checks).length:0;
+  const copyAll=()=>{const txt=recs.map((r:any)=>`${r.type}\t${r.name}\t${r.value}`).join('\n');navigator.clipboard?.writeText(txt).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),1800)}).catch(()=>{})};
   return <section className="ism-dom">
     <div className="ism-dom-h"><h4><Globe size={15}/> {d.domain}</h4><span className={`ism-badge ${verified?'ok':'wait'}`}>{verified?'Verified':'Waiting for DNS'}</span></div>
-    {!verified&&<p className="muted small">Add these records where you manage <b>{d.domain}</b> (your domain registrar, for example GoDaddy), then press <b>Check my DNS</b>. Changes can take a few minutes, sometimes longer. Add the first one to prove the domain is yours; the rest make mail arrive and be trusted.</p>}
+    {!verified&&<div className="ism-steps"><ol>
+      <li><b>{where?.registrar?`Your domain is managed at ${where.registrar}.`:'Open where your domain is managed.'}</b> {where?.how||'Sign in where you bought the domain and open its DNS settings.'}</li>
+      <li>Add the records below (the first one proves the domain is yours). <button type="button" className="linkbtn" onClick={copyAll}>{copied?'Copied':'Copy all records'}</button></li>
+      <li>That is all. iSift checks again by itself every 20 seconds{total?` (${found} of ${total} found)`:''}, and you can press <b>Check my DNS</b> at any time. Changes can take a few minutes.</li></ol></div>}
     <div className="ism-recs" role="table" aria-label={`DNS records for ${d.domain}`}>
       {recs.map((r:any,i:number)=><div key={i} className="ism-rec" role="row">
         <div className="ism-rec-h"><b>{NICE[PURPOSE[r.purpose]]||r.purpose}</b><span className="muted small">{r.required?'Required':'Recommended'}</span>{checks&&checks[r.purpose]!==undefined&&<span className={checks[r.purpose]?'ism-ok':'syncerr'}>{checks[r.purpose]?<><Check size={13}/> Found</>:<><XIcon size={13}/> Not found yet</>}</span>}</div>

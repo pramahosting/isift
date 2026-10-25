@@ -20,8 +20,11 @@ export function InstallBanner({text}:{text?:string}){
   useEffect(()=>{const f=()=>setCan(true);window.addEventListener('isift:installable',f);return()=>window.removeEventListener('isift:installable',f)},[]);
   const [have,setHave]=useState(()=>{try{return localStorage.getItem('isift.installed')==='1'}catch{return false}});
   useEffect(()=>{try{(navigator as any).getInstalledRelatedApps?.().then((l:any[])=>{if(l&&l.length)setHave(true)}).catch(()=>{})}catch{}},[]);
+  // Already installed: no banner. On a meeting link, hand it to the installed app by itself, once per link.
+  useEffect(()=>{if(!have||standalone())return;const m=location.hash.match(/^#\/room\/([A-Za-z0-9]+)/);if(!m)return;const k='isift.handoff.'+m[1];try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1')}catch{}
+    try{location.href=`web+isift://room/${m[1]}`}catch{}},[have]);
   if(standalone()||hide)return null;
-  if(have){const m=location.hash.match(/^#\/room\/([A-Za-z0-9]+)/);return <div className="inst-banner" role="note"><span className="inst-ic"><Download size={18}/></span><span className="inst-tx"><b>iSift is installed on this device</b><small>Open this meeting in the app. If nothing happens, click the small Open in iSift icon at the right end of the address bar.</small></span>{m&&<a className="primary" style={{textDecoration:'none',display:'inline-grid',placeItems:'center'}} href={`web+isift://room/${m[1]}`}>Open in iSift app</a>}<button type="button" className="inst-x" aria-label="Hide this message" onClick={()=>{setHide(true);try{sessionStorage.setItem('isift.nobanner','1')}catch{}}}><X size={14}/></button></div>}
+  if(have)return null;
   const go=async()=>{if(deferred){try{deferred.prompt();await deferred.userChoice}catch{}deferred=null;setCan(false)}else setHelp(true)};
   return <div className="inst-banner" role="note"><span className="inst-ic"><Download size={18}/></span><span className="inst-tx"><b>Use iSift as an app</b><small>{text||'Opens faster, remembers you, and meeting links open right in the app.'}</small></span><button type="button" className="primary" onClick={go}>{can?'Install':'How to install'}</button><button type="button" className="inst-x" aria-label="Hide this message" onClick={()=>{setHide(true);try{sessionStorage.setItem('isift.nobanner','1')}catch{}}}><X size={14}/></button>{help_&&<InstallHelp onClose={()=>setHelp(false)}/>}</div>;
 }

@@ -32,9 +32,9 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
     if(form.is_active!==o.is_active)body.is_active=form.is_active;
     if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
     const L=form.lim||{},oL=o.limits||{},lim:any={};
-    for(const k of ['calls','commbox','open_room','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
+    for(const k of ['calls','commbox','open_room','webinars','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
     for(const k of ['meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
-    if(form.resetLim){for(const k of ['calls','commbox','open_room','recording','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants'])lim[k]=null}
+    if(form.resetLim){for(const k of ['calls','commbox','open_room','webinars','recording','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants'])lim[k]=null}
     if(Object.keys(lim).length)body.limits=lim;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
@@ -66,6 +66,7 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.calls} onChange={e=>setForm({...form,lim:{...form.lim,calls:e.target.checked}})}/> Allow calling other people</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.commbox} onChange={e=>setForm({...form,lim:{...form.lim,commbox:e.target.checked}})}/> Allow Commbox (mail, calendar, contacts)</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.open_room} onChange={e=>setForm({...form,lim:{...form.lim,open_room:e.target.checked}})}/> Allow open room</label>
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.webinars} onChange={e=>setForm({...form,lim:{...form.lim,webinars:e.target.checked}})}/> Allow webinars</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.recording} onChange={e=>setForm({...form,lim:{...form.lim,recording:e.target.checked}})}/> Allow meeting recording</label>
      <label>Meeting length (minutes)<input type="number" min={0} max={100000} value={form.lim.meeting_minutes??0} onChange={e=>setForm({...form,lim:{...form.lim,meeting_minutes:e.target.value}})}/><small>0 = no limit</small></label>
      <label>Docs and whiteboards a day<input type="number" min={0} max={100000} value={form.lim.docs_per_day??0} onChange={e=>setForm({...form,lim:{...form.lim,docs_per_day:e.target.value}})}/><small>0 = no limit. Used today: {form.orig?.limits?.docs_used_today??0}</small></label>

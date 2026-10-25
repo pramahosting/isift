@@ -1,3 +1,5 @@
+import WebinarPublic from './WebinarPublic';
+import {WebinarsPage} from './Webinars';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {UsersPage,DataImport,MachinePrompt,CalendarFinder} from './Admin';
 import {refreshLinkedCalendar} from './linkedCalendar';
@@ -30,8 +32,8 @@ import type {User,Meeting,ActionItem,Briefing,WorkflowRun} from './contracts';
 const API=import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
 const COMM=['Commbox','Mail','Calendar','Contacts'];
 const DOC_TABS:[string,any,string,string][]=[['WordPerfect',FileText,'wp','Write documents with headings, lists, tables and links. Share them with people and groups.'],['SpreadTable',Table2,'sheet','Workbooks with formulas, several sheets and CSV import and export.'],['PowerPresentation',Presentation,'deck','Slides you can present, print and share.'],['Sign & Edit PDF',FileSignature,'sign','Upload a PDF or Word file, add, change or delete text and sign it with a signature you draw. Every file you open is kept in your list.']];
-const MEET_TABS=['Meetings','Recordings','Transcripts','Minutes','Action items','Briefings','Booking'];
-const TAB_MOD:Record<string,string>={Meetings:'meetings',Recordings:'meetings',Transcripts:'transcripts',Minutes:'minutes','Action items':'actions',Briefings:'briefings',Booking:'scheduling'};
+const MEET_TABS=['Meetings','Recordings','Transcripts','Minutes','Action items','Briefings','Booking','Webinars'];
+const TAB_MOD:Record<string,string>={Meetings:'meetings',Recordings:'meetings',Transcripts:'transcripts',Minutes:'minutes','Action items':'actions',Briefings:'briefings',Booking:'scheduling',Webinars:'webinars'};
 const COMM_MOD:Record<string,string>={Mail:'mail',Calendar:'calendar',Contacts:'contacts'};
 const PAGE_MOD:Record<string,string>={...TAB_MOD,Docs:'docs',Chat:'chat',Notes:'docs',WordPerfect:'docs',SpreadTable:'docs',PowerPresentation:'docs','Sign & Edit PDF':'docs',Whiteboard:'whiteboard',Connections:'connections'};
 const nav=[['Dashboard',LayoutDashboard],['Meetings',CalendarDays],['Commbox',Mail],['Chat',MessageSquare],['Phone',Phone],['Notes',FileText],['Docs',Files],['Whiteboard',PenLine],['Connections',Link2],['Admin Console',Settings]];
@@ -164,6 +166,8 @@ export default function App({initialToken,msal}){
   const legalM=hash.match(/^#\/(terms|privacy|trust|acceptable-use|legal-compliance)$/);
   if(legalM)return <LegalPage slug={legalM[1] as any} loggedIn={!!token} onHome={()=>{history.pushState(null,'',location.pathname);setHash('');setHome(false)}}/>;
   if(hash==='#/pricing')return <PricingPage current={myPlan?.plan} loggedIn={!!token} onBack={()=>{history.pushState(null,'',location.pathname);setHash('');setHome(false)}} onChoose={(p,per,tier)=>{history.pushState(null,'',location.pathname);setHash('');if(!token){openLogin('signup');return}try{sessionStorage.setItem('isift.choice',JSON.stringify({plan:p,period:per,tier}))}catch{};setHome(false);setPage('Plan and billing')}}/>;
+ const webMatch=hash.match(/^#\/webinar\/([A-Za-z0-9_-]+)(?:\?(.*))?$/);
+ if(webMatch){const q=new URLSearchParams(webMatch[2]||'');return <WebinarPublic id={webMatch[1]} api={API} k={q.get('k')||''} p={q.get('p')||''}/>}
  const roomMatch=hash.match(/^#\/room\/([A-Za-z0-9]+)$/);
  if(roomMatch&&window.parent!==window)return <div className="rm-center"><div className="rm-card"><h1>You are already in a meeting</h1><p>Meetings cannot be opened inside this window while you are in one. Leave your current meeting first, or open iSift in a new tab.</p><button type="button" className="primary" onClick={()=>{history.back()}}>Back</button></div></div>;
  if(roomMatch)return <RoomPage onActive={h=>{const was=roomActive.current;roomActive.current=h;if(h&&!was){history.pushState(null,'',location.href);guard.current=1}}} code={roomMatch[1]} api={API} token={token} defaultName={user?.display_name||''} onLeave={leaveRoom} onSignIn={token?undefined:()=>{try{sessionStorage.setItem('isift_return',location.hash)}catch{}history.replaceState(null,'',location.pathname);setHash('');setHome(false);openLogin('login')}}/>;
@@ -206,6 +210,7 @@ export default function App({initialToken,msal}){
   if(page==='Whiteboard')return <><PageHead title="Whiteboard" desc="Sketch ideas. Boards save automatically."/><NotesPage request={request} kind="board" focus={focusFile?.kind==='board'?focusFile:null} onFocused={()=>setFocusFile(null)}/></>;
   if(page==='Meeting')return <MeetingDetail onCopy={copyMeeting} id={detailId} startEdit={detailEdit} request={request} isAdmin={user?.role==='admin'} goSettings={loadSettings} onBack={()=>setPage('Meetings')} onChanged={load} notice={setNotice}/>;
   if(page==='Transcripts')return <><PageHead title="Transcripts" ai desc="Read what was said, line by line. Official Teams transcripts or explicitly authorized uploaded recordings."/><TranscriptsPage meetings={meetings} selected={selectedMeeting} transcript={transcript} onView={viewTranscript} onFetch={fetchTranscript} onUpload={uploadAudio}/></>;
+  if(page==='Webinars')return <><PageHead title="Webinars" desc="Schedule webinars with registration, panelists, Q&A and polls."/><WebinarsPage request={request} notify={setNotice}/></>;
   if(page==='Booking')return <><PageHead title="Booking" desc="Share a booking link so people can pick a free time with you, like Calendly or Cal.com. Each booking appears in Meetings and gets a video link."/><SchedulingPage request={request} notify={setNotice} onShowCalendar={iso=>{try{sessionStorage.setItem('isift.calfocus',iso)}catch{}setCommTab('Calendar');setPage('Commbox')}}/></>;
   if(page==='Minutes')return <><PageHead title="Meeting minutes" ai desc="AI-generated minutes stay in draft until a person reviews them."/>{minutes.length?minutes.map((m,i)=><MinutesCard key={m.id} m={m} generated={fmt(m.generated_at)} title={meetings.find(x=>x.id===m.meeting_id)?.title} collapsed={i>0&&m.review_status==='superseded'} onSave={saveMinutes}/>):<section className="panel"><Empty text="Choose a meeting with an available transcript, then generate a draft."/>{meetings.map(m=><MeetingRow key={m.id} m={m} onOpen={openMinutes} onGenerate={generateMinutes}/>)}</section>}</>;
   if(page==='Action items')return <><PageHead title="Action items" ai desc="Update ownership and status as the team follows through."/><section className="panel">{actions.length?actions.map(a=><div className="actionrow" key={a.id}><div><b>{a.description}</b><p className="muted">Owner: {a.owner||'Unassigned'} · Due: {a.due_date||'Not specified'}</p>{a.evidence&&<p className="evidence">Evidence: {a.evidence}</p>}</div><select aria-label="Action status" value={a.status} onChange={e=>updateAction(a.id,e.target.value)}><option value="needs_review">Needs review</option><option value="proposed">Proposed</option><option value="assigned">Assigned</option><option value="in_progress">In progress</option><option value="completed">Completed</option></select></div>):<Empty text="No action items have been extracted yet."/>}</section><TeamActions request={request}/></>;
@@ -231,8 +236,9 @@ const ADMIN_TABS=[
  {id:'pricing',hide:true,label:'Pricing',icon:CreditCard,desc:'The price list for Standard and Business. Only active prices appear on the home page and can be bought.',groups:[]},
  {id:'ops',label:'Operations',icon:ListChecks,desc:'Sample data and CSV import, the history of background runs, and every meeting in the workspace.',groups:[]},
  {id:'payments',hide:true,label:'Payments',icon:CreditCard,desc:'Square takes plan payments by card. Set it up once here; keys are stored encrypted and never reach browsers.',groups:['Payments (Square)']},
- {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings, including the TURN relay (Cloudflare) for video and sound.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings']}];
+ {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings, including the TURN relay (Cloudflare) for video and sound.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings','Webinars']}];
 const GROUP_TITLES:Record<string,[string,string]>={
+ 'Webinars':['Webinars: how many can watch','Webinars use the built-in meeting rooms. Registration, panelists, Q&A and polls need no setup; large audiences need the video server under Video meetings.'],
  'Groq AI (minutes, briefings, transcripts, email)':['AI for minutes, briefings and sharing (Groq)','Writes minutes, action items, daily briefings, transcripts of recordings and the email for sharing a booking link. Uses the Groq model named below.'],
  'Startup':['When the app starts',''],'Mock data':['Sample data','Sample meetings and CSV import for trying the app. Turn off for real use.'],
  'Power Automate':['Power Automate','Lets a Power Automate flow trigger briefings.'],
@@ -318,6 +324,7 @@ const PLAN_ROWS:{k:string;label:string;bool?:boolean;hint?:string}[]=[
  {k:'multi_share',label:'Several people sharing at once, pointer and pen',bool:true},
  {k:'watch_together',label:'Watch a video or document together',bool:true},
  {k:'open_room',label:'Open room (always-open meeting link)',bool:true},
+ {k:'webinars',label:'Webinars (registration, panelists, Q&A, polls)',bool:true},
  {k:'calls',label:'Call another user inside the app',bool:true},
  {k:'commbox',label:'Commbox: mail, calendar and contacts',bool:true},
  {k:'booking_pages',label:'Booking pages',hint:'0 = no limit'},
@@ -378,6 +385,17 @@ function MailboxesPanel({request,act}:any){
     <td><button className="secondary" onClick={()=>flip(m)}>{m.suspended?'Restore':'Suspend'}</button></td></tr>)}</tbody></table></div>}
  </section>
 }
+function IsiftServerTest({request}:any){
+ const [r,setR]=useState<any>(null),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const run=async()=>{setBusy(true);setErr('');try{setR(await request('/admin/isiftmail/test'))}catch(e:any){setErr(e.message||'The test could not run.')}finally{setBusy(false)}};
+ return <section className="panel"><div className="panelhead"><h2>isiftmail: test my mail server</h2><Mail size={18}/></div>
+  <p className="hint">Save your isiftmail settings below first, then press Test. It checks the mail server login, the mailbox, sending and auto-reply ports, and your domain's DNS, and tells you in plain words what to fix. Nothing is changed.</p>
+  <div className="actions"><button className="primary" disabled={busy} onClick={run}>{busy?'Testing…':'Test my mail server'}</button></div>
+  {err&&<div className="errmsg" role="alert">{err}</div>}
+  {r&&<><p className="hint" role="status"><b>{r.message}</b></p>
+   {r.checks.map((c:any)=><div className={`ism-trow ${c.ok?'ok':'bad'}`} key={c.key}><b>{c.ok?'✓':'✗'} {c.label}</b><span>{c.detail}{!c.ok&&c.fix?`. ${c.fix}`:''}</span></div>)}</>}
+ </section>
+}
 function RunHistoryPanel({request}:any){
  const [runs,setRuns]=useState<any[]|null>(null);
  useEffect(()=>{let live=true;request('/runs').then((r:any)=>{if(live)setRuns(Array.isArray(r)?r:[])}).catch(()=>{if(live)setRuns([])});return()=>{live=false}},[]);
@@ -431,6 +449,7 @@ function AdminSettings({settings,request,act,load,onModules,user,download,featur
 
   {gt==='mail'&&<section className="panel"><div className="panelhead"><h2>Where people connect their own mail and calendar</h2><Mail size={18}/></div><p className="hint">Everyone adds their own accounts under <b>Connections</b>, so nothing here has to be set per person.</p><ul className="howto"><li><b>Gmail / Google Calendar:</b> paste the calendar’s secret iCal address.</li><li><b>Yahoo, iCloud, Fastmail:</b> connect with CalDAV and an app password.</li><li><b>Outlook.com / Microsoft 365:</b> paste the published calendar link, or turn on Microsoft 365 under Meeting platforms.</li><li><b>Calendar on a person’s own computer:</b> a website cannot read it directly. Use the calendar link above, or choose an .ics file (Chrome and Edge can keep it linked). Reading the computer’s calendar automatically only works when iSift runs on that same computer.</li></ul></section>}
   {gt==='mail'&&<EmailTest request={request} email={user?.email}/>}
+  {gt==='mail'&&<IsiftServerTest request={request}/>}
   {gt==='payments'&&<RefundsPanel request={request}/>}
   {tab==='meetings'&&<section className="panel"><div className="panelhead"><h2>Google Meet</h2><Video size={18}/></div><p className="hint">Nothing to set up. Meet links found in Google Calendar events appear with a Join button. Creating new Meet meetings from here is not available; use the built-in meetings or Zoom.</p></section>}
   {gt==='pricing'&&<PricingAdmin request={request} act={act}/>}
