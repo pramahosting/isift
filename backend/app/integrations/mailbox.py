@@ -131,17 +131,22 @@ def _parse_fetch(data) -> list[dict]:
         fm = re.search(r"FLAGS \(([^)]*)\)", text)
         if fm:
             flags = fm.group(1).lower().split(); row["unread"] = "\\seen" not in flags; row["flagged"] = "\\flagged" in flags
+    cur = None
     for item in data or []:
         if isinstance(item, tuple):
             meta = item[0].decode("ascii", "ignore"); up = meta.upper()
+            # Each message starts with "<seq> (". The header and text literals may come in either order, so both
+            # are attached to the message they belong to, never to the previous one.
+            if cur is None or re.match(r"\s*\d+ \(", meta):
+                cur = {"uid": 0, "from": "", "from_addr": "", "subject": "(no subject)", "at": "", "unread": True, "flagged": False, "preview": ""}; out.append(cur)
             if "HEADER.FIELDS" in up:
                 msg = email.message_from_bytes(item[1], policy=policy.default)
-                row = {"uid": 0, "from": _who(_hdr(msg, "From")), "from_addr": _hdr(msg, "From"), "subject": _hdr(msg, "Subject") or "(no subject)", "at": _iso(_hdr(msg, "Date")), "unread": True, "flagged": False, "preview": ""}
-                meta_into(row, meta); out.append(row)
-            elif "BODY[TEXT]" in up and out:
-                out[-1]["preview"] = _preview(item[1]); meta_into(out[-1], meta)
-        elif isinstance(item, (bytes, bytearray)) and out:
-            meta_into(out[-1], bytes(item).decode("ascii", "ignore"))
+                cur.update({"from": _who(_hdr(msg, "From")), "from_addr": _hdr(msg, "From"), "subject": _hdr(msg, "Subject") or "(no subject)", "at": _iso(_hdr(msg, "Date"))})
+            elif "BODY[TEXT]" in up:
+                cur["preview"] = _preview(item[1])
+            meta_into(cur, meta)
+        elif isinstance(item, (bytes, bytearray)) and cur is not None:
+            meta_into(cur, bytes(item).decode("ascii", "ignore"))
     return [r for r in out if r["uid"]]
 
 def messages_sync(acct: dict, folder: str, q: str = "", limit: int = 40, before_uid: int = 0) -> dict:
