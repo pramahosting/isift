@@ -532,7 +532,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
-                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": _multi_on(state), "multi_ok": state.get("multi_ok", True), "watch_ok": state.get("watch_ok", True), "pens": dict(state.get("pen") or {})})
+                     "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": _multi_on(state), "multi_ok": state.get("multi_ok", True), "collab_ok": state.get("collab_ok", True), "watch_ok": state.get("watch_ok", True), "pens": dict(state.get("pen") or {})})
     if state.get("collab") and not attendee: await _send(ws, _collab_meta(state))          # a file already being shared appears for the newcomer
     if switching:
         for i, p in list(state["peers"].items()):
@@ -595,6 +595,10 @@ async def room_socket(ws: WebSocket, code: str):
         state = HUB.setdefault(code, {"host_email": host_user.email, "max_people": host_lim.get("max_participants") or 0, "started": time.time(), "limit": host_lim["meeting_minutes"], "rec_ok": bool(host_lim["recording"]), "peers": {}, "waiting": {}, "recording": False, "groups": None, "vroom": vr_meeting, "vroom_allowed": vr_allowed,
                                       "policy": {"audio": room_options.get("participants_can_unmute", True) is not False, "video": room_options.get("participants_can_video", True) is not False}})
         state.update(cloud_ok=bool(host_lim.get("cloud_recording", True)), max_people=host_lim.get("max_participants") or 0, multi_ok=bool(host_lim.get("multi_share", True)), watch_ok=bool(host_lim.get("watch_together", True)), rec_ok=bool(host_lim["recording"]))      # the host's plan as it is now: an upgrade or a lapse applies to the next person who joins
+        try:                                                  # "Work together" can be switched off for everyone (Admin Console, Modules) or for the host's account
+            from app.api.routes_modules import disabled as _mods_off
+            state["collab_ok"] = "collab" not in (set(await _mods_off(db)) | set(await ent.modules_off(db, host_user)))
+        except Exception: state["collab_ok"] = True
         if state.get("limit") and not state.get("timer"): state["timer"] = asyncio.create_task(_meeting_clock(code, state))
         if web_info:
             state["webinar"] = True; state.setdefault("web", {}).update(id=web_info["id"], title=web_info["title"], settings=web_info["settings"], start=web_info["start"])
@@ -711,11 +715,11 @@ async def room_socket(ws: WebSocket, code: str):
                 if me.get("attendee"): pass
                 elif t == "collab_open":
                     kind = str(msg.get("kind") or ""); content = msg.get("content"); content = content if isinstance(content, str) else ""
-                    if kind in COLLAB_KINDS and len(content) <= COLLAB_MAX and (not c or c["owner"] == pid or _rank(me) >= 1):
+                    if kind in COLLAB_KINDS and state.get("collab_ok", True) and len(content) <= COLLAB_MAX and (not c or c["owner"] == pid or _rank(me) >= 1):
                         if c and c["owner"] != pid: await _collab_end(state, "replaced")
                         state["collab"] = c = {"kind": kind, "title": str(msg.get("title") or "Shared file")[:200], "owner": pid, "owner_name": me["name"], "holder": pid, "content": content, "rev": 1, "note": str(msg.get("note") or "")[:36], "t": 0.0}
                         await _collab_send(state, _collab_meta(state))
-                    else: await _send(ws, {"type": "collab-denied", "reason": "too_big" if len(content) > COLLAB_MAX else "busy" if c else "kind"})
+                    else: await _send(ws, {"type": "collab-denied", "reason": "off" if not state.get("collab_ok", True) else "too_big" if len(content) > COLLAB_MAX else "busy" if c else "kind"})
                 elif not c: pass
                 elif t == "collab_ask":                      # "may I edit?" goes to the owner only
                     now = time.time(); own = state["peers"].get(c["owner"])

@@ -22,6 +22,7 @@ MODULES = [
     ("chat", "Chat", "Messages with people and groups."),
     ("docs", "Notes, WordPerfect, SpreadTable and PowerPresentation", "Notes, agendas and drafts."),
     ("whiteboard", "Whiteboard", "Boards for sketching ideas."),
+    ("collab", "Work together", "Edit a shared note, document, spreadsheet, presentation or whiteboard live in a meeting, one person at a time (Meeting > More > Work together)."),
     ("connections", "Connections", "Link calendars, Zoom and recordings."),
     ("mockdata", "Load mock data", "The Load mock data button on the Dashboard and the Data import page (sample data and CSV import)."),
 ]

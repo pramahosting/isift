@@ -50,3 +50,17 @@ def test_owner_leaving_closes_and_editor_leaving_returns_it(client):
         ws2.__exit__(None, None, None)
     ws3, host2 = join(client, r["code"], name="Host2", token=tok); _next(host2, "welcome")
     ws3.__exit__(None, None, None)
+
+
+def test_work_together_can_be_switched_off_in_modules(client):
+    h, tok = login(client)
+    mods = client.get("/api/v1/modules").json()["modules"]; assert any(m["id"] == "collab" and m["enabled"] for m in mods)      # it is listed in Admin Console, Modules
+    en = {m["id"]: m["enabled"] for m in mods}; en["collab"] = False
+    assert client.put("/api/v1/admin/modules", json={"enabled": en}, headers=h).status_code == 200
+    try:
+        r = make(client, h, access="open", waiting_room=False)
+        ws1, host = join(client, r["code"], name="Host", token=tok); w = _next(host, "welcome"); assert w["collab_ok"] is False
+        host.send_json({"type": "collab_open", "kind": "doc", "title": "x", "content": "y"}); assert _next(host, "collab-denied")["reason"] == "off"
+        ws1.__exit__(None, None, None)
+    finally:
+        en["collab"] = True; client.put("/api/v1/admin/modules", json={"enabled": en}, headers=h)
