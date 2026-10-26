@@ -258,6 +258,26 @@ async def _ctl_clear(state: dict, sharer: str, code: str):
     if (state.get("ctl") or {}).pop(sharer, None) is not None:
         await _broadcast(code, {"type": "ctl", "sharer": sharer, "holder": None, "name": ""})
 
+COLLAB_KINDS = ("doc", "wp", "sheet", "deck", "board")      # Notes, WordPerfect, SpreadTable, PowerPresentation, Whiteboard
+COLLAB_MAX = 1_500_000                                          # characters in one shared file
+
+def _collab_meta(state: dict, with_content: bool = True) -> dict:
+    c = state.get("collab")
+    if not c: return {"type": "collab", "open": False}
+    peers = state["peers"]; m = {"type": "collab", "open": True, "kind": c["kind"], "title": c["title"], "owner": c["owner"], "owner_name": c["owner_name"], "holder": c["holder"],
+                                 "holder_name": (peers.get(c["holder"]) or {}).get("name") or c["owner_name"], "rev": c["rev"], "note": c.get("note") or ""}
+    if with_content: m["content"] = c["content"]
+    return m
+
+async def _collab_send(state: dict, msg: dict, skip: str | None = None):
+    """Shared-file messages go to everyone in the meeting except webinar attendees (they only watch)."""
+    for i, p in list(state["peers"].items()):
+        if i != skip and not p.get("attendee"): await _send(p["ws"], msg)
+
+async def _collab_end(state: dict, reason: str):
+    c = state.pop("collab", None)
+    if c: await _collab_send(state, {"type": "collab", "open": False, "reason": reason, "title": c["title"]})
+
 async def _pen_clear(state: dict, sharer: str, code: str):
     if (state.get("pen") or {}).pop(sharer, None) is not None:
         await _broadcast(code, {"type": "pen", "sharer": sharer, "holder": None, "name": ""})
@@ -513,6 +533,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
                      "locked": bool(state.get("locked")), "hide_pics": bool(state.get("hide_pics")), "captions": bool(state.get("captions_want")), "video": _video_view(state["video"]) if state.get("video") else None, "multi_share": _multi_on(state), "multi_ok": state.get("multi_ok", True), "watch_ok": state.get("watch_ok", True), "pens": dict(state.get("pen") or {})})
+    if state.get("collab") and not attendee: await _send(ws, _collab_meta(state))          # a file already being shared appears for the newcomer
     if switching:
         for i, p in list(state["peers"].items()):
             if i != pid: await _send(p["ws"], {"type": "sfu", "on": True})
@@ -684,6 +705,38 @@ async def room_socket(ws: WebSocket, code: str):
                         except (TypeError, ValueError): val = 0.0
                         val = max(-3000.0, min(3000.0, val)) if act == "scroll" else (1.0 if val > 0 else -1.0 if val < 0 else 0.0)
                         if val: await _send(sh["ws"], {"type": "ctl-do", "by": pid, "name": me["name"], "act": act, "v": val})
+            elif t in ("collab_open", "collab_edit", "collab_give", "collab_take", "collab_close", "collab_ask"):
+                # A shared file everyone can see live. The owner picks who may edit (one person at a time, so nobody's changes are lost); the owner and a host can always take it back.
+                me = state["peers"][pid]; c = state.get("collab")
+                if me.get("attendee"): pass
+                elif t == "collab_open":
+                    kind = str(msg.get("kind") or ""); content = msg.get("content"); content = content if isinstance(content, str) else ""
+                    if kind in COLLAB_KINDS and len(content) <= COLLAB_MAX and (not c or c["owner"] == pid or _rank(me) >= 1):
+                        if c and c["owner"] != pid: await _collab_end(state, "replaced")
+                        state["collab"] = c = {"kind": kind, "title": str(msg.get("title") or "Shared file")[:200], "owner": pid, "owner_name": me["name"], "holder": pid, "content": content, "rev": 1, "note": str(msg.get("note") or "")[:36], "t": 0.0}
+                        await _collab_send(state, _collab_meta(state))
+                    else: await _send(ws, {"type": "collab-denied", "reason": "too_big" if len(content) > COLLAB_MAX else "busy" if c else "kind"})
+                elif not c: pass
+                elif t == "collab_ask":                      # "may I edit?" goes to the owner only
+                    now = time.time(); own = state["peers"].get(c["owner"])
+                    if own and c["owner"] != pid and now - me.get("_ca", 0) >= 5:
+                        me["_ca"] = now; await _send(own["ws"], {"type": "collab-ask", "id": pid, "name": me["name"]})
+                elif t == "collab_edit":
+                    content = msg.get("content"); now = time.time()
+                    if c["holder"] == pid and isinstance(content, str) and len(content) <= COLLAB_MAX and now - c["t"] >= 0.08:
+                        c["t"] = now; c["content"] = content; c["rev"] += 1
+                        await _collab_send(state, {"type": "collab-edit", "rev": c["rev"], "content": content, "by": pid}, skip=pid)
+                    elif c["holder"] != pid: await _send(ws, {"type": "collab-holder", "holder": c["holder"], "holder_name": (state["peers"].get(c["holder"]) or {}).get("name") or "", "rev": c["rev"]})
+                elif t == "collab_give":
+                    to = str(msg.get("to") or ""); tp = state["peers"].get(to)
+                    if (c["owner"] == pid or _rank(me) >= 1) and tp and not tp.get("attendee"):
+                        c["holder"] = to; await _collab_send(state, {"type": "collab-holder", "holder": to, "holder_name": tp["name"], "rev": c["rev"]})
+                elif t == "collab_take":
+                    if c["owner"] == pid or _rank(me) >= 1:
+                        c["holder"] = c["owner"] if c["owner"] in state["peers"] else pid
+                        await _collab_send(state, {"type": "collab-holder", "holder": c["holder"], "holder_name": (state["peers"].get(c["holder"]) or {}).get("name") or "", "rev": c["rev"]})
+                elif t == "collab_close":
+                    if c["owner"] == pid or _rank(me) >= 1: await _collab_end(state, "closed")
             elif t in ("pen_give", "pen_take", "pen_ask", "pointer", "draw", "draw_clear") and state.get("multi_ok", True):     # pointer and pen on someone's shared screen (a paid-plan facility)
                 me = state["peers"][pid]; sid = pid if t in ("pen_give", "pen_take") else str(msg.get("sharer") or "")
                 sh = state["peers"].get(sid); pens = state.setdefault("pen", {})
@@ -837,6 +890,10 @@ async def room_socket(ws: WebSocket, code: str):
                 gone = state["peers"].pop(pid, None)
                 for _s, _h in list((state.get("ctl") or {}).items()):         # a leaving sharer or controller ends that control
                     if _s == pid or _h == pid: await _ctl_clear(state, _s, code)
+                _c = state.get("collab")
+                if _c and _c["owner"] == pid: await _collab_end(state, "owner_left")          # the owner left: the shared file closes (everyone keeps what they last saw)
+                elif _c and _c["holder"] == pid:
+                    _c["holder"] = _c["owner"]; await _collab_send(state, {"type": "collab-holder", "holder": _c["owner"], "holder_name": _c["owner_name"], "rev": _c["rev"]})
                 for _s, _h in list((state.get("pen") or {}).items()):         # a leaving sharer or pen holder ends that pen
                     if _s == pid or _h == pid: await _pen_clear(state, _s, code)
                 _cw = state.get("captions_want")
