@@ -66,7 +66,8 @@ async def transcribe(filename: str, data: bytes) -> dict:
     if len(data) > MAX_AUDIO_BYTES: raise AIUnavailable("This recording is larger than Groq accepts for transcription (25 MB).")
     async with httpx.AsyncClient(timeout=180) as c:
         resp = await c.post(f"{BASE}/audio/transcriptions", headers=auth_headers(),
-                            data={"model": stt_model(), "response_format": "verbose_json", "timestamp_granularities[]": "segment"},
+                            data={"model": stt_model(), "response_format": "verbose_json", "timestamp_granularities[]": "segment",
+                                  "prompt": "A business meeting that mixes English and Hindi (Hinglish). Keep Hindi words as spoken. यह बैठक हिंदी और English दोनों में है।", "temperature": "0"},
                             files={"file": (filename, data, "application/octet-stream")})
     if resp.status_code == 429: raise AIUnavailable("Audio transcription was throttled by Groq. Try again in a minute.")
     if resp.status_code >= 400: raise AIUnavailable(_safe_error(resp).replace("request", "transcription"))
