@@ -1,5 +1,5 @@
 import React from 'react';
-import {Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
+import {PenLine,Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 
 /** Landing page sections: what happens after a meeting, why iSift, an honest comparison, and how data is handled. */
@@ -62,7 +62,7 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Reactions, raise hand and live captions',cells:[Y,Y,null,Y,null,Y,Y]},
  {label:'Several people sharing at once, with pointer and pen',cells:['Yes, built in (paid plans)','Yes (host option)',null,null,null,null,null]},
  {label:'Watch a YouTube video together, in sync',cells:['Yes, built in (paid plans)',null,null,null,null,null,null]},
- {label:'Take control of someone’s computer',cells:['Give anyone control of a shared PDF or photo to page and scroll it, or hand them the pen on a shared screen. Take it back any time',Y,Y,Y,Y,Y,null]},
+ {label:'Take control of someone’s computer',cells:['Give anyone control of a shared PDF or photo to page and scroll it, let one person at a time edit a shared note, document, spreadsheet, presentation or whiteboard, or hand them the pen on a shared screen. Take it back any time',Y,Y,Y,Y,Y,null]},
  {label:'Call another user inside the app',cells:['Yes, built in (paid plans)',Y,null,Y,null,Y,Y]},
  {label:'Webinars: registration, panelists, private Q&A, polls, reports',cells:['Yes, built in (paid plans)','Separate product','Separate product','Webex Webinars','GoTo Webinar (separate)','Teams Premium','Paid plans']},
 ];
@@ -101,7 +101,7 @@ export function TrustSection(){
 
 /* ---------------------------------------------------------------- what is new, why iSift, manuals */
 export const MANUALS:{slug:string;t:string;d:string;pages:number}[]=[
- {slug:'meetings-and-sharing',t:'Meetings and sharing',d:'Start and join meetings, manage people, share a file and give someone control of it.',pages:7},
+ {slug:'meetings-and-sharing',t:'Meetings and sharing',d:'Start and join meetings, manage people, share a file, give someone control of it and edit notes, documents and whiteboards together.',pages:8},
  {slug:'webinars',t:'Webinars',d:'Register people, run a practice session, answer private questions, run polls and let people speak.',pages:10},
  {slug:'booking-and-follow-up',t:'Booking, minutes and action items',d:'Booking pages, reviewed minutes, owned action items and the morning briefing.',pages:4},
  {slug:'mail-calendar-contacts',t:'Mail, calendar and contacts',d:'Commbox: add a mail account, use your calendar and look after contacts.',pages:3},
@@ -112,6 +112,7 @@ export function NewSection(){
   const items=[
    {i:Presentation,t:'Webinars',d:'Run webinars with registration, panelists, polls, Q&A and reports. Attendees only watch.',m:'webinars'},
    {i:Hand,t:'Give control of a file',d:'Share a PDF or photo and let one person page and scroll it for everyone. Take it back any time.',m:'meetings-and-sharing'},
+   {i:PenLine,t:'Edit together, live',d:'Share a note, document, spreadsheet, presentation or whiteboard and let one person edit it live. You decide who.',m:'meetings-and-sharing'},
    {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes.',m:'mail-calendar-contacts'},
    {i:Users,t:'Simple host controls',d:'Mute people, turn off video or invite someone to speak, all from one small menu beside each person.',m:'meetings-and-sharing'},
   ];

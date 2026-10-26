@@ -2130,3 +2130,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .navmenu-pop button{border:0;background:transparent;text-align:left;font:inherit;font-size:14px;font-weight:600;color:#35566b;padding:11px 12px;border-radius:9px;min-height:40px;cursor:pointer}.navmenu-pop button:hover,.navmenu-pop button.on{background:#e6f4f1;color:#1f7f6f}
 @media(max-width:900px){.landing-nav .navmenu{order:2}.navmenu-pop{left:auto;right:0}}
 @media(max-width:650px){.landing-nav .navmenu{order:2}.navmenu-pop{left:0;right:auto}}
+/* work on a file together, in the meeting */
+.rm-cb{z-index:205}.rm-cb-t{max-width:34ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rm-cb-sel{height:36px;border:1px solid #cfd8e6;border-radius:10px;padding:0 8px;background:#fff;font:inherit;max-width:190px}
+.rm-cb-body{background:#fff;padding:12px}.rm-cb-ed{min-height:100%;display:flex;flex-direction:column}.rm-cb-text{flex:1;min-height:60vh}
+.rm-cb-notes{display:flex;flex-direction:column;gap:6px;padding:8px 12px;background:#fff7e0;border-bottom:1px solid #f1e0a8;font-size:14px}.rm-cb-note .textbtn{margin-left:8px;font-weight:700}
+.rm-cb-pick{max-width:640px;margin:10px auto;display:flex;flex-direction:column;gap:14px}.rm-cb-list{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto}
+
+.why-grid.four.new-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}@media(max-width:1100px){.why-grid.four.new-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}}
