@@ -2137,3 +2137,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .rm-cb-pick{max-width:640px;margin:10px auto;display:flex;flex-direction:column;gap:14px}.rm-cb-list{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow:auto}
 
 .why-grid.four.new-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}@media(max-width:1100px){.why-grid.four.new-grid{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}}
+
+/* Mail: draggable dividers between folders, message list and reading pane */
+.ol-rz{flex:none;width:7px;margin:0 -3px;cursor:col-resize;position:relative;z-index:3;touch-action:none}
+.ol-rz:before{content:"";position:absolute;left:3px;top:0;bottom:0;width:1px;background:transparent;transition:background .15s,width .15s}
+.ol-rz:hover:before,.ol-rz:focus-visible:before{background:#0f6cbd;width:3px;left:2px}
+.ol-rz:focus-visible{outline:none}
+@media(max-width:720px){.ol-rz{display:none}.ol-folders,.ol-list{width:auto!important}}

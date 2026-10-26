@@ -18,10 +18,18 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const [open,setOpen]=useState<Record<string,boolean>>({});const [fold,setFold]=useState<Record<string,any[]>>({});
   const [cur,setCur]=useState<{aid:string;folder:string}|null>(null);
   const [rows,setRows]=useState<any[]>([]);const [more,setMore]=useState(false);const [q,setQ]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [note,setNote]=useState('');
-  const [sel,setSel]=useState<string[]>([]);const [msg,setMsg]=useState<any>(null);const [favOpen,setFavOpen]=useState(true);
+  const [sel,setSel]=useState<string[]>([]);const [msg,setMsg]=useState<any>(null);
   const pending=React.useRef('');const picked=React.useRef(false);const [compose,setCompose]=useState<any>(null);const [adding,setAdding]=useState(false);const [editing,setEditing]=useState<any>(null);const [tab,setTab]=useState<'Home'|'View'>('Home');const [pane,setPane]=useState(true);
   const [ism,setIsm]=useState<any>(null);const [ismSetup,setIsmSetup]=useState(false);const [ismSet,setIsmSet]=useState<any>(null);const [ismDom,setIsmDom]=useState(false);const [ismPreset,setIsmPreset]=useState('');   // isiftmail: free iSift address for people with no email
 
+  const [wF,setWF]=useState<number>(()=>{try{return Math.min(480,Math.max(140,Number(localStorage.getItem('isift.mail.wf'))||250))}catch{return 250}});
+  const [wL,setWL]=useState<number>(()=>{try{return Math.min(800,Math.max(220,Number(localStorage.getItem('isift.mail.wl'))||360))}catch{return 360}});
+  /** Drag a divider to resize the folder pane or the message list. The sizes are remembered on this device. */
+  const drag=(which:'f'|'l')=>(e:React.PointerEvent)=>{e.preventDefault();const x0=e.clientX,w0=which==='f'?wF:wL;const lo=which==='f'?140:220,hi=which==='f'?480:800;
+    const mv=(ev:PointerEvent)=>{const w=Math.min(hi,Math.max(lo,w0+ev.clientX-x0));which==='f'?setWF(w):setWL(w)};
+    const up=(ev:PointerEvent)=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);document.body.style.userSelect='';const w=Math.min(hi,Math.max(lo,w0+ev.clientX-x0));try{localStorage.setItem(which==='f'?'isift.mail.wf':'isift.mail.wl',String(w))}catch{}};
+    document.body.style.userSelect='none';window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up)};
+  const nudge=(which:'f'|'l')=>(e:React.KeyboardEvent)=>{const d=e.key==='ArrowLeft'?-20:e.key==='ArrowRight'?20:0;if(!d)return;e.preventDefault();const w=Math.min(which==='f'?480:800,Math.max(which==='f'?140:220,(which==='f'?wF:wL)+d));which==='f'?setWF(w):setWL(w);try{localStorage.setItem(which==='f'?'isift.mail.wf':'isift.mail.wl',String(w))}catch{}};
   const loadAccts=useCallback(async()=>{try{const [a,m]=await Promise.all([request('/mailbox/accounts'),request('/connections/microsoft/mail').catch(()=>null)]);setAccts(a.accounts);setPresets(a.presets);setMs(m&&m.connected?m:null)}catch(e:any){setErr(e.message)}finally{setLoaded(true)}},[request]);
   useEffect(()=>{loadAccts()},[loadAccts]);
   const loadIsm=useCallback(()=>{request('/isiftmail/status').then(setIsm).catch(()=>setIsm(null))},[request]);useEffect(()=>{loadIsm()},[loadIsm]);
@@ -71,7 +79,6 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const isDraft=(m:any)=>acct(m.aid)?.provider==='isiftmail'&&(fold[m.aid]||[]).find((f:any)=>f.name===m.folder)?.role==='drafts';
   const editDraft=()=>{if(!msg)return;setCompose({aid:msg.aid,to:msg.to||'',cc:msg.cc||'',subject:msg.subject==='(no subject)'?'':msg.subject,body:msg.text||'',irt:'',draftUid:msg.uid,noSig:true})};
   const selRow=rows.find(r=>rk(r)===sel[0]);
-  const favs=useMemo(()=>accts.map(a=>({a,unread:(fold[a.id]||[]).find((f:any)=>f.role==='inbox')?.unread})),[accts,fold]);
   const curAcct=cur?(cur.aid==='ms'?{address:ms?.account||'Microsoft 365'}:cur.aid==='all'?{address:`${accts.length+(ms?1:0)} accounts`}:acct(cur.aid)):null;
   const allUnread=accts.reduce((n,a)=>n+((fold[a.id]||[]).find((f:any)=>f.role==='inbox')?.unread||0),0);
   const moveTargets=cur&&cur.aid!=='all'&&fold[cur.aid]?fold[cur.aid].filter((f:any)=>f.name!==cur.folder):[];
@@ -106,11 +113,10 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
         </>}
       </div>
       <div className="ol-body">
-        <aside className="ol-folders" aria-label="Folders">
-          <button className="ol-h" onClick={()=>setFavOpen(!favOpen)}>{favOpen?<ChevronDown size={14}/>:<ChevronRight size={14}/>} <b>Favorites</b></button>
-          {favOpen&&<>{(accts.length+(ms?1:0))>1&&<button className={`ol-f${cur?.aid==='all'?' on':''}`} onClick={()=>pick('all','INBOX')}><Inbox size={15}/><span className="t">All inboxes <small>{accts.length+(ms?1:0)} accounts combined</small></span>{allUnread?<em>{allUnread}</em>:null}</button>}{favs.map(({a,unread})=><button key={'fav'+a.id} className={`ol-f${cur?.aid===a.id&&cur.folder==='INBOX'?' on':''}`} onClick={()=>{setOpen(s=>({...s,[a.id]:true}));if(!fold[a.id])loadFolders(a.id);pick(a.id,'INBOX')}}><Inbox size={15}/><span className="t">Inbox <small>{a.address}</small></span>{unread?<em>{unread}</em>:null}</button>)}
+        <aside className="ol-folders" aria-label="Folders" style={{width:wF}}>
+          <>{(accts.length+(ms?1:0))>1&&<button className={`ol-f${cur?.aid==='all'?' on':''}`} onClick={()=>pick('all','INBOX')}><Inbox size={15}/><span className="t">All inboxes <small>{accts.length+(ms?1:0)} accounts combined</small></span>{allUnread?<em>{allUnread}</em>:null}</button>}
             {ms&&<button className={`ol-f${cur?.aid==='ms'?' on':''}`} onClick={()=>pick('ms','INBOX')}><Inbox size={15}/><span className="t">Inbox <small>{ms.account} (Microsoft)</small></span></button>}
-            {!favs.length&&!ms&&<p className="muted small pad">Add an account to see your inbox.</p>}</>}
+            {!accts.length&&!ms&&<p className="muted small pad">Add an account to see your inbox.</p>}</>
           {accts.map(a=><div key={a.id}>
             <div className="ol-acctrow"><button className="ol-h acct" onClick={()=>toggleAcct(a.id)} title={a.address}>{open[a.id]?<ChevronDown size={14}/>:<ChevronRight size={14}/>} <b>{a.address}</b></button>
             {a.provider==='isiftmail'?<button className="ol-rm" title="isiftmail settings: signature, auto-reply" aria-label="isiftmail settings" onClick={()=>setIsmSet(a)}><Gear size={14}/></button>:<><button className="ol-rm" title={`Edit ${a.address}`} aria-label={`Edit ${a.address}`} onClick={()=>setEditing(a)}><Pencil size={14}/></button><button className="ol-rm" title={`Remove ${a.address}`} aria-label={`Remove ${a.address}`} onClick={()=>removeAcct(a)}><Trash2 size={14}/></button></>}</div>
@@ -121,7 +127,8 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
           {ism?.can_create&&<button className="ol-add" onClick={()=>{setIsmPreset('');setIsmSetup(true)}}><Mail size={16}/> {ism.eligible?'Get a free email address':'Add a mailbox'}</button>}
           {ism?.available&&<button className="ol-add" onClick={()=>setIsmDom(true)}><Globe size={16}/> Use my own domain</button>}
         </aside>
-        <section className="ol-list" aria-label="Messages">
+        <div className="ol-rz" role="separator" aria-orientation="vertical" aria-label="Resize folders" tabIndex={0} onPointerDown={drag('f')} onKeyDown={nudge('f')}/>
+        <section className="ol-list" aria-label="Messages" style={pane?{width:wL}:undefined}>
           <form className="ol-search" onSubmit={search}><Search size={15}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder={cur?`Search ${cur.aid==='all'?'all inboxes':cur.aid==='ms'?'Inbox':fname({role:'',name:cur.folder})}`:'Search'} aria-label="Search mail" disabled={!cur}/>{q&&<button type="button" className="x" aria-label="Clear search" onClick={()=>{setQ('');cur&&fetchRows(cur,'')}}><X size={14}/></button>}</form>
           {cur&&<div className="ol-lh"><b>{cur.aid==='all'?'All inboxes':cur.aid==='ms'?'Inbox':fname((fold[cur.aid]||[]).find((f:any)=>f.name===cur.folder)||{role:cur.folder==='INBOX'?'inbox':'',name:cur.folder})}</b><small>{curAcct?.address}</small></div>}
           {err&&<p className="syncerr" role="alert">{err}</p>}{note&&<p className="muted pad" role="status">{note}</p>}
@@ -137,6 +144,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
           </div>
           {loaded&&!accts.length&&!ms&&<div className="ol-empty"><Mail size={34}/><h3>Connect your mail</h3><p className="muted">Add Gmail, Yahoo, iCloud, Outlook.com or any IMAP account and read, reply, delete and archive from here.</p><button className="primary" onClick={()=>setAdding(true)}>Add account</button>{ism?.can_create&&<IsiftmailOffer domain={ism.domain} onStart={()=>{setIsmPreset('');setIsmSetup(true)}} onDomain={()=>setIsmDom(true)}/>}</div>}
         </section>
+        {pane&&<div className="ol-rz" role="separator" aria-orientation="vertical" aria-label="Resize message list" tabIndex={0} onPointerDown={drag('l')} onKeyDown={nudge('l')}/>}
         {pane&&<section className="ol-read" aria-label="Reading pane">
           {!msg&&<div className="ol-empty"><Mail size={40}/><p className="muted">Select an item to read</p></div>}
           {msg&&<article>

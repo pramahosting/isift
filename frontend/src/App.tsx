@@ -209,7 +209,7 @@ export default function App({initialToken,msal}){
   if(COMM.includes(page)&&!commTabs.length)return <PageHead title="Not available" desc="An administrator has switched this off."/>;
   if(COMM.includes(page)){const tab0=page==='Commbox'?commTab:page;const tab=commTabs.includes(tab0)?tab0:commTabs[0];const go=(t:string)=>{setCommTab(t);setPage('Commbox')};
     return <CommboxPage tab={tab} setTab={go} tabs={commTabs}>{tab==='Mail'?<MailApp request={request} isAdmin={user?.role==='admin'} goSettings={loadSettings} onPulled={load} go={go}/>
-      :tab==='Calendar'?<OutlookCalendar meetings={meetings} onOpen={openDetail} onNew={openNewMeeting} onSync={sync}/>
+      :tab==='Calendar'?<OutlookCalendar request={request} meetings={meetings} onOpen={openDetail} onNew={openNewMeeting} onSync={sync}/>
       :<ContactsPage request={request} notify={setNotice} openChat={id=>{setChatId(id);setPage('Chat')}}/>}</CommboxPage>}
   if(page==='Notes')return <><PageHead title="Notes" desc="Write and keep notes, agendas and drafts."/><NotesPage request={request} kind="doc" focus={focusFile?.kind==='doc'?focusFile:null} onFocused={()=>setFocusFile(null)}/></>;
   if(page==='Docs'||DOC_TABS.some(t=>t[0]===page)){const cur=DOC_TABS.find(t=>t[0]===page)||DOC_TABS[0];
