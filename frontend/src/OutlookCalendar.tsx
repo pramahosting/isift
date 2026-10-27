@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {ChevronLeft,ChevronRight,RefreshCw,CalendarPlus,Video} from 'lucide-react';
 import {Modal} from './Workspace';
+import {useSplit} from './Splitter';
 
 const COLORS=['#0f6cbd','#c239b3','#038387','#ca5010','#7160e8','#498205','#c50f1f','#986f0b'];
 const HOUR=48;
@@ -15,6 +16,7 @@ const hm=(d:Date)=>d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
 export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?:any;meetings:any[];onOpen:(id:string)=>void;onNew:()=>void;onSync:()=>void}){
   const [view,setView]=useState<View>(()=>{try{return (sessionStorage.getItem('isift.calview') as View)||'week'}catch{return 'week'}});
   const [cur,setCur]=useState(()=>{try{const f=sessionStorage.getItem('isift.calfocus');if(f){sessionStorage.removeItem('isift.calfocus');const d=new Date(f);if(!isNaN(+d))return sod(d)}}catch{}return sod(new Date())});   // opened from a booking: show that date
+  const side=useSplit('isift.cal.side',250,180,420);
   const [hidden,setHidden]=useState<string[]>([]);
   const [linked,setLinked]=useState<string[]>([]);   // every connected mail account (Google, Microsoft, or any other mailbox), listed even before they have events
   useEffect(()=>{if(!request)return;request('/mailbox/accounts').then((r:any)=>setLinked((r.accounts||[]).filter((a:any)=>a.address&&a.provider!=='isiftmail').map((a:any)=>a.address))).catch(()=>{})},[request]);
@@ -51,7 +53,7 @@ export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?
   const now=new Date();
 
   return <div className="oc">
-    <aside className="oc-side" aria-label="Calendars">
+    <aside className="oc-side" aria-label="Calendars" style={{width:side.w}}>
       <button className="ol-new oc-new" onClick={onNew}><CalendarPlus size={16}/> New event</button>
       <div className="oc-mini">
         <div className="oc-mh"><b>{cur.toLocaleDateString([],{month:'long',year:'numeric'})}</b><span><button className="iconbtn" aria-label="Previous month" onClick={()=>{const d=new Date(cur);d.setMonth(d.getMonth()-1,1);setCur(d)}}><ChevronLeft size={14}/></button><button className="iconbtn" aria-label="Next month" onClick={()=>{const d=new Date(cur);d.setMonth(d.getMonth()+1,1);setCur(d)}}><ChevronRight size={14}/></button></span></div>
@@ -65,6 +67,7 @@ export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?
         {!cals.length&&<p className="muted small">No calendars yet. Add an account on the Mail tab, or press Sync.</p>}
       </div>
     </aside>
+    <div {...side.handle} aria-label="Resize calendar list"/>
     <section className="oc-main">
       <div className="oc-bar">
         <button className="secondary" onClick={()=>setCur(sod(new Date()))}>Today</button>

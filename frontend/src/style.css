@@ -2150,3 +2150,11 @@ html,body{max-width:100%;overflow-x:hidden}
 .ol-folders .ol-acctrow .ol-h svg{flex:none}
 .ol-folders .ol-acctrow .ol-h b{flex:1 1 auto;min-width:0}
 .ol-folders .ol-acctrow .ol-rm{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:28px;padding:0}
+
+/* Contacts and Calendar: adjustable panes (drag the thin divider; double-click resets) */
+.ws-two.contacts{grid-template-columns:minmax(0,1fr) 8px var(--ctr,320px);gap:0}
+.ws-two.contacts>.ws-col{padding-left:8px}
+.ct-side{max-width:60%}
+.oc>.ol-rz{margin:0 -3px}
+@media(max-width:860px){.ws-two.contacts{grid-template-columns:1fr;gap:16px}.ws-two.contacts>.ol-rz{display:none}.ws-two.contacts>.ws-col{padding-left:0}.ct-side{width:auto!important;max-width:none}}
+@media(max-width:800px){.oc>.ol-rz{display:none}.oc-side{width:auto!important}}

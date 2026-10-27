@@ -72,7 +72,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
       else setRows(rs=>rs.map(r=>mine.has(rk(r))?{...r,unread:action==='unread',flagged:action==='flag'?true:action==='unflag'?false:r.flagged}:r));
       Object.keys(by).forEach(a=>loadFolders(a))}catch(e:any){setErr(e.message)}finally{setBusy(false)}
   };
-  const refresh=async()=>{if(!cur)return;const list=cur.aid==='all'?accts:[acct(cur.aid)].filter(Boolean);for(const a of list as any[]){if(a.people){try{const r=await request(`/oauth/accounts/${a.id}/sync`,{method:'POST'});setNote(r.message);onPulled()}catch{}}loadFolders(a.id)}fetchRows(cur,q)};
+  const refresh=async()=>{if(!cur)return;const list=cur.aid==='all'?accts:[acct(cur.aid)].filter(Boolean);for(const a of list as any[]){if(a.people){try{const r=await request(`/oauth/accounts/${a.id}/sync`,{method:'POST'});setNote(r.message);onPulled()}catch{}}else if(!a.oauth&&a.provider!=='isiftmail'){try{const r=await request(`/mailbox/accounts/${a.id}/contacts`,{method:'POST'});if(r.added)setNote(r.message);onPulled()}catch{}}loadFolders(a.id)}fetchRows(cur,q)};
   const reply=(all:boolean,fwd=false)=>{if(!msg||!msg.aid||msg.aid==='ms')return;const own=acct(msg.aid)?.address||'';const quoted=`\n\n— On ${msg.at?new Date(msg.at).toLocaleString():''}, ${msg.from} wrote:\n`+(msg.text||'').split('\n').map((l:string)=>'> '+l).join('\n');
     const strip=(s:string)=>(s||'').split(',').map(x=>x.trim()).filter(x=>x&&!x.toLowerCase().includes(own.toLowerCase())).join(', ');
     setCompose({aid:msg.aid,to:fwd?'':msg.reply_to||msg.from,cc:all?strip(`${msg.to||''}, ${msg.cc||''}`):'',subject:(fwd?'Fw: ':'Re: ')+String(msg.subject).replace(/^(re|fw|fwd):\s*/i,''),body:quoted,irt:fwd?'':msg.message_id||''})};

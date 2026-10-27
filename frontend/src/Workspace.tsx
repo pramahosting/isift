@@ -8,6 +8,7 @@ const copyText=async(t:string)=>{try{await navigator.clipboard.writeText(t)}catc
 
 export {Modal} from './Modal';
 import {Modal} from './Modal';
+import {useSplit} from './Splitter';
 import {FilePicker} from './FilePicker';
 import {ShareDialog,SharedBanner,CommentsPanel} from './Sharing';
 import {WordEditor,SheetEditor,DeckEditor} from './DocsEditors';
@@ -61,7 +62,7 @@ async function callChannel(request:any,cid:string){
 
 /* ---------------- Contacts ---------------- */
 export function ContactsPage({request,openChat,notify}:{request:any;openChat:(cid:string)=>void;notify:(m:string)=>void}){
-  const [data,setData]=useState<any>({contacts:[],groups:[]});const [sel,setSel]=useState<string[]>([]);const [scope,setScope]=useState<string>('all');const [f,setF]=useState({name:'',email:'',phone:'',account:''});const [edit,setEdit]=useState<string>('');const [err,setErr]=useState('');const [gname,setGname]=useState('');const [q,setQ]=useState('');const [olBusy,setOlBusy]=useState(false);const [olMsg,setOlMsg]=useState('');const [olSetup,setOlSetup]=useState(false);
+  const listW=useSplit('isift.ct.list',230,150,420);const formW=useSplit('isift.ct.form',320,260,560,true);const [data,setData]=useState<any>({contacts:[],groups:[]});const [sel,setSel]=useState<string[]>([]);const [scope,setScope]=useState<string>('all');const [f,setF]=useState({name:'',email:'',phone:'',account:''});const [edit,setEdit]=useState<string>('');const [err,setErr]=useState('');const [gname,setGname]=useState('');const [q,setQ]=useState('');const [olBusy,setOlBusy]=useState(false);const [olMsg,setOlMsg]=useState('');const [olSetup,setOlSetup]=useState(false);
   const load=useCallback(()=>request('/contacts').then(setData).catch((e:any)=>setErr(e.message)),[request]);useEffect(()=>{load()},[load]);
   const save=async(e:React.FormEvent)=>{e.preventDefault();setErr('');try{if(edit)await request(`/contacts/${edit}`,{method:'PATCH',body:JSON.stringify(f)});else await request('/contacts',{method:'POST',body:JSON.stringify(f)});setF({name:'',email:'',phone:'',account:f.account});setEdit('');load()}catch(x:any){setErr(x.message)}};
   const del=async(c:any)=>{if(!window.confirm(`Remove ${c.name} from your contacts?`))return;await request(`/contacts/${c.id}`,{method:'DELETE'});setSel(s=>s.filter(x=>x!==c.id));load()};
@@ -77,18 +78,19 @@ export function ContactsPage({request,openChat,notify}:{request:any;openChat:(ci
   const shown=base.filter((c:any)=>!q||(c.name+' '+c.email).toLowerCase().includes(q.toLowerCase()));
   const mergeAll=async()=>{setErr('');try{const r=await request('/contacts/merge',{method:'POST'});setOlMsg(r.message);setScope('__local');load()}catch(x:any){setErr(x.message)}};
   const toggle=(id:string)=>setSel(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
-  return <div className="ws-two">
-    <section className="panel"><div className="ct-wrap" style={{display:'flex',gap:12}}><aside className="ct-side" aria-label="Contact lists">
+  return <div className="ws-two contacts" style={{['--ctr' as any]:formW.w+'px'}}>
+    <section className="panel"><div className="ct-wrap" style={{display:'flex',gap:12}}><aside className="ct-side" aria-label="Contact lists" style={{width:listW.w}}>
       <button className={scope==='all'?'on':''} onClick={()=>setScope('all')}><span className="nm">All contacts <small>merged view</small></span><small>{merged.length}</small></button>
       <button className={scope==='__local'?'on':''} onClick={()=>setScope('__local')}><span className="nm">iSift contacts</span><small>{countOf('')}</small></button>
       {lists.map(a=><button key={a} className={scope===a?'on':''} onClick={()=>setScope(a)} title={a}><span className="nm">{a}</span><small>{countOf(a)}</small></button>)}
       <button className="primary ct-merge" onClick={mergeAll} title="Copy every account's contacts into one iSift list, once per person"><Users size={14}/> Merge all into iSift list</button>
-    </aside><div style={{flex:1,minWidth:0}}><div className="panelhead"><h2><Users size={18}/> {scope==='all'?'All contacts':scope==='__local'?'iSift contacts':scope}</h2><input className="ws-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts"/></div>
+    </aside><div {...listW.handle} aria-label="Resize contact lists" style={{alignSelf:'stretch'}}/><div style={{flex:1,minWidth:0}}><div className="panelhead"><h2><Users size={18}/> {scope==='all'?'All contacts':scope==='__local'?'iSift contacts':scope}</h2><input className="ws-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search contacts" aria-label="Search contacts"/></div>
       {sel.length>0&&<div className="ws-bar"><b>{sel.length} selected</b><button className="secondary" onClick={()=>chat({contact_ids:sel})}><MessageSquare size={14}/> Chat</button><button className="primary" onClick={()=>chat({contact_ids:sel},true)}><Video size={14}/> Video call</button><span className="ws-gform"><input value={gname} onChange={e=>setGname(e.target.value)} placeholder="Group name" aria-label="Group name"/><button className="secondary" onClick={mkGroup} disabled={!gname.trim()}>Save as group</button></span></div>}
       {shown.length?shown.map((c:any)=><div className="ws-row" key={c.id}><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.includes(c.id)} onChange={()=>toggle(c.id)}/><div className="avatar sm">{c.name[0]?.toUpperCase()}</div><div className="ws-main"><b>{c.name}</b>{(c.sources||[]).map((a:string)=><span key={a} className="ct-badge" title={a}>{a.split('@')[0]}</span>)}<small className="muted">{c.email||'No email'}{c.phone?` · ${c.phone}`:''}{c.user_id?'':c.email?' · not on iSift yet':''}</small></div>
         <div className="ws-acts"><button className="iconbtn" title="Chat" aria-label={`Chat with ${c.name}`} disabled={!c.user_id} onClick={()=>chat({contact_ids:[c.id]})}><MessageSquare size={16}/></button><button className="iconbtn" title="Video call" aria-label={`Video call ${c.name}`} disabled={!c.user_id} onClick={()=>chat({contact_ids:[c.id]},true)}><Video size={16}/></button><button className="textbtn" onClick={()=>{setEdit(c.id);setF({name:c.name,email:c.email,phone:c.phone,account:c.account||''})}}>Edit</button><button className="iconbtn" aria-label={`Remove ${c.name}`} onClick={()=>del(c)}><Trash2 size={15}/></button></div></div>)
         :<p className="muted pad">{data.contacts.length?'No contacts match.':'No contacts yet. Add someone on the right, or bring them in from Outlook.'}</p>}
     </div></div></section>
+    <div {...formW.handle} aria-label="Resize add-contact panel" style={{alignSelf:'stretch'}}/>
     <div className="ws-col">
       <form className="panel ws-form" onSubmit={save}><h2><UserPlus size={17}/> {edit?'Edit contact':'Add a contact'}</h2>
         <label>Name<input value={f.name} onChange={e=>setF({...f,name:e.target.value})} required maxLength={200}/></label>
