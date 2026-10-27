@@ -60,6 +60,13 @@ def _wrap(exc: mailer.MailError): return HTTPException(502, str(exc))
 async def accounts(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     return {"accounts": [_public(a) for a in await _stored(db, user)], "presets": {k: {"label": v["label"], "how": v["how"]} for k, v in mailer.PRESETS.items() if k != "isiftmail"}}
 
+@router.get("/autoconfig")
+async def autoconfig(email: str = ""):
+    """Server settings for an address, so the Add account form only asks for the password."""
+    from app.integrations import mail_autoconfig as ac
+    if not EMAIL.match(email.strip().lower()): raise HTTPException(422, "Enter your email address, for example name@example.com.")
+    return await ac.detect(email.strip().lower())
+
 @router.post("/accounts")
 async def add_account(payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     prov = payload.get("provider") if payload.get("provider") in mailer.PRESETS and payload.get("provider") != "isiftmail" else "other"; pre = mailer.PRESETS[prov]
