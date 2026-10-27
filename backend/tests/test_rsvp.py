@@ -32,7 +32,9 @@ def test_footer_has_reply_and_calendar_links():
     from app.services import rsvp
     class M: id = "m-1"; title = "Plan & review"; start_at = datetime(2030, 1, 1, 10, tzinfo=timezone.utc); end_at = datetime(2030, 1, 1, 11, tzinfo=timezone.utc)
     f = rsvp.footer("https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
-    for want in ("#/rsvp/", "?r=accepted", "?r=declined", "?r=proposed", "calendar.google.com", "outlook.live.com", "outlook.office.com", "calendar.yahoo.com"): assert want in f
+    assert "#/rsvp/" in f and len(f) < 200 and "calendar.google.com" not in f          # one short link in the plain text
+    h = rsvp.html_body("Hello\nJoin: https://isift.au/#/room/abc", "https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
+    for want in (">Accept<", ">Maybe<", ">Decline<", ">Suggest a time<", ">Add to calendar<", "?r=accepted", "?r=calendar"): assert want in h
 
 
 def test_reply_reaches_host_and_proposal_moves_meeting(client):
@@ -100,6 +102,40 @@ def test_invitations_are_sent_from_any_connected_mailbox_with_fallback(client, m
     r = client.post("/api/v1/meetings", json={"title": "Board", "start_at": "2030-01-01T10:00:00Z", "duration_minutes": 30, "provider": "room", "base_url": "http://t/", "invite": "pk@example.com"}, headers=h)
     assert r.status_code == 200 and "Invitations sent" in r.json()["message"], r.text
     frm, to, body, ics = sent[-1]; assert frm == "host@gmail.com" and to == ["pk@example.com"]
-    assert "#/rsvp/" in body and "?r=accepted" in body and b"METHOD:REQUEST" in ics
+    assert "#/rsvp/" in body and b"METHOD:REQUEST" in ics
     r2 = client.post("/api/v1/meetings", json={"title": "Two", "start_at": "2030-01-02T10:00:00Z", "duration_minutes": 30, "provider": "room", "base_url": "http://t/", "invite": "bad@example.com"}, headers=h)
     assert "Invitations sent" in r2.json()["message"] and sent[-1][0] == "noreply@isift.au"       # the first mailbox failed, so the app's own sender was used
+
+
+def test_resend_invitations_reports_which_mailbox_or_why_not(client, monkeypatch):
+    from app.integrations import mail as mailer
+    from app.services import rsvp
+    sent = []
+    async def fake_senders(db, user): return [{"address": "host@gmail.com", "id": "a1"}]
+    async def fake_send(acct, to, subject, body, ics=None, *a, **k):
+        if "bad@example.com" in to: raise mailer.MailError("The mail server refused the sign-in.")
+        sent.append((acct["address"], to))
+    monkeypatch.setattr(rsvp, "senders", fake_senders); monkeypatch.setattr(mailer, "send", fake_send)
+    h = login(client)
+    r = client.post("/api/v1/meetings", json={"title": "Again", "start_at": "2030-01-01T10:00:00Z", "duration_minutes": 30, "provider": "room", "base_url": "http://t/", "invite": "pk@example.com, bad@example.com"}, headers=h)
+    mid = r.json()["id"] if "id" in r.json() else r.json()["meeting"]["id"]
+    sent.clear()
+    r2 = client.post(f"/api/v1/meetings/{mid}/resend-invites", json={}, headers=h)
+    assert r2.status_code == 200, r2.text
+    j = r2.json()
+    assert j["sent"] == [{"to": "pk@example.com", "from": "host@gmail.com"}]
+    assert j["failed"][0]["to"] == "bad@example.com" and "refused" in j["message"] and "Spam" in j["message"]
+    r3 = client.post(f"/api/v1/meetings/{mid}/resend-invites", json={"email": "nobody@x.com"}, headers=h)
+    assert r3.status_code == 422
+
+
+def test_senders_put_the_hosts_own_address_first_and_name_the_app_sender(client, monkeypatch):
+    import asyncio
+    from app.api import routes_booking
+    from app.services import rsvp
+    async def fake(db, owner): return [{"address": "app@gmail.com", "platform": True}, {"address": "other@gmail.com"}, {"address": "Host@Yahoo.com"}]
+    monkeypatch.setattr(routes_booking, "_senders", fake)
+    class U: email = "host@yahoo.com"; display_name = "Pramod Singh"
+    out = asyncio.run(rsvp.senders(None, U()))
+    assert [a["address"] for a in out] == ["Host@Yahoo.com", "other@gmail.com", "app@gmail.com"]
+    assert out[-1]["from"] == "Pramod Singh via iSift <app@gmail.com>" and out[-1]["reply_to"] == "host@yahoo.com"
