@@ -251,14 +251,14 @@ async def create_meeting(payload: dict, request: Request, user: User = Depends(p
             except ValueError as exc: raise HTTPException(422, str(exc))
             from app.services import rsvp as _rs0
             _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
-            if not acct: note = " Invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
+            if not acct: note = " Invitations were not sent: connect your email first, so they go from your own address (Mail, Add account, enter your login email)."
             else:
                 try:
                     from app.services import rsvp as _rsvp
                     _body = f"{user.display_name or user.email} invited you to: {title}\nWhen: {start.astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\nJoin: {m0.join_url}\n" + (f"Passcode: {room.passcode}\n" if room.passcode else "") + ("Sign in with your account to join.\n" if room.access == "signed_in" else "") + (agenda or "")
                     _ics = build_ics(m0.id, title, start, start + timedelta(minutes=minutes), acct["address"], inv, m0.join_url, (f"Passcode: {room.passcode}\n" if room.passcode else "") + agenda)
-                    await _rsvp.send_each(_sl, inv, f"Invitation: {title}", _body, m0, _rsvp.public_base(request), m0.join_url, _ics, agenda or ""); await _rsvp.note_invited(db, m0.id, inv)
-                    note = f" Invitations sent to {len(inv)}."
+                    _res = await _rsvp.send_each(_sl, inv, f"Invitation: {title}", _body, m0, _rsvp.public_base(request), m0.join_url, _ics, agenda or ""); await _rsvp.note_invited(db, m0.id, inv)
+                    note = f" Invitations sent to {len(inv)}" + _rsvp.sent_from(_res, user) + "."
                 except mailer.MailError as exc: note = f" The room was created but invitations could not be sent: {exc}"
         return {"id": m0.id, "join_url": m0.join_url, "access": room.access, "passcode": room.passcode, "waiting_room": room.waiting_room, "message": ("Recurring meeting created: %d occurrences with one link. " % len(times) if recurring else "Meeting room created. Share the link; it opens in any browser. ") + note}
     elif payload.get("join_url"):
@@ -284,14 +284,14 @@ async def create_meeting(payload: dict, request: Request, user: User = Depends(p
     if invited:
         from app.services import rsvp as _rs0
         _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
-        if not acct: invite_note = " Invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
+        if not acct: invite_note = " Invitations were not sent: connect your email first, so they go from your own address (Mail, Add account, enter your login email)."
         else:
             try:
                 ics = build_ics(m.id, title, start, start + timedelta(minutes=minutes), acct["address"], invited, join, agenda)
                 body = f"{user.display_name or user.email} invited you to: {title}\nWhen: {start.astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {join}\n" if join else "") + (f"\n{agenda}\n" if agenda else "")
                 from app.services import rsvp as _rsvp
-                await _rsvp.send_each(_sl, invited, f"Invitation: {title}", body, m, _rsvp.public_base(request), join, ics, agenda or ""); await _rsvp.note_invited(db, m.id, invited)
-                invite_note = f" Invitations sent to {len(invited)} {'person' if len(invited) == 1 else 'people'}."
+                _res = await _rsvp.send_each(_sl, invited, f"Invitation: {title}", body, m, _rsvp.public_base(request), join, ics, agenda or ""); await _rsvp.note_invited(db, m.id, invited)
+                invite_note = f" Invitations sent to {len(invited)} {'person' if len(invited) == 1 else 'people'}" + _rsvp.sent_from(_res, user) + "."
             except mailer.MailError as exc: invite_note = f" The meeting was created but invitations could not be sent: {exc}"
     base_msg = {"zoom": "Zoom meeting created.", "teams": "Microsoft Teams meeting created.", "meet": "Google Meet meeting created."}.get(ext.split(":")[0], "Meeting added.")
     return {"id": m.id, "join_url": join, "message": (f"Recurring meeting created: {len(times)} occurrences. " if len(times) > 1 else base_msg) + invite_note}
@@ -541,7 +541,7 @@ async def change_meeting(meeting_id: str, payload: dict, request: Request, user:
     if payload.get("send_update") and room and (room.options or {}).get("invitees"):
         from app.services import rsvp as _rs0
         _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
-        if not acct: note = " Updates were not sent: add a mail account first (Mail, Add account, or Connections)."
+        if not acct: note = " Updates were not sent: connect your email first, so they go from your own address (Mail, Add account, enter your login email)."
         else:
             from app.services.invites import build_ics
             try:

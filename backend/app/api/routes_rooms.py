@@ -198,7 +198,8 @@ async def invite_people(code: str, payload: dict, user: User = Depends(principal
     if room.access == "passcode": lines.append("This link gets you straight in. If it asks for a passcode, ask the person who invited you.")
     if note: lines += ["", note]
     subject = f"{who} invited you to “{room.title}”"
-    senders = await _senders(db, user); emailed, failed, alerted = [], [], []
+    from app.services import rsvp as _rs
+    senders = await _rs.senders(db, user); emailed, failed, alerted = [], [], []
     for to in emails:
         mine = f"{link}?i={invite_pass(code, to)}"          # a personal link that lets this person straight in
         await notify(db, to, "invite", f"{who} invited you to “{room.title}”", note or "The meeting is happening now.", mine, who); alerted.append(to)
@@ -210,7 +211,7 @@ async def invite_people(code: str, payload: dict, user: User = Depends(principal
         if err: failed.append({"to": to, "reason": err})
     db.add(AuditLog(actor=user.email, action="room.invite", resource_type="room", safe_metadata={"people": len(emails)})); await db.commit()
     msg = f"Invited {len(emails)} {'person' if len(emails) == 1 else 'people'}. They see an alert in iSift if they have an account"
-    msg += (f" and {len(emailed)} got an email." if emailed else ".") if senders else ". No email account is set up (Admin Console, Email sent by the app), so no email was sent."
+    msg += (f" and {len(emailed)} got an email." if emailed else ".") if senders else ". No email was sent, because your own email is not connected. " + _rs.NO_MAILBOX
     return {"alerted": alerted, "emailed": emailed, "failed": failed, "message": msg}
 
 async def _host_code(db: AsyncSession, code: str, create: bool = False) -> str | None:

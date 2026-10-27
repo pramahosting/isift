@@ -141,6 +141,27 @@ async def find_invites(acct: dict, days: int = 30) -> str:
     texts = await asyncio.to_thread(_find_invites_sync, acct, days)
     return "\n".join(texts) if texts else "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n"
 
+def _find_replies_sync(acct: dict, days: int = 14, limit: int = 80) -> list[str]:
+    """Calendar replies (Yes / No / Maybe pressed inside Gmail, Outlook, Apple Mail, Yahoo) that reached this mailbox."""
+    m = _imap_connect(acct); out = []
+    try:
+        m.select("INBOX", readonly=True)
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%d-%b-%Y")
+        typ, data = m.search(None, "SINCE", since, "TEXT", "METHOD:REPLY")
+        ids = (data[0].split() if typ == "OK" and data and data[0] else [])[-limit:]
+        for i in ids:
+            typ, parts = m.fetch(i, "(BODY.PEEK[])")
+            if typ != "OK": continue
+            for p in parts:
+                if isinstance(p, tuple) and len(p[1]) < 3_000_000: out += [t for t in _calendar_parts(p[1]) if "METHOD:REPLY" in t.upper()]
+    except imaplib.IMAP4.error as exc: raise MailError(f"The mailbox could not be searched ({exc}).")
+    finally:
+        try: m.logout()
+        except Exception: pass
+    return out
+
+async def find_replies(acct: dict, days: int = 14) -> list[str]: return await asyncio.to_thread(_find_replies_sync, acct, days)
+
 def _test_sync(acct: dict):
     s = _smtp_connect(acct)
     try: s.quit()

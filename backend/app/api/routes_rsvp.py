@@ -61,7 +61,10 @@ async def _mine(db: AsyncSession, user: User, meeting_id: str) -> Meeting:
 @router.get("/meetings/{meeting_id}/responses")
 async def responses(meeting_id: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     from app.api.routes_connections import _room_for
-    m = await _mine(db, user, meeting_id); v = await rsvp.load(db, m.id); room = await _room_for(db, m)
+    m = await _mine(db, user, meeting_id)
+    try: await rsvp.pull_replies(db, user, m)            # answers pressed inside the guest's own mail program arrive as email
+    except Exception: pass
+    v = await rsvp.load(db, m.id); room = await _room_for(db, m)
     invited = sorted(set(v["invited"]) | set(((room.options or {}).get("invitees") or []) if room else []))
     rows = [{"email": e, **(v["responses"].get(e) or {"status": "waiting"})} for e in invited]
     counts = {k: sum(1 for r in rows if r["status"] == k) for k in ("accepted", "tentative", "declined", "proposed", "waiting")}
@@ -92,7 +95,7 @@ async def accept_proposal(meeting_id: str, payload: dict, request: Request, user
             await rsvp.send_each(_sl, invited, f"Updated: {m.title}", body, m, rsvp.public_base(request), m.join_url, ics, m.agenda or "")
             note += f" Updated invitations were sent to {len(invited)}."
         except mailer.MailError as exc: note += f" They could not be emailed: {exc}"
-    elif invited: note += " Updated invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
+    elif invited: note += " Updated invitations were not sent: connect your email first, so they go from your own address (Mail, Add account, enter your login email)."
     db.add(AuditLog(actor=user.email, action="meeting.accept_proposal", resource_type="meeting", safe_metadata={})); await db.commit()
     return {"message": note.strip(), "start_at": _aware(m.start_at).isoformat()}
 
@@ -111,23 +114,26 @@ async def resend_invites(meeting_id: str, payload: dict, request: Request, user:
     if only: invited = [only] if only in invited else []
     if not invited: raise HTTPException(422, "Nobody is invited to this meeting yet. Add people with Edit.")
     sl = await rsvp.senders(db, user)
-    if not sl: raise HTTPException(422, "No mail account is connected. Add one under Mail, Add account, then try again.")
+    if not sl: raise HTTPException(422, "Connect your email first, so invitations go from your own address (Mail, Add account, enter your login email), then try again.")
     tz = await cal.user_timezone(db); base = rsvp.public_base(request)
     sent, failed = [], []
     for to in invited:
-        reasons = []
+        reasons = []; ok = False
         for a in sl:
             try:
                 ics = build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), a["address"], invited, m.join_url, ((f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (m.agenda or "")), sequence=int(datetime.now(timezone.utc).timestamp()))
                 body = (f"{user.display_name or user.email} invited you to: {m.title}\nWhen: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {m.join_url}\n" if m.join_url else "")
                         + (f"Meeting ID: {room.code}\n" if room else "") + (f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (f"\n{m.agenda}\n" if m.agenda else ""))
+                if a.get("platform") and a.get("reply_to"): ics = rsvp.set_organizer(ics, a["reply_to"])
                 await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url))
-                sent.append({"to": to, "from": a["address"]}); await rsvp.note_invited(db, m.id, [to]); break
+                sent.append({"to": to, "from": a["address"], "skipped": list(reasons)}); await rsvp.note_invited(db, m.id, [to]); ok = True; break
             except mailer.MailError as exc: reasons.append(f"{a['address']}: {exc}")
-        else: failed.append({"to": to, "reasons": reasons})
+        if not ok: failed.append({"to": to, "reasons": reasons})
     msg = ""
     other = sorted({x["from"] for x in sent if x["from"].lower() != (user.email or "").lower()})
     if sent: msg += "Sent " + "; ".join(f"to {s['to']} from {s['from']}" for s in sent) + ". If it is not in the Inbox, check Spam and Promotions." + (f" It came from {other[0]}, not {user.email}. To send from {user.email}, add that mailbox in Mail (Add account)." if other else "")
+    why = sorted({r for x in sent for r in x.get("skipped", [])})
+    if why: msg += " Your own mailbox could not send, so the app's sender was used. Reason: " + " | ".join(why)
     if failed: msg += (" " if msg else "") + "Not sent: " + "; ".join(f"{f['to']} ({' | '.join(f['reasons'])})" for f in failed)
     db.add(AuditLog(actor=user.email, action="meeting.resend_invites", resource_type="meeting", safe_metadata={"sent": len(sent), "failed": len(failed)})); await db.commit()
     return {"sent": sent, "failed": failed, "message": msg.strip()}
