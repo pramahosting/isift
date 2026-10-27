@@ -127,7 +127,7 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
 export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSettings,startEdit,onCopy}:{onCopy?:(m:any)=>void;id:string;request:any;startEdit?:boolean;zoomReady?:boolean;onBack:()=>void;onChanged:()=>void;notice:(m:string)=>void;isAdmin?:boolean;goSettings?:()=>void}){
   const [m,setM]=useState<any>(null);const [edit,setEdit]=useState(false);const [err,setErr]=useState('');const [copied,setCopied]=useState('');
   const load=()=>request(`/meetings/${id}/details`).then((r:any)=>{setM(r);setErr('')}).catch((e:any)=>setErr(e.message));
-  const [del,setDel]=useState(false);const [hostCode,setHostCode]=useState('');const [resending,setResending]=useState(false);
+  const [del,setDel]=useState(false);const [hostCode,setHostCode]=useState('');const [resending,setResending]=useState(false);const [snd,setSnd]=useState<any>(null);useEffect(()=>{request('/invite-sender').then(setSnd).catch(()=>{})},[]);
   useEffect(()=>{setEdit(!!startEdit);load()},[id]);
   useEffect(()=>{if(m?.kind==='room'&&m.meeting_id&&m.editable)request(`/rooms/${m.meeting_id}/host`).then((r:any)=>setHostCode(r.host_code||'')).catch(()=>{})},[m?.meeting_id,m?.kind,m?.editable]);
   if(err)return <section className="panel"><p className="syncerr" role="alert">{err}</p><button className="secondary" onClick={onBack}>Back to meetings</button></section>;
@@ -161,6 +161,7 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {link?row('Invite link',<><a href={link} onClick={e=>{if(room){e.preventDefault();location.hash=new URL(link).hash}}} className="md-link">{link}</a> <button className="textbtn inline" onClick={()=>copy('link',link)}>{copied==='link'?'Copied':'Copy link'}</button></>):row('Invite link',<span className="muted">This meeting has no online link.</span>)}
       {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.open_room&&'Open room: anyone can start or join any time',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
       {room&&row('Invited',m.invitees?.length?<>{m.invitees.join(', ')} <button className="textbtn inline" disabled={resending} onClick={resend}>{resending?'Sending…':'Send invitations again'}</button></>:<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
+      {room&&snd&&row('Invitations go from',snd.connected?<b>{snd.from}</b>:<span className="syncerr">Not connected. Your sign-in email ({snd.login}) must be connected in Mail (Add account) before invitations can be sent. Other addresses are never used.</span>)}
       {m.series&&row('Repeats','Part of a recurring series with one link for every meeting.')}
       {(m.kind==='teams'||m.kind==='meet')&&row(PLAT[m.kind],<span className="muted">Booked in {PLAT[m.kind]}. Changes to the time here do not change the {PLAT[m.kind]} event; change it there too.</span>)}
       {m.kind==='zoom'&&row('Zoom',<span className="muted">The passcode is part of the Zoom link. Change the time or settings in Zoom as well as here.</span>)}
