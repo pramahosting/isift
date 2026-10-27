@@ -13,7 +13,7 @@ MS_MAIL = "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.offi
 MS_GRAPH = "https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Contacts.Read https://graph.microsoft.com/User.Read"
 PROVIDERS = {
     "google": {"label": "Google", "auth": "https://accounts.google.com/o/oauth2/v2/auth", "token": "https://oauth2.googleapis.com/token",
-               "scope": "openid email profile https://mail.google.com/ https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly",
+               "scope": "openid email profile https://mail.google.com/ https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/contacts.other.readonly",
                "extra": {"access_type": "offline", "prompt": "consent select_account"}, "mail_provider": "gmail", "people": True,
                "imap": ("imap.gmail.com", 993), "smtp": ("smtp.gmail.com", 587), "userinfo": "https://openidconnect.googleapis.com/v1/userinfo"},
     "microsoft": {"label": "Microsoft", "auth": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", "token": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
@@ -134,12 +134,26 @@ async def google_contacts(token: str) -> list[dict]:
         for _ in range(5):
             r = await c.get("https://people.googleapis.com/v1/people/me/connections", headers={"Authorization": f"Bearer {token}"},
                             params={"personFields": "names,emailAddresses,phoneNumbers", "pageSize": "500", **({"pageToken": page} if page else {})})
-            if r.status_code >= 400: raise OAuthError("Google did not allow reading contacts. Sign in again and accept the contacts permission.")
+            if r.status_code >= 400:
+                try: why = (r.json().get("error") or {}).get("message", "")
+                except Exception: why = ""
+                raise OAuthError("Google did not allow reading contacts" + (f" ({why[:140]})" if why else "") + ". Remove iSift from your Google account's connected apps, sign in again and accept the contacts permission.")
             j = r.json()
             for p in j.get("connections", []):
                 em = (p.get("emailAddresses") or [{}])[0].get("value", ""); nm = (p.get("names") or [{}])[0].get("displayName", "") or em
                 ph = (p.get("phoneNumbers") or [{}])[0].get("value", "")
                 if nm: out.append({"name": nm, "email": em, "phone": ph})
+            page = j.get("nextPageToken", "")
+            if not page: break
+        page = ""                      # "Other contacts": people you have emailed but never saved. Optional, so a refusal is ignored.
+        for _ in range(5):
+            r = await c.get("https://people.googleapis.com/v1/otherContacts", headers={"Authorization": f"Bearer {token}"},
+                            params={"readMask": "names,emailAddresses,phoneNumbers", "pageSize": "500", **({"pageToken": page} if page else {})})
+            if r.status_code >= 400: break
+            j = r.json()
+            for p in j.get("otherContacts", []):
+                em = (p.get("emailAddresses") or [{}])[0].get("value", ""); nm = (p.get("names") or [{}])[0].get("displayName", "") or em
+                if em: out.append({"name": nm, "email": em, "phone": ""})
             page = j.get("nextPageToken", "")
             if not page: break
     return out

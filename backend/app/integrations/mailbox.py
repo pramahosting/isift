@@ -274,3 +274,40 @@ async def messages(acct, folder, q="", limit=40, before_uid=0): return await asy
 async def message(acct, folder, uid, mark_read=True): return await asyncio.to_thread(message_sync, acct, folder, uid, mark_read)
 async def act(acct, folder, uids, action, target=""): return await asyncio.to_thread(act_sync, acct, folder, uids, action, target)
 async def send(acct, to, cc, subject, body, in_reply_to=""): return await asyncio.to_thread(send_sync, acct, to, cc, subject, body, in_reply_to)
+
+# ---------------------------------------------------------------- people you write to
+_SKIP_LOCAL = re.compile(r"(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce|notification|newsletter|unsubscribe)", re.I)
+
+def correspondents_sync(acct: dict, per_folder: int = 150, top: int = 300) -> list[dict]:
+    """People in the From / To / Cc lines of the latest mail in Inbox and Sent (headers only, nothing is marked read)."""
+    from email.utils import getaddresses
+    me = (acct.get("address") or "").lower(); seen: dict[str, dict] = {}
+    m = _connect(acct)
+    try:
+        typ, data = m.list(); fs = parse_list(data if typ == "OK" else [])
+        names = [next((f["name"] for f in fs if f["role"] == r), None) for r in ("inbox", "sent")]
+        if not names[0]: names[0] = "INBOX"
+        for folder in [n for n in names if n]:
+            try: _open(m, folder)
+            except MailError: continue
+            typ, d = m.uid("search", None, "ALL")
+            uids = (d[0].split() if typ == "OK" and d and d[0] else [])[-per_folder:]
+            if not uids: continue
+            typ, parts = m.uid("fetch", b",".join(uids), "(BODY.PEEK[HEADER.FIELDS (FROM TO CC)])")
+            if typ != "OK": continue
+            for part in parts:
+                if not isinstance(part, tuple): continue
+                msg = email.message_from_bytes(part[1], policy=policy.default)
+                for name, addr in getaddresses([str(msg.get(h, "")) for h in ("From", "To", "Cc")]):
+                    addr = addr.strip().lower()
+                    if not addr or "@" not in addr or addr == me or _SKIP_LOCAL.search(addr.split("@")[0]): continue
+                    e = seen.setdefault(addr, {"email": addr, "name": "", "n": 0}); e["n"] += 1
+                    if name and not e["name"]: e["name"] = name.strip()
+    except imaplib.IMAP4.error as exc: raise MailError(f"The mailbox could not be read ({exc}).")
+    finally:
+        try: m.logout()
+        except Exception: pass
+    out = sorted(seen.values(), key=lambda e: -e["n"])[:top]
+    return [{"name": e["name"] or e["email"].split("@")[0], "email": e["email"], "phone": ""} for e in out]
+
+async def correspondents(acct): return await asyncio.to_thread(correspondents_sync, acct)

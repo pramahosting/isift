@@ -1,5 +1,5 @@
 """The Mail page: several mail accounts per person, folders, messages, reply/send and the usual organising actions."""
-import uuid
+import asyncio, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +85,24 @@ async def add_account(payload: dict, user: User = Depends(principal), db: AsyncS
     stored = {k: v for k, v in acct.items() if k != "password"}; stored["id"] = uuid.uuid4().hex[:10]; stored["password"] = rs._enc(password)
     items.append(stored); await _save(db, user, items)
     db.add(AuditLog(actor=user.email, action="mailbox.add", resource_type="mail", safe_metadata={"provider": prov})); await db.commit()
-    return {"account": _public(stored), "message": f"{address} added."}
+    msg = f"{address} added."
+    try:
+        from app.api.routes_workspace import import_contacts
+        people = await asyncio.wait_for(mb.correspondents({**acct}), 25); r = await import_contacts(db, user, people, address)
+        if r["added"]: msg += f" {r['added']} contacts brought in from your mail."
+    except Exception: pass
+    return {"account": _public(stored), "message": msg}
+
+@router.post("/accounts/{aid}/contacts")
+async def pull_contacts(aid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Contacts for a mailbox added with a password: the people in its latest Inbox and Sent mail (no contacts book to read)."""
+    a = await _account(db, user, aid)
+    if a.get("oauth"): raise HTTPException(422, "This account brings its contacts in with its sign-in. Use Sync.")
+    from app.api.routes_workspace import import_contacts
+    try: people = await mb.correspondents(a)
+    except mailer.MailError as exc: raise _wrap(exc)
+    r = await import_contacts(db, user, people, a["address"])
+    return {"message": f"{r['added']} new contacts from the people you write to in {a['address']}.", "added": r["added"], "found": len(people)}
 
 @router.patch("/accounts/{aid}")
 async def edit_account(aid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
