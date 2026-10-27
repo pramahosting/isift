@@ -127,8 +127,9 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
 export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSettings,startEdit,onCopy}:{onCopy?:(m:any)=>void;id:string;request:any;startEdit?:boolean;zoomReady?:boolean;onBack:()=>void;onChanged:()=>void;notice:(m:string)=>void;isAdmin?:boolean;goSettings?:()=>void}){
   const [m,setM]=useState<any>(null);const [edit,setEdit]=useState(false);const [err,setErr]=useState('');const [copied,setCopied]=useState('');
   const load=()=>request(`/meetings/${id}/details`).then((r:any)=>{setM(r);setErr('')}).catch((e:any)=>setErr(e.message));
-  const [del,setDel]=useState(false);
+  const [del,setDel]=useState(false);const [hostCode,setHostCode]=useState('');
   useEffect(()=>{setEdit(!!startEdit);load()},[id]);
+  useEffect(()=>{if(m?.kind==='room'&&m.meeting_id&&m.editable)request(`/rooms/${m.meeting_id}/host`).then((r:any)=>setHostCode(r.host_code||'')).catch(()=>{})},[m?.meeting_id,m?.kind,m?.editable]);
   if(err)return <section className="panel"><p className="syncerr" role="alert">{err}</p><button className="secondary" onClick={onBack}>Back to meetings</button></section>;
   if(!m)return <section className="panel muted">Loading meeting…</section>;
   const link:string=m.join_url||'';const room=m.kind==='room';
@@ -155,6 +156,7 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {m.meeting_id&&row('Meeting ID',<><code>{m.meeting_id}</code> <button className="textbtn inline" onClick={()=>copy('id',m.meeting_id)}>{copied==='id'?'Copied':'Copy'}</button></>)}
       {room&&row('Passcode',m.passcode?<><code>{m.passcode}</code> <button className="textbtn inline" onClick={()=>copy('pc',m.passcode)}>{copied==='pc'?'Copied':'Copy'}</button></>:<span className="muted">None</span>)}
       {secText&&row('Security',secText)}
+      {room&&hostCode&&row('Host code',<><code>{hostCode}</code> <button className="textbtn inline" onClick={()=>copy('hc',hostCode)}>{copied==='hc'?'Copied':'Copy'}</button> <span className="muted small">Private. Enter it on the join page to be recognised as the host from any browser. Do not share it with guests.</span></>)}
       {link?row('Invite link',<><a href={link} onClick={e=>{if(room){e.preventDefault();location.hash=new URL(link).hash}}} className="md-link">{link}</a> <button className="textbtn inline" onClick={()=>copy('link',link)}>{copied==='link'?'Copied':'Copy link'}</button></>):row('Invite link',<span className="muted">This meeting has no online link.</span>)}
       {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.open_room&&'Open room: anyone can start or join any time',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
       {room&&row('Invited',m.invitees?.length?m.invitees.join(', '):<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
@@ -162,11 +164,29 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {(m.kind==='teams'||m.kind==='meet')&&row(PLAT[m.kind],<span className="muted">Booked in {PLAT[m.kind]}. Changes to the time here do not change the {PLAT[m.kind]} event; change it there too.</span>)}
       {m.kind==='zoom'&&row('Zoom',<span className="muted">The passcode is part of the Zoom link. Change the time or settings in Zoom as well as here.</span>)}
     </div>
+    {m.kind!=='calendar'&&<Replies id={m.id} request={request} notice={notice} onChanged={onChanged} reload={load}/>}
     {del&&<DeleteMeeting target={{id:m.id,title:m.title,series:!!m.series,room:room}} request={request} onClose={()=>setDel(false)} onDone={msg=>{notice(msg);onChanged();onBack()}}/>}
     <div className="md-invite"><div className="md-invhead"><b>Invitation</b><button className="secondary" onClick={()=>copy('all2',invitation)}>{copied==='all2'?'Copied':'Copy invitation'}</button></div><pre>{invitation}</pre></div>
   </section>;
 }
 
+
+/** Who answered the invitation, and the times people suggested. The host can move the meeting to a suggested time in one click. */
+function Replies({id,request,notice,onChanged,reload}:{id:string;request:any;notice:(m:string)=>void;onChanged:()=>void;reload:()=>void}){
+  const [d,setD]=useState<any>(null);const [busy,setBusy]=useState('');
+  const load=()=>request(`/meetings/${id}/responses`).then(setD).catch(()=>setD(null));
+  useEffect(()=>{load()},[id]);
+  if(!d||!d.responses.length)return null;
+  const L:any={accepted:'Accepted',tentative:'Maybe',declined:'Declined',proposed:'Suggested another time',waiting:'No reply yet'};
+  const when=(iso:string)=>new Date(iso).toLocaleString(undefined,{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const use=async(email:string)=>{setBusy(email);try{const r=await request(`/meetings/${id}/accept-proposal`,{method:'POST',body:JSON.stringify({email})});notice(r.message);onChanged();reload();load()}catch(e:any){notice(e.message)}finally{setBusy('')}};
+  const c=d.counts;
+  return <div className="md-invite"><div className="md-invhead"><b>Replies</b><span className="muted small">{c.accepted} accepted · {c.tentative} maybe · {c.declined} declined · {c.proposed} suggested a new time · {c.waiting} waiting</span></div>
+    <ul className="md-replies" style={{listStyle:'none',padding:0,margin:0,display:'grid',gap:6}}>{d.responses.map((r:any)=><li key={r.email} style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+      <span style={{minWidth:200}}>{r.email}</span><b>{L[r.status]||r.status}</b>
+      {r.status==='proposed'&&r.proposed_start&&<><span>{when(r.proposed_start)}</span><button className="primary" disabled={!!busy} onClick={()=>use(r.email)}>{busy===r.email?'Moving…':'Use this time'}</button></>}
+      {r.note&&<span className="muted">“{r.note}”</span>}</li>)}</ul></div>;
+}
 
 /** Popup window for changing a scheduled meeting (opened from the Meetings list). */
 export function EditMeetingModal({id,request,isAdmin,goSettings,onClose,onSaved,onCopy}:{id:string;request:any;isAdmin?:boolean;goSettings?:()=>void;onClose:()=>void;onSaved:(msg:string)=>void;onCopy?:(m:any)=>void}){

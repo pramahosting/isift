@@ -2165,3 +2165,6 @@ html,body{max-width:100%;overflow-x:hidden}
 .ol-row:hover .ol-del,.ol-row:focus-within .ol-del{display:inline-flex}
 .ol-row:hover .l1 time,.ol-row:focus-within .l1 time{visibility:hidden}
 @media(hover:none){.ol-row .ol-del{display:inline-flex;top:auto;bottom:8px;background:transparent;box-shadow:none}}
+/* Reply page: link-styled buttons */
+.rsvp .btnlink{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;text-decoration:none;font-weight:600}
+.rsvp .btnlink.primary{background:#0f6cbd;color:#fff}.rsvp .btnlink.secondary{border:1px solid #c8c8c8;color:#15364c;background:#fff}
