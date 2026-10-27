@@ -2,16 +2,16 @@ import React,{useState} from 'react';
 import {ExternalLink,CalendarPlus,Smartphone} from 'lucide-react';
 import {Modal} from './Workspace';
 
-type Step='pick'|'email'|'apppw'|'unavailable';
+type Step='pick'|'email'|'apppw'|'unavailable'|'one';
 const GUIDE:any={
   yahoo:{label:'Yahoo',caldav:'yahoo',url:'https://login.yahoo.com/account/security',open:'Open Yahoo account security',steps:['Press the button below and sign in to Yahoo.','Choose Generate app password, type iSift as the name and press Generate.','Copy the 16-letter password and paste it here.']},
   icloud:{label:'iPhone (iCloud)',caldav:'icloud',url:'https://appleid.apple.com/account/manage',open:'Open Apple account',steps:['Press the button below and sign in with your Apple ID.','Open Sign-In and Security, then App-Specific Passwords, and make one called iSift.','Copy it and paste it here. Use your Apple ID email as the address.']},
 };
 
 /** One place to connect a calendar: pick Gmail, Outlook, Yahoo, iPhone or Android (or type an email) and iSift takes the shortest route. */
-export function ConnectCalendar({request,onClose,onDone}:{request:any;onClose:()=>void;onDone:(msg:string)=>void}){
-  const [step,setStep]=useState<Step>('pick');const [addr,setAddr]=useState('');const [kind,setKind]=useState('');const [pw,setPw]=useState('');
-  const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [which,setWhich]=useState('');
+export function ConnectCalendar({request,onClose,onDone,start}:{request:any;onClose:()=>void;onDone:(msg:string)=>void;start?:string}){
+  const [step,setStep]=useState<Step>(start==='yahoo'||start==='icloud'?'apppw':start==='google'||start==='microsoft'?'one':'pick');const [addr,setAddr]=useState('');const [kind,setKind]=useState(start==='yahoo'||start==='icloud'?start:'');const [pw,setPw]=useState('');
+  const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [which,setWhich]=useState(start==='google'||start==='microsoft'?start:'');
 
   const signIn=async(id:string)=>{
     setErr('');setBusy(true);setWhich(id);
@@ -45,7 +45,8 @@ export function ConnectCalendar({request,onClose,onDone}:{request:any;onClose:()
     catch(x:any){setErr(x.message)}finally{setBusy(false)}};
 
   const tile=(label:string,sub:string,go:()=>void,icon?:React.ReactNode)=><button type="button" disabled={busy} onClick={go}>{icon}<b>{label}</b><small>{sub}</small></button>;
-  return <Modal title="Connect a calendar" onClose={onClose}><div className="ws-form ol-add-form">
+  const NAME:any={google:'Google',microsoft:'Microsoft'};
+  return <Modal title={start?`Connect ${GUIDE[start]?.label||NAME[start]||'a calendar'}`:'Connect a calendar'} onClose={onClose}><div className="ws-form ol-add-form">
     {step==='pick'&&<div>
       <p className="muted">Choose where your calendar lives. Your meetings appear in iSift and stay up to date.</p>
       <div className="ol-prov">
@@ -75,6 +76,11 @@ export function ConnectCalendar({request,onClose,onDone}:{request:any;onClose:()
       {err&&<p className="syncerr span2" role="alert">{err}</p>}
       <div className="actions span2"><button className="primary" disabled={busy||!pw||!addr.trim()}>{busy?'Checking…':'Connect calendar'}</button><button type="button" className="secondary" onClick={()=>{setStep('pick');setErr('');setPw('')}}>Back</button></div>
     </form>}
+    {step==='one'&&<div>
+      <p className="muted">Sign in to {NAME[start||which]} in the window that opens. iSift only reads your calendar, and you can disconnect it any time.</p>
+      {busy&&<p className="muted small" role="status">Waiting for the sign-in window…</p>}{err&&<p className="syncerr" role="alert">{err}</p>}
+      <div className="actions"><button className="primary" disabled={busy} onClick={()=>signIn(start||which)}>Sign in with {NAME[start||which]}</button><button type="button" className="secondary" onClick={onClose}>Skip this one</button></div>
+    </div>}
     {step==='unavailable'&&<div>
       <p><b>{which==='microsoft'?'Microsoft':'Google'} sign-in is not set up in this installation of iSift yet.</b></p>
       <p className="muted">Whoever installs iSift needs to register it once with {which==='microsoft'?'Microsoft':'Google'}. Nothing is wrong with your account.</p>

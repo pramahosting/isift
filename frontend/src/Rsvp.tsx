@@ -3,8 +3,8 @@ import {Check,X,HelpCircle,CalendarClock,CalendarPlus,Video} from 'lucide-react'
 
 /** Where an invitation's Accept / Maybe / Decline / Suggest-another-time links land. No account needed: the link itself says who is answering. */
 export function RsvpPage({token,api,first}:{token:string;api:string;first:string}){
-  const [info,setInfo]=useState<any>(null);const [err,setErr]=useState('');const [pick,setPick]=useState(first);const [when,setWhen]=useState('');const [note,setNote]=useState('');
-  const [busy,setBusy]=useState(false);const [done,setDone]=useState('');
+  const [info,setInfo]=useState<any>(null);const [err,setErr]=useState('');const [pick,setPick]=useState(first==='calendar'?'':first);const [when,setWhen]=useState('');const [note,setNote]=useState('');
+  const [calOpen,setCalOpen]=useState(first==='calendar');const [busy,setBusy]=useState(false);const [done,setDone]=useState('');
   useEffect(()=>{fetch(`${api}/rsvp/${token}`).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)setErr(j.detail||'This reply link is not valid.');else setInfo(j)}).catch(()=>setErr('Could not reach the server.'))},[token,api]);
   const send=async(status:string)=>{setBusy(true);setErr('');try{
     const body:any={status,note};if(status==='proposed'){if(!when){setErr('Choose the day and time you suggest.');setBusy(false);return}body.proposed_start=new Date(when).toISOString()}
@@ -30,13 +30,17 @@ export function RsvpPage({token,api,first}:{token:string;api:string;first:string
       <label>Note to the host (optional)<input value={note} maxLength={500} onChange={e=>setNote(e.target.value)}/></label>
       <div className="actions"><button className="primary" disabled={busy||!when} onClick={()=>send('proposed')}>Send my suggestion</button></div></div>}
     {err&&<p className="syncerr" role="alert">{err}</p>}
-    <hr/><p className="muted small"><CalendarPlus size={14}/> Add it to your calendar</p>
-    <div className="actions" style={{flexWrap:'wrap'}}>
-      {cal.google&&<a className="secondary btnlink" href={cal.google} target="_blank" rel="noreferrer">Google</a>}
-      {cal.outlook&&<a className="secondary btnlink" href={cal.outlook} target="_blank" rel="noreferrer">Outlook.com</a>}
-      {cal.office365&&<a className="secondary btnlink" href={cal.office365} target="_blank" rel="noreferrer">Microsoft 365</a>}
-      {cal.yahoo&&<a className="secondary btnlink" href={cal.yahoo} target="_blank" rel="noreferrer">Yahoo</a>}
-    </div>
+    <hr/>    <div className="actions"><button className="secondary" onClick={()=>setCalOpen(true)}><CalendarPlus size={15}/> Add to calendar</button></div>
+    {calOpen&&<div className="rm-modal" role="dialog" aria-label="Add to calendar" onClick={()=>setCalOpen(false)}><div className="rm-card" style={{maxWidth:340}} onClick={e=>e.stopPropagation()}>
+      <h2>Add to which calendar?</h2>
+      <div className="actions" style={{flexDirection:'column',alignItems:'stretch'}}>
+        {cal.google&&<a className="secondary btnlink" href={cal.google} target="_blank" rel="noreferrer">Google Calendar</a>}
+        {cal.outlook&&<a className="secondary btnlink" href={cal.outlook} target="_blank" rel="noreferrer">Outlook.com</a>}
+        {cal.office365&&<a className="secondary btnlink" href={cal.office365} target="_blank" rel="noreferrer">Microsoft 365</a>}
+        {cal.yahoo&&<a className="secondary btnlink" href={cal.yahoo} target="_blank" rel="noreferrer">Yahoo Calendar</a>}
+        <a className="secondary btnlink" href={`${api}/rsvp/${token}/ics`}>Apple, iPhone and others (file)</a>
+        <button className="secondary" onClick={()=>setCalOpen(false)}>Close</button>
+      </div></div></div>}
     {info.join_url&&<><hr/><a className="primary btnlink" href={info.join_url}><Video size={15}/> Join the meeting</a></>}
   </div></div>;
 }

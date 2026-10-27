@@ -127,12 +127,13 @@ export function MeetingForm({request,initial,onSaved,onCancel,isAdmin,goSettings
 export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSettings,startEdit,onCopy}:{onCopy?:(m:any)=>void;id:string;request:any;startEdit?:boolean;zoomReady?:boolean;onBack:()=>void;onChanged:()=>void;notice:(m:string)=>void;isAdmin?:boolean;goSettings?:()=>void}){
   const [m,setM]=useState<any>(null);const [edit,setEdit]=useState(false);const [err,setErr]=useState('');const [copied,setCopied]=useState('');
   const load=()=>request(`/meetings/${id}/details`).then((r:any)=>{setM(r);setErr('')}).catch((e:any)=>setErr(e.message));
-  const [del,setDel]=useState(false);const [hostCode,setHostCode]=useState('');
+  const [del,setDel]=useState(false);const [hostCode,setHostCode]=useState('');const [resending,setResending]=useState(false);
   useEffect(()=>{setEdit(!!startEdit);load()},[id]);
   useEffect(()=>{if(m?.kind==='room'&&m.meeting_id&&m.editable)request(`/rooms/${m.meeting_id}/host`).then((r:any)=>setHostCode(r.host_code||'')).catch(()=>{})},[m?.meeting_id,m?.kind,m?.editable]);
   if(err)return <section className="panel"><p className="syncerr" role="alert">{err}</p><button className="secondary" onClick={onBack}>Back to meetings</button></section>;
   if(!m)return <section className="panel muted">Loading meeting…</section>;
   const link:string=m.join_url||'';const room=m.kind==='room';
+  const resend=async()=>{setResending(true);try{const r=await request(`/meetings/${id}/resend-invites`,{method:'POST',body:JSON.stringify({})});notice(r.message||'Sent.');load()}catch(e:any){notice(e.message)}finally{setResending(false)}};
   const copy=async(what:string,text:string)=>{try{await navigator.clipboard.writeText(text);setCopied(what);setTimeout(()=>setCopied(''),2000)}catch{window.prompt('Copy this:',text)}};
   const invitation=[`${m.title}`,'',`When: ${whenText(m.start_at,m.duration_minutes)}`,'',link&&`Join: ${link}`,m.meeting_id&&`Meeting ID: ${m.meeting_id}`,m.passcode&&`Passcode: ${m.passcode}`,m.access==='signed_in'?'Sign in with your account to join.':'',m.agenda&&`\n${m.agenda}`].filter(x=>x!==''&&x!==false&&x!==undefined).join('\n');
   if(edit)return <MeetingForm request={request} isAdmin={isAdmin} goSettings={goSettings} initial={m} onCancel={()=>setEdit(false)} onSaved={r=>{setM(r);setEdit(false);notice(r.message||'Meeting saved.');onChanged()}}/>;
@@ -159,7 +160,7 @@ export function MeetingDetail({id,request,onBack,onChanged,notice,isAdmin,goSett
       {room&&hostCode&&row('Host code',<><code>{hostCode}</code> <button className="textbtn inline" onClick={()=>copy('hc',hostCode)}>{copied==='hc'?'Copied':'Copy'}</button> <span className="muted small">Private. Enter it on the join page to be recognised as the host from any browser. Do not share it with guests.</span></>)}
       {link?row('Invite link',<><a href={link} onClick={e=>{if(room){e.preventDefault();location.hash=new URL(link).hash}}} className="md-link">{link}</a> <button className="textbtn inline" onClick={()=>copy('link',link)}>{copied==='link'?'Copied':'Copy link'}</button></>):row('Invite link',<span className="muted">This meeting has no online link.</span>)}
       {room&&row('Options',[m.options.mute_on_entry&&'Participants muted on entry',m.options.video_off_on_entry&&'Participants’ video off on entry',m.options.host_video_off&&'Host video off on start',m.options.virtual_room===false&&'Virtual room off (gallery only)',m.options.open_room&&'Open room: anyone can start or join any time',m.options.auto_record&&'Records automatically'].filter(Boolean).join(' · ')||<span className="muted">None</span>)}
-      {room&&row('Invited',m.invitees?.length?m.invitees.join(', '):<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
+      {room&&row('Invited',m.invitees?.length?<>{m.invitees.join(', ')} <button className="textbtn inline" disabled={resending} onClick={resend}>{resending?'Sending…':'Send invitations again'}</button></>:<span className="muted">Nobody yet. Use Edit to invite people.</span>)}
       {m.series&&row('Repeats','Part of a recurring series with one link for every meeting.')}
       {(m.kind==='teams'||m.kind==='meet')&&row(PLAT[m.kind],<span className="muted">Booked in {PLAT[m.kind]}. Changes to the time here do not change the {PLAT[m.kind]} event; change it there too.</span>)}
       {m.kind==='zoom'&&row('Zoom',<span className="muted">The passcode is part of the Zoom link. Change the time or settings in Zoom as well as here.</span>)}

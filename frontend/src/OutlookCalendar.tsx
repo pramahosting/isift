@@ -3,6 +3,7 @@ import {ChevronLeft,ChevronRight,RefreshCw,CalendarPlus,Video} from 'lucide-reac
 import {Modal} from './Workspace';
 import {useSplit} from './Splitter';
 import {ConnectCalendar} from './ConnectCalendar';
+import {ConnectAll} from './ConnectAll';
 
 const COLORS=['#0f6cbd','#c239b3','#038387','#ca5010','#7160e8','#498205','#c50f1f','#986f0b'];
 const HOUR=48;
@@ -17,7 +18,7 @@ const hm=(d:Date)=>d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
 export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?:any;meetings:any[];onOpen:(id:string)=>void;onNew:()=>void;onSync:()=>void}){
   const [view,setView]=useState<View>(()=>{try{return (sessionStorage.getItem('isift.calview') as View)||'week'}catch{return 'week'}});
   const [cur,setCur]=useState(()=>{try{const f=sessionStorage.getItem('isift.calfocus');if(f){sessionStorage.removeItem('isift.calfocus');const d=new Date(f);if(!isNaN(+d))return sod(d)}}catch{}return sod(new Date())});   // opened from a booking: show that date
-  const [connecting,setConnecting]=useState(false);
+  const [connecting,setConnecting]=useState(false);const [connectAll,setConnectAll]=useState(false);
   const side=useSplit('isift.cal.side',250,180,420);
   const [hidden,setHidden]=useState<string[]>([]);
   const [linked,setLinked]=useState<string[]>([]);   // every connected mail account (Google, Microsoft, or any other mailbox), listed even before they have events
@@ -58,6 +59,7 @@ export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?
     <aside className="oc-side" aria-label="Calendars" style={{width:side.w}}>
       <button className="ol-new oc-new" onClick={onNew}><CalendarPlus size={16}/> New event</button>
       {request&&<button type="button" className="secondary oc-connect" onClick={()=>setConnecting(true)}><RefreshCw size={14}/> Connect a calendar</button>}
+      {request&&<button type="button" className="secondary oc-connect" onClick={()=>setConnectAll(true)}><RefreshCw size={14}/> Connect all my calendars</button>}
       <div className="oc-mini">
         <div className="oc-mh"><b>{cur.toLocaleDateString([],{month:'long',year:'numeric'})}</b><span><button className="iconbtn" aria-label="Previous month" onClick={()=>{const d=new Date(cur);d.setMonth(d.getMonth()-1,1);setCur(d)}}><ChevronLeft size={14}/></button><button className="iconbtn" aria-label="Next month" onClick={()=>{const d=new Date(cur);d.setMonth(d.getMonth()+1,1);setCur(d)}}><ChevronRight size={14}/></button></span></div>
         <div className="oc-mg">{['M','T','W','T','F','S','S'].map((d,i)=><i key={i}>{d}</i>)}{Array.from({length:42},(_,i)=>addDays(miniStart,i)).map(d=><button key={+d} className={`${d.getMonth()!==cur.getMonth()?'o':''}${sameDay(d,now)?' t':''}${sameDay(d,cur)?' s':''}${evOn(d).length?' e':''}`} onClick={()=>setCur(d)} aria-label={d.toDateString()}>{d.getDate()}</button>)}</div>
@@ -103,6 +105,7 @@ export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?
     {day&&<Modal title={day.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long',year:'numeric'})} onClose={()=>setDay(null)}><div className="ws-form">
       {evOn(day).length?evOn(day).map(m=><button key={m.id} className="secondary calday" onClick={()=>{setDay(null);onOpen(m.id)}}><i className="dot" style={{background:color(m.account||'')}}/> <Video size={14}/> <b>{hm(new Date(m.start_at))}</b> {m.title}</button>):<p className="muted">Nothing scheduled.</p>}
       <div className="actions"><button className="primary" onClick={()=>{setDay(null);onNew()}}>New event</button></div></div></Modal>}
+    {connectAll&&request&&<ConnectAll request={request} onClose={()=>setConnectAll(false)} onDone={()=>{setConnectAll(false);onSync()}}/>}
     {connecting&&request&&<ConnectCalendar request={request} onClose={()=>setConnecting(false)} onDone={m=>{setConnecting(false);try{request('/mailbox/accounts').then((r:any)=>setLinked((r.accounts||[]).filter((a:any)=>a.address&&a.provider!=='isiftmail').map((a:any)=>a.address))).catch(()=>{})}catch{}onSync()}}/>}
   </div>;
 }
