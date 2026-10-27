@@ -192,9 +192,9 @@ function Compose({accts,fold,init,request,onClose,onSent,onDraft}:{accts:any[];f
   </form></Modal>;
 }
 
-function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift}:{edit?:any;isift?:any;presets:any;request:any;onClose:()=>void;onAdded:(id:string,message?:string)=>void;onPulled:()=>void}){
+export function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift,startAddr}:{startAddr?:string;edit?:any;isift?:any;presets:any;request:any;onClose:()=>void;onAdded:(id:string,message?:string)=>void;onPulled:()=>void}){
   // Same steps as Outlook: type your email address, press Continue, sign in in the window that opens.
-  const E=edit?.settings||{};const [addr,setAddr]=useState(edit?.address||'');const [step,setStep]=useState<'email'|'which'|'password'|'unavailable'>(edit?'password':'email');const [which,setWhich]=useState('');
+  const E=edit?.settings||{};const [addr,setAddr]=useState(edit?.address||startAddr||'');const [step,setStep]=useState<'email'|'which'|'password'|'unavailable'>(edit?'password':'email');const [which,setWhich]=useState('');
   const [prov,setProv]=useState(edit?.provider||'other');const [un,setUn]=useState(E.username||'');const [pw,setPw]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');
   const [sh,setSh]=useState(E.smtp_host||'');const [sp,setSp]=useState(String(E.smtp_port||587));const [ih,setIh]=useState(E.imap_host||'');const [ip,setIp]=useState(String(E.imap_port||993));
   const LABEL:any={google:'Google',microsoft:'Microsoft',yahoo:'Yahoo'};const [det,setDet]=useState<any>(null);
