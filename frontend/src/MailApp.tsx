@@ -194,7 +194,7 @@ function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift}:{edit?
   const E=edit?.settings||{};const [addr,setAddr]=useState(edit?.address||'');const [step,setStep]=useState<'email'|'which'|'password'|'unavailable'>(edit?'password':'email');const [which,setWhich]=useState('');
   const [prov,setProv]=useState(edit?.provider||'other');const [un,setUn]=useState(E.username||'');const [pw,setPw]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');
   const [sh,setSh]=useState(E.smtp_host||'');const [sp,setSp]=useState(String(E.smtp_port||587));const [ih,setIh]=useState(E.imap_host||'');const [ip,setIp]=useState(String(E.imap_port||993));
-  const LABEL:any={google:'Google',microsoft:'Microsoft',yahoo:'Yahoo'};
+  const LABEL:any={google:'Google',microsoft:'Microsoft',yahoo:'Yahoo'};const [det,setDet]=useState<any>(null);
   const signIn=async(id:string)=>{
     setErr('');setBusy(true);setWhich(id);
     try{
@@ -210,7 +210,11 @@ function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift}:{edit?
   };
   const next=async(e:React.FormEvent)=>{e.preventDefault();setErr('');if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr.trim())){setErr('Enter your email address, for example name@gmail.com.');return}
     setBusy(true);let p:string|null=null;try{p=(await request(`/oauth/detect?email=${encodeURIComponent(addr.trim())}`)).provider}catch{}setBusy(false);
-    if(p)signIn(p);else setStep('which')};
+    if(p){signIn(p);return}
+    setBusy(true);let d:any=null;try{d=await request(`/mailbox/autoconfig?email=${encodeURIComponent(addr.trim())}`)}catch{}setBusy(false);
+    if(d?.found&&d.oauth){signIn(d.oauth);return}
+    if(d?.found){setDet(d);setProv('other');setIh(d.imap_host);setIp(String(d.imap_port));setSh(d.smtp_host);setSp(String(d.smtp_port));setStep('password');return}
+    setStep('which')};
   const add=async(e:React.FormEvent)=>{e.preventDefault();setErr('');setBusy(true);try{const body=JSON.stringify({provider:prov,address:addr.trim(),username:un.trim()||undefined,password:pw,smtp_host:sh||undefined,smtp_port:sp,imap_host:ih||undefined,imap_port:ip});const r=await request(edit?`/mailbox/accounts/${edit.id}`:'/mailbox/accounts',{method:edit?'PATCH':'POST',body});onAdded(r.account.id,r.message)}catch(x:any){setErr(x.message)}finally{setBusy(false)}};
   const desktop=async()=>{setErr('');setBusy(true);try{await request('/connections/outlook-desktop/pull',{method:'POST'});onPulled()}catch(x:any){setErr(x.message)}finally{setBusy(false)}};
   const usePassword=(p:string)=>{setProv(p);setStep('password');setErr('')};
@@ -244,12 +248,22 @@ function AddAccount({presets,request,onClose,onAdded,onPulled,edit,isift}:{edit?
     </div>}
     {step==='password'&&<form onSubmit={add} className="conn-form">
       <p className="muted small span2">Account: <b>{addr}</b></p>
-      <label>Provider<select value={prov} onChange={e=>setProv(e.target.value)}>{Object.entries(presets).map(([k,v]:any)=><option key={k} value={k}>{v.label}</option>)}</select></label>
+      {det&&!edit?<>
+        <p className="muted small span2">{det.guess?<>We could not confirm your provider, so we tried <b>{det.imap_host}</b>. Check Server settings if sign-in fails.</>:<>Found your mail settings{det.label?<> ({det.label})</>:null}. Enter your password to finish.</>}</p>
+        <label className="span2">Password<input type="password" value={pw} onChange={e=>setPw(e.target.value)} autoComplete="new-password" required autoFocus/></label>
+        <details className="span2" open={!!err}><summary className="muted small">Server settings</summary><div className="conn-form">
+          <label>Username <small>(blank = full address)</small><input value={un} onChange={e=>setUn(e.target.value)} placeholder={addr}/></label><span/>
+          <label>Sending server (SMTP)<input value={sh} onChange={e=>setSh(e.target.value)} required/></label><label>Port<input value={sp} onChange={e=>setSp(e.target.value)}/></label>
+          <label>Reading server (IMAP)<input value={ih} onChange={e=>setIh(e.target.value)} required/></label><label>Port<input value={ip} onChange={e=>setIp(e.target.value)}/></label>
+        </div></details>
+        <p className="muted small span2">If sign-in is refused, your provider may need an app password instead of your normal one (often when two-step verification is on).</p>
+      </>:<><label>Provider<select value={prov} onChange={e=>setProv(e.target.value)}>{Object.entries(presets).map(([k,v]:any)=><option key={k} value={k}>{v.label}</option>)}</select></label>
       <label>App password<input type="password" value={pw} onChange={e=>setPw(e.target.value)} autoComplete="new-password" required={!edit} placeholder={edit?"Leave blank to keep the saved password":""} autoFocus/></label>{prov==='other'&&<label>Username <small>(blank = full address)</small><input value={un} onChange={e=>setUn(e.target.value)} placeholder={addr}/></label>}
       {prov==='other'&&<><label>Sending server (SMTP)<input value={sh} onChange={e=>setSh(e.target.value)} required/></label><label>Port<input value={sp} onChange={e=>setSp(e.target.value)}/></label><label>Reading server (IMAP)<input value={ih} onChange={e=>setIh(e.target.value)} required/></label><label>Port<input value={ip} onChange={e=>setIp(e.target.value)}/></label></>}
-      {presets[prov]?.how&&<p className="muted small span2"><b>Where to get the app password:</b> {presets[prov].how}</p>}
+      </>}
+      {!(det&&!edit)&&presets[prov]?.how&&<p className="muted small span2"><b>Where to get the app password:</b> {presets[prov].how}</p>}
       {err&&<p className="syncerr span2" role="alert">{err}</p>}
-      <div className="actions span2"><button className="primary" disabled={busy||(!edit&&!pw)}>{edit?'Save changes':<><Plus size={15}/> Add account</>}</button><button type="button" className="secondary" onClick={()=>{if(edit){onClose();return}setStep('email');setErr('')}}>{edit?'Cancel':'Back'}</button></div>
+      <div className="actions span2"><button className="primary" disabled={busy||(!edit&&!pw)}>{edit?'Save changes':<><Plus size={15}/> Add account</>}</button><button type="button" className="secondary" onClick={()=>{if(edit){onClose();return}setDet(null);setStep('email');setErr('')}}>{edit?'Cancel':'Back'}</button></div>
     </form>}
   </div></Modal>;
 }

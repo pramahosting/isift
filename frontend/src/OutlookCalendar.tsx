@@ -16,8 +16,8 @@ export function OutlookCalendar({meetings,onOpen,onNew,onSync,request}:{request?
   const [view,setView]=useState<View>(()=>{try{return (sessionStorage.getItem('isift.calview') as View)||'week'}catch{return 'week'}});
   const [cur,setCur]=useState(()=>{try{const f=sessionStorage.getItem('isift.calfocus');if(f){sessionStorage.removeItem('isift.calfocus');const d=new Date(f);if(!isNaN(+d))return sod(d)}}catch{}return sod(new Date())});   // opened from a booking: show that date
   const [hidden,setHidden]=useState<string[]>([]);
-  const [linked,setLinked]=useState<string[]>([]);   // connected Google / Microsoft accounts, listed even before they have events
-  useEffect(()=>{if(!request)return;request('/mailbox/accounts').then((r:any)=>setLinked((r.accounts||[]).filter((a:any)=>a.oauth==='google'||a.oauth==='microsoft').map((a:any)=>a.address))).catch(()=>{})},[request]);
+  const [linked,setLinked]=useState<string[]>([]);   // every connected mail account (Google, Microsoft, or any other mailbox), listed even before they have events
+  useEffect(()=>{if(!request)return;request('/mailbox/accounts').then((r:any)=>setLinked((r.accounts||[]).filter((a:any)=>a.address&&a.provider!=='isiftmail').map((a:any)=>a.address))).catch(()=>{})},[request]);
   const [day,setDay]=useState<Date|null>(null);
   const scroller=useRef<HTMLDivElement>(null);
   const setV=(v:View)=>{setView(v);try{sessionStorage.setItem('isift.calview',v)}catch{}};
