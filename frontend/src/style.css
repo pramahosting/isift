@@ -2158,3 +2158,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .oc>.ol-rz{margin:0 -3px}
 @media(max-width:860px){.ws-two.contacts{grid-template-columns:1fr;gap:16px}.ws-two.contacts>.ol-rz{display:none}.ws-two.contacts>.ws-col{padding-left:0}.ct-side{width:auto!important;max-width:none}}
 @media(max-width:800px){.oc>.ol-rz{display:none}.oc-side{width:auto!important}}
+
+/* Mail: a delete button at the end of a row, shown on hover or keyboard focus (always on touch screens) */
+.ol-row .ol-del{display:none;position:absolute;right:8px;top:8px;width:30px;height:28px;align-items:center;justify-content:center;border:0;border-radius:6px;background:#fff;color:#a4262c;cursor:pointer;box-shadow:0 0 0 1px #e1e1e1}
+.ol-row .ol-del:hover{background:#fde7e9}
+.ol-row:hover .ol-del,.ol-row:focus-within .ol-del{display:inline-flex}
+.ol-row:hover .l1 time,.ol-row:focus-within .l1 time{visibility:hidden}
+@media(hover:none){.ol-row .ol-del{display:inline-flex;top:auto;bottom:8px;background:transparent;box-shadow:none}}

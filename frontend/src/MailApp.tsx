@@ -18,7 +18,8 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const [open,setOpen]=useState<Record<string,boolean>>({});const [fold,setFold]=useState<Record<string,any[]>>({});
   const [cur,setCur]=useState<{aid:string;folder:string}|null>(null);
   const [rows,setRows]=useState<any[]>([]);const [more,setMore]=useState(false);const [q,setQ]=useState('');const [busy,setBusy]=useState(false);const [err,setErr]=useState('');const [note,setNote]=useState('');
-  const [sel,setSel]=useState<string[]>([]);const [msg,setMsg]=useState<any>(null);
+  const [selAll,setSel]=useState<string[]>([]);const [msg,setMsg]=useState<any>(null);
+  const sel=selAll;
   const pending=React.useRef('');const picked=React.useRef(false);const [compose,setCompose]=useState<any>(null);const [adding,setAdding]=useState(false);const [editing,setEditing]=useState<any>(null);const [tab,setTab]=useState<'Home'|'View'>('Home');const [pane,setPane]=useState(true);
   const [ism,setIsm]=useState<any>(null);const [ismSetup,setIsmSetup]=useState(false);const [ismSet,setIsmSet]=useState<any>(null);const [ismDom,setIsmDom]=useState(false);const [ismPreset,setIsmPreset]=useState('');   // isiftmail: free iSift address for people with no email
 
@@ -61,18 +62,19 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
     setMsg({aid:r.aid,uid:r.uid,loading:true,subject:r.subject,from:r.from,at:r.at});
     try{const m=await request(`/mailbox/accounts/${r.aid}/message?folder=${encodeURIComponent(folder)}&uid=${r.uid}`);setMsg({...m,aid:r.aid,folder});setRows(rs=>rs.map(x=>rk(x)===rk(r)?{...x,unread:false}:x));loadFolders(r.aid)}catch(e:any){setErr(e.message);setMsg(null)}
   };
-  const act=async(action:string,target='')=>{
+  const act=async(action:string,target='',only?:string[])=>{
+    const sel=only||selAll;
     if(!cur||!sel.length||readOnly)return;setErr('');setBusy(true);
     const folder=cur.aid==='all'?'INBOX':cur.folder;
     try{
       const by:Record<string,number[]>={};sel.forEach(k=>{const [aid,uid]=[k.slice(0,k.lastIndexOf(':')),Number(k.slice(k.lastIndexOf(':')+1))];if(aid!=='ms')(by[aid]=by[aid]||[]).push(uid)});
       for(const aid of Object.keys(by))await request(`/mailbox/accounts/${aid}/action`,{method:'POST',body:JSON.stringify({folder,uids:by[aid],action,target})});
       const mine=new Set(sel);
-      if(['delete','archive','junk','move'].includes(action)){setRows(rs=>rs.filter(r=>!mine.has(rk(r))));if(msg&&mine.has(`${msg.aid}:${msg.uid}`))setMsg(null);setSel([])}
+      if(['delete','archive','junk','move'].includes(action)){setRows(rs=>rs.filter(r=>!mine.has(rk(r))));if(msg&&mine.has(`${msg.aid}:${msg.uid}`))setMsg(null);setSel(x=>only?x.filter(k=>!mine.has(k)):[])}
       else setRows(rs=>rs.map(r=>mine.has(rk(r))?{...r,unread:action==='unread',flagged:action==='flag'?true:action==='unflag'?false:r.flagged}:r));
       Object.keys(by).forEach(a=>loadFolders(a))}catch(e:any){setErr(e.message)}finally{setBusy(false)}
   };
-  const refresh=async()=>{if(!cur)return;const list=cur.aid==='all'?accts:[acct(cur.aid)].filter(Boolean);for(const a of list as any[]){if(a.people){try{const r=await request(`/oauth/accounts/${a.id}/sync`,{method:'POST'});setNote(r.message);onPulled()}catch{}}else if(!a.oauth&&a.provider!=='isiftmail'){try{const r=await request(`/mailbox/accounts/${a.id}/contacts`,{method:'POST'});if(r.added)setNote(r.message);onPulled()}catch{}}loadFolders(a.id)}fetchRows(cur,q)};
+  const refresh=async()=>{if(!cur)return;const list=cur.aid==='all'?accts:[acct(cur.aid)].filter(Boolean);for(const a of list as any[]){if(a.people){try{const r=await request(`/oauth/accounts/${a.id}/sync`,{method:'POST'});setNote(r.message);onPulled()}catch{}}else if(!a.oauth&&a.provider!=='isiftmail'){try{const r=await request(`/mailbox/accounts/${a.id}/contacts`,{method:'POST'});setNote(r.message);onPulled()}catch{}}loadFolders(a.id)}fetchRows(cur,q)};
   const reply=(all:boolean,fwd=false)=>{if(!msg||!msg.aid||msg.aid==='ms')return;const own=acct(msg.aid)?.address||'';const quoted=`\n\n— On ${msg.at?new Date(msg.at).toLocaleString():''}, ${msg.from} wrote:\n`+(msg.text||'').split('\n').map((l:string)=>'> '+l).join('\n');
     const strip=(s:string)=>(s||'').split(',').map(x=>x.trim()).filter(x=>x&&!x.toLowerCase().includes(own.toLowerCase())).join(', ');
     setCompose({aid:msg.aid,to:fwd?'':msg.reply_to||msg.from,cc:all?strip(`${msg.to||''}, ${msg.cc||''}`):'',subject:(fwd?'Fw: ':'Re: ')+String(msg.subject).replace(/^(re|fw|fwd):\s*/i,''),body:quoted,irt:fwd?'':msg.message_id||''})};
@@ -137,6 +139,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
               <input type="checkbox" aria-label={`Select ${r.subject}`} checked={sel.includes(rk(r))} onClick={e=>e.stopPropagation()} onChange={e=>setSel(s=>e.target.checked?[...s,rk(r)]:s.filter(x=>x!==rk(r)))}/>
               <span className="av" style={{background:hue(r.from||'?')}}>{initial(r.from||'?')}</span>
               <div className="mid"><div className="l1"><b className="who">{r.from||'Unknown'}</b><time>{when(r.at)}</time></div><div className="l2">{r.flagged&&<Star size={12} className="flag"/>}{r.subject}</div>{cur?.aid==='all'&&<div className="l4">{r.acct}</div>}<div className="l3">{r.preview}</div></div>
+              {!readOnly&&r.aid!=='ms'&&<button type="button" className="ol-del" title="Delete" aria-label={`Delete ${r.subject}`} disabled={busy} onClick={e=>{e.stopPropagation();act('delete','',[rk(r)])}}><Trash2 size={15}/></button>}
             </div>)}
             {!rows.length&&!busy&&cur&&!err&&<p className="muted pad">{q?'No messages match your search.':'Nothing in this folder.'}</p>}
             {busy&&<p className="muted pad">Loading…</p>}
