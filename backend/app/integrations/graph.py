@@ -21,7 +21,11 @@ class GraphClient:
         data={"client_id":settings.graph_client_id,"client_secret":settings.graph_client_secret,"grant_type":"client_credentials","scope":"https://graph.microsoft.com/.default"}
         async with httpx.AsyncClient(timeout=15) as c:
             r=await c.post(url,data=data)
-            if r.status_code>=400: raise GraphUnavailable(f"Microsoft token request failed ({r.status_code})")
+            if r.status_code>=400:
+                try: j=r.json(); why=str(j.get("error_description") or j.get("error") or "").split("\r\n")[0].split("\n")[0][:160]
+                except Exception: why=""
+                hint=" The saved client secret is probably wrong or has expired: an administrator should create a new client secret in Microsoft Entra (use its Value, not its Secret ID) and save it in Admin Console." if r.status_code in (400,401) and ("secret" in why.lower() or "AADSTS7000215" in why or "AADSTS7000222" in why or not why) else ""
+                raise GraphUnavailable(f"Microsoft token request failed ({r.status_code}){': '+why if why else ''}.{hint}")
             return r.json()["access_token"]
 
     async def get(self, path: str, params: dict | None=None):

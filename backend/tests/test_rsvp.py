@@ -85,3 +85,21 @@ def test_invite_pass_skips_passcode_and_waiting_room(client):
     assert go(invite=invite_pass(code, "sam@x.com"))["type"] == "welcome"             # personal link: straight in, no waiting room
     assert invite_pass_email("OTHER", invite_pass(code, "sam@x.com")) is None         # only for this meeting
     assert invite_pass_email(code, invite_pass(code, "sam@x.com", hours=-1)) is None  # and only for a while
+
+
+def test_invitations_are_sent_from_any_connected_mailbox_with_fallback(client, monkeypatch):
+    from app.integrations import mail as mailer
+    from app.services import rsvp
+    sent = []
+    async def fake_senders(db, user): return [{"address": "host@gmail.com", "id": "a1"}, {"address": "noreply@isift.au", "id": "p", "platform": True}]
+    async def fake_send(acct, to, subject, body, ics=None, *a, **k):
+        if acct["address"] == "host@gmail.com" and "bad@example.com" in to: raise mailer.MailError("The mail server refused the sign-in.")
+        sent.append((acct["address"], to, body, ics))
+    monkeypatch.setattr(rsvp, "senders", fake_senders); monkeypatch.setattr(mailer, "send", fake_send)
+    h = login(client)
+    r = client.post("/api/v1/meetings", json={"title": "Board", "start_at": "2030-01-01T10:00:00Z", "duration_minutes": 30, "provider": "room", "base_url": "http://t/", "invite": "pk@example.com"}, headers=h)
+    assert r.status_code == 200 and "Invitations sent" in r.json()["message"], r.text
+    frm, to, body, ics = sent[-1]; assert frm == "host@gmail.com" and to == ["pk@example.com"]
+    assert "#/rsvp/" in body and "?r=accepted" in body and b"METHOD:REQUEST" in ics
+    r2 = client.post("/api/v1/meetings", json={"title": "Two", "start_at": "2030-01-02T10:00:00Z", "duration_minutes": 30, "provider": "room", "base_url": "http://t/", "invite": "bad@example.com"}, headers=h)
+    assert "Invitations sent" in r2.json()["message"] and sent[-1][0] == "noreply@isift.au"       # the first mailbox failed, so the app's own sender was used

@@ -249,14 +249,15 @@ async def create_meeting(payload: dict, request: Request, user: User = Depends(p
             from app.services.invites import parse_recipients, build_ics
             try: inv = parse_recipients(str(payload["invite"]))
             except ValueError as exc: raise HTTPException(422, str(exc))
-            acct = await cal.get_mail(db, user.id)
-            if not acct: note = " Invitations were not sent: connect your mail account on the Connections page first."
+            from app.services import rsvp as _rs0
+            _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
+            if not acct: note = " Invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
             else:
                 try:
                     from app.services import rsvp as _rsvp
                     _body = f"{user.display_name or user.email} invited you to: {title}\nWhen: {start.astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\nJoin: {m0.join_url}\n" + (f"Passcode: {room.passcode}\n" if room.passcode else "") + ("Sign in with your account to join.\n" if room.access == "signed_in" else "") + (agenda or "")
                     _ics = build_ics(m0.id, title, start, start + timedelta(minutes=minutes), acct["address"], inv, m0.join_url, (f"Passcode: {room.passcode}\n" if room.passcode else "") + agenda)
-                    await _rsvp.send_each(acct, inv, f"Invitation: {title}", _body, m0, _rsvp.public_base(request), m0.join_url, _ics, agenda or ""); await _rsvp.note_invited(db, m0.id, inv)
+                    await _rsvp.send_each(_sl, inv, f"Invitation: {title}", _body, m0, _rsvp.public_base(request), m0.join_url, _ics, agenda or ""); await _rsvp.note_invited(db, m0.id, inv)
                     note = f" Invitations sent to {len(inv)}."
                 except mailer.MailError as exc: note = f" The room was created but invitations could not be sent: {exc}"
         return {"id": m0.id, "join_url": m0.join_url, "access": room.access, "passcode": room.passcode, "waiting_room": room.waiting_room, "message": ("Recurring meeting created: %d occurrences with one link. " % len(times) if recurring else "Meeting room created. Share the link; it opens in any browser. ") + note}
@@ -281,14 +282,15 @@ async def create_meeting(payload: dict, request: Request, user: User = Depends(p
     db.add(m); db.add(AuditLog(actor=user.email, action="meeting.create", resource_type="meeting", safe_metadata={"zoom": bool(join and ext.startswith("zoom:"))})); await db.commit()
     await db.refresh(m)
     if invited:
-        acct = await cal.get_mail(db, user.id)
-        if not acct: invite_note = " Invitations were not sent: connect your mail account on the Connections page first."
+        from app.services import rsvp as _rs0
+        _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
+        if not acct: invite_note = " Invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
         else:
             try:
                 ics = build_ics(m.id, title, start, start + timedelta(minutes=minutes), acct["address"], invited, join, agenda)
                 body = f"{user.display_name or user.email} invited you to: {title}\nWhen: {start.astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {join}\n" if join else "") + (f"\n{agenda}\n" if agenda else "")
                 from app.services import rsvp as _rsvp
-                await _rsvp.send_each(acct, invited, f"Invitation: {title}", body, m, _rsvp.public_base(request), join, ics, agenda or ""); await _rsvp.note_invited(db, m.id, invited)
+                await _rsvp.send_each(_sl, invited, f"Invitation: {title}", body, m, _rsvp.public_base(request), join, ics, agenda or ""); await _rsvp.note_invited(db, m.id, invited)
                 invite_note = f" Invitations sent to {len(invited)} {'person' if len(invited) == 1 else 'people'}."
             except mailer.MailError as exc: invite_note = f" The meeting was created but invitations could not be sent: {exc}"
     base_msg = {"zoom": "Zoom meeting created.", "teams": "Microsoft Teams meeting created.", "meet": "Google Meet meeting created."}.get(ext.split(":")[0], "Meeting added.")
@@ -537,8 +539,9 @@ async def change_meeting(meeting_id: str, payload: dict, request: Request, user:
     await db.commit()
     note = ""
     if payload.get("send_update") and room and (room.options or {}).get("invitees"):
-        acct = await cal.get_mail(db, user.id)
-        if not acct: note = " Updates were not sent: connect your mail account on the Connections page first."
+        from app.services import rsvp as _rs0
+        _sl = await _rs0.senders(db, user); acct = _sl[0] if _sl else None
+        if not acct: note = " Updates were not sent: add a mail account first (Mail, Add account, or Connections)."
         else:
             from app.services.invites import build_ics
             try:
@@ -546,7 +549,7 @@ async def change_meeting(meeting_id: str, payload: dict, request: Request, user:
                 body = (f"{user.display_name or user.email} updated the meeting: {m.title}\nWhen: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\nJoin: {m.join_url}\n"
                         + (f"Meeting ID: {room.code}\n" if room else "") + (f"Passcode: {room.passcode}\n" if room.passcode else "") + ("Sign in with your account to join.\n" if room.access == "signed_in" else "") + (f"\n{m.agenda}\n" if m.agenda else ""))
                 from app.services import rsvp as _rsvp
-                await _rsvp.send_each(acct, inv, f"Updated: {m.title}", body, m, _rsvp.public_base(request), m.join_url, build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), acct["address"], inv, m.join_url, (f"Passcode: {room.passcode}\n" if room.passcode else "") + (m.agenda or ""), sequence=int(datetime.now(timezone.utc).timestamp())), m.agenda or ""); await _rsvp.note_invited(db, m.id, inv)
+                await _rsvp.send_each(_sl, inv, f"Updated: {m.title}", body, m, _rsvp.public_base(request), m.join_url, build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), acct["address"], inv, m.join_url, (f"Passcode: {room.passcode}\n" if room.passcode else "") + (m.agenda or ""), sequence=int(datetime.now(timezone.utc).timestamp())), m.agenda or ""); await _rsvp.note_invited(db, m.id, inv)
                 if "start_at" in payload: await _rsvp.reset(db, m.id)
                 note = f" Updated invitation sent to {len(inv)}."
             except mailer.MailError as exc: note = f" Saved, but the update could not be emailed: {exc}"

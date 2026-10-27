@@ -83,15 +83,15 @@ async def accept_proposal(meeting_id: str, payload: dict, request: Request, user
     await db.commit(); await rsvp.reset(db, m.id)
     invited = sorted(set(v["invited"]) | set(((room.options or {}).get("invitees") or []) if room else []))
     note = " The meeting time was changed."
-    acct = await cal.get_mail(db, user.id)
+    _sl = await rsvp.senders(db, user); acct = _sl[0] if _sl else None
     if invited and acct:
         tz = await cal.user_timezone(db)
         try:
             body = f"{user.display_name or user.email} moved the meeting: {m.title}\nNew time: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {m.join_url}\n" if m.join_url else "")
             ics = build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), acct["address"], invited, m.join_url, m.agenda or "", sequence=int(datetime.now(timezone.utc).timestamp()))
-            await rsvp.send_each(acct, invited, f"Updated: {m.title}", body, m, rsvp.public_base(request), m.join_url, ics, m.agenda or "")
+            await rsvp.send_each(_sl, invited, f"Updated: {m.title}", body, m, rsvp.public_base(request), m.join_url, ics, m.agenda or "")
             note += f" Updated invitations were sent to {len(invited)}."
         except mailer.MailError as exc: note += f" They could not be emailed: {exc}"
-    elif invited: note += " Updated invitations were not sent: connect your mail account on the Connections page first."
+    elif invited: note += " Updated invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
     db.add(AuditLog(actor=user.email, action="meeting.accept_proposal", resource_type="meeting", safe_metadata={})); await db.commit()
     return {"message": note.strip(), "start_at": _aware(m.start_at).isoformat()}

@@ -75,10 +75,23 @@ async def record(db, meeting_id: str, email: str, status: str, proposed: str = "
 async def reset(db, meeting_id: str) -> None:
     v = await load(db, meeting_id); v["responses"] = {}; await save(db, meeting_id, v)
 
-async def send_each(acct: dict, recipients: list[str], subject: str, body: str, m, base: str, join_url: str | None, ics: bytes | None, details: str = "") -> None:
-    """One email per person, each with that person's own reply links (so the host knows who answered)."""
+async def senders(db, user) -> list[dict]:
+    """Where invitations are sent from: the host's own mailboxes first (so Accept / Decline pressed inside Gmail or Outlook comes back to the host),
+    then the app's own sender as a fallback."""
+    from app.api.routes_booking import _senders
+    out = await _senders(db, user)
+    return [a for a in out if not a.get("platform")] + [a for a in out if a.get("platform")]
+
+async def send_each(acct, recipients: list[str], subject: str, body: str, m, base: str, join_url: str | None, ics: bytes | None, details: str = "") -> None:
+    """One email per person, each with that person's own reply links (so the host knows who answered). `acct` is one account or a list to try in turn."""
     from app.integrations import mail as mailer
-    for r in recipients: await mailer.send(acct, [r], subject, body + footer(base, m, r, join_url, details), ics)
+    accts = acct if isinstance(acct, list) else [acct]
+    for r in recipients:
+        err = None
+        for a in accts:
+            try: await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), ics); err = None; break
+            except mailer.MailError as exc: err = exc
+        if err: raise err
 
 async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str, tz_name: str) -> None:
     """Email the host that someone replied. Uses the app's own sender, or the host's connected mail account."""
