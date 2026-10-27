@@ -34,7 +34,9 @@ def test_footer_has_reply_and_calendar_links():
     f = rsvp.footer("https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
     assert "#/rsvp/" in f and len(f) < 300 and "calendar.google.com" not in f          # one short link in the plain text
     h = rsvp.html_body("Hello\nJoin: https://isift.au/#/room/abc", "https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
-    assert "?r=accepted" not in h and "Yes / No / Maybe" in h and "?r=proposed" in h and "?r=calendar" in h          # no accept button that opens a web page
+    assert "?r=proposed" in h and "?r=calendar" in h          # no accept button that opens a web page
+    h2 = rsvp.html_body("Join: https://isift.au/#/room/abc", "https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc", "host@yahoo.com")
+    assert h2.index("#/room/abc") < h2.index(">Yes<") < h2.index(">No<") < h2.index(">Maybe<") and "mailto:host%40yahoo.com" in h2 and "isift-reply%3Am-1%3Aaccepted%3A" in h2 and "?r=accepted" not in h2
 
 
 def test_reply_reaches_host_and_proposal_moves_meeting(client):
@@ -138,7 +140,7 @@ def test_senders_use_only_the_login_address_and_never_the_app_sender(client, mon
     class U: email = "host@yahoo.com"; display_name = "Pramod Singh"
     assert [a["address"] for a in asyncio.run(rsvp.senders(None, U()))] == ["Host@Yahoo.com"]          # the login address alone
     class V: email = "nobody@corp.com"; display_name = "No Body"
-    assert [a["address"] for a in asyncio.run(rsvp.senders(None, V()))] == ["other@gmail.com", "Host@Yahoo.com"]
+    assert asyncio.run(rsvp.senders(None, V())) == []                                                      # login address not connected: no other mailbox is used
     async def only_app(db, owner): return [{"address": "app@gmail.com", "platform": True}]
     monkeypatch.setattr(routes_booking, "_senders", only_app)
     assert asyncio.run(rsvp.senders(None, U())) == []                                                      # invitations are never sent from the app's sender

@@ -45,18 +45,23 @@ def calendar_links(title: str, start: datetime, end: datetime, join_url: str | N
 
 def footer(base: str, m, email: str, join_url: str | None, details: str = "") -> str:
     """Plain-text end of the invitation. Yes / No / Maybe are the buttons the mail program shows at the top of the email; this link is only for suggesting another time or adding the event elsewhere."""
-    return f"\nUse the Yes, No or Maybe buttons at the top of this email to reply. To suggest another time or add this to a different calendar: {base}/#/rsvp/{make_token(m.id, email)}\n"
+    return f"\nTo reply, use the Yes / No / Maybe buttons at the bottom of this email (or the ones your mail program shows at the top). To suggest another time or add this to a calendar: {base}/#/rsvp/{make_token(m.id, email)}\n"
 
-def html_body(text: str, base: str, m, email: str, join_url: str | None) -> str:
-    """The same invitation as a small HTML page. Replying is done with the mail program's own Yes / No / Maybe buttons (from the attached calendar invitation), so no reply button opens a web page."""
+def html_body(text: str, base: str, m, email: str, join_url: str | None, host: str = "") -> str:
+    """The invitation as a small HTML page. Yes / No / Maybe sit at the bottom, below the meeting link: each opens a ready-written reply to the host's
+    mailbox (press Send), so nothing opens a web page. The mail program's own Yes / No / Maybe buttons at the top work as well."""
     from html import escape
     r = f"{base}/#/rsvp/{make_token(m.id, email)}"
     body = escape(text.strip()).replace("\n", "<br>")
     if join_url: body = body.replace(escape(join_url), f'<a href="{escape(join_url)}">{escape(join_url)}</a>')
+    def btn(label, word, status, strong=False):
+        href = "mailto:" + quote(host) + "?" + urlencode({"subject": f"{word}: {m.title}", "body": f"Just press Send.\n\nisift-reply:{m.id}:{status}:"}, quote_via=quote) if host else f"{r}?r={status}"
+        st = "background:#1a56db;color:#fff" if strong else "background:#fff;color:#1a56db"
+        return f'<a href="{href}" style="display:inline-block;margin:0 8px 8px 0;padding:9px 22px;border:1px solid #1a56db;border-radius:6px;{st};text-decoration:none;font-weight:600">{label}</a>'
     lk = lambda label, q: f'<a href="{r}?r={q}" style="color:#1a56db">{label}</a>'
     return ('<div style="font:15px/1.5 Arial,Helvetica,sans-serif;color:#202124">' + body +
-            '<p style="margin:18px 0 0;color:#5f6368;font-size:13px">To reply, use the <b>Yes / No / Maybe</b> buttons at the top of this email. '
-            'You can also ' + lk("suggest another time", "proposed") + " or " + lk("add it to a different calendar", "calendar") + ".</p></div>")
+            '<p style="margin:20px 0 8px;color:#5f6368">Will you join?</p><div>' + btn("Yes", "Accepted", "accepted", True) + btn("No", "Declined", "declined") + btn("Maybe", "Maybe", "tentative") + "</div>"
+            '<p style="margin:6px 0 0;color:#5f6368;font-size:13px">Each button opens a short reply to the host: just press Send. You can also ' + lk("suggest another time", "proposed") + " or " + lk("add it to a calendar", "calendar") + ".</p></div>")
 
 def set_organizer(ics: bytes | None, email: str, name: str = "") -> bytes | None:
     """Make the host's own address the organizer, so a Yes / No / Maybe pressed in the guest's mail program is emailed back to the host."""
@@ -92,14 +97,15 @@ NO_MAILBOX = "Connect your email so invitations go from your own address: open M
 
 async def senders(db, user, allow_app: bool = False) -> list[dict]:
     """Where invitations are sent from: always the host's own address. The mailbox that matches the sign-in email is used alone when it is connected
-    (Gmail, Outlook, Microsoft 365, Yahoo, a company mailbox: any kind). Otherwise the host's other connected mailboxes. The app's own sender is used only
-    when allow_app is set, for notices to the host themselves."""
+    (Gmail, Outlook, Microsoft 365, Yahoo, a company mailbox: any kind). If it is not connected, nothing is sent: no other mailbox and not the app's sender.
+    allow_app is for notices to the host themselves, which may use any of their mailboxes or the app's sender."""
     from app.api.routes_booking import _senders
     out = await _senders(db, user)
     own = [a for a in out if not a.get("platform")]
     mine = [a for a in own if (a.get("address") or "").lower() == (user.email or "").lower()]
     if mine: return mine[:1]
-    if own or not allow_app: return own
+    if not allow_app: return []                       # never another address: the person must connect their own login email
+    if own: return own
     name = (getattr(user, "display_name", "") or "").replace('"', "").strip()
     app = []
     for a in out:
@@ -117,7 +123,7 @@ async def send_each(acct, recipients: list[str], subject: str, body: str, m, bas
         for a in accts:
             try:
                 oi = set_organizer(ics, a["reply_to"]) if a.get("platform") and a.get("reply_to") else ics        # the app's sender: replies still go to the host
-                await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), oi, html=html_body(body, base, m, r, join_url)); err = None; used.append((r, a.get("address"))); break
+                await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), oi, html=html_body(body, base, m, r, join_url, a.get("address") or "")); err = None; used.append((r, a.get("address"))); break
             except mailer.MailError as exc: err = exc; skipped.append(f"{a.get('address')}: {exc}")
         if err: raise err
     return {"used": used, "skipped": skipped}
@@ -165,6 +171,14 @@ async def pull_replies(db, user, m) -> int:
             new = PARTSTAT[f["status"]]; old = v["responses"].get(f["who"])
             if old and old.get("status") == new: continue
             await record(db, m.id, f["who"], new); v = await load(db, m.id); n += 1
+        try: pairs = await asyncio.wait_for(mailer.find_button_replies(a), 20)
+        except Exception: continue
+        for who, text in pairs:
+            mm = re.search(r"isift-reply:([\w-]+):(accepted|declined|tentative):", text or "")
+            if not mm or mm.group(1) != m.id or not who: continue
+            old = v["responses"].get(who)
+            if old and old.get("status") == mm.group(2): continue
+            await record(db, m.id, who, mm.group(2)); v = await load(db, m.id); n += 1
     return n
 
 

@@ -160,6 +160,31 @@ def _find_replies_sync(acct: dict, days: int = 14, limit: int = 80) -> list[str]
         except Exception: pass
     return out
 
+def _find_button_replies_sync(acct: dict, days: int = 14, limit: int = 80) -> list[tuple[str, str]]:
+    """Answers sent with the Yes / No / Maybe buttons at the bottom of the invitation email: (sender address, message text)."""
+    m = _imap_connect(acct); out = []
+    try:
+        m.select("INBOX", readonly=True)
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%d-%b-%Y")
+        typ, data = m.search(None, "SINCE", since, "TEXT", "isift-reply")
+        ids = (data[0].split() if typ == "OK" and data and data[0] else [])[-limit:]
+        for i in ids:
+            typ, parts = m.fetch(i, "(BODY.PEEK[])")
+            if typ != "OK": continue
+            for p in parts:
+                if isinstance(p, tuple) and len(p[1]) < 3_000_000:
+                    msg = email.message_from_bytes(p[1], policy=policy.default); body = msg.get_body(preferencelist=("plain",))
+                    try: text = body.get_content() if body else ""
+                    except Exception: text = ""
+                    out.append((email.utils.parseaddr(str(msg.get("From", "")))[1].lower(), text))
+    except imaplib.IMAP4.error as exc: raise MailError(f"The mailbox could not be searched ({exc}).")
+    finally:
+        try: m.logout()
+        except Exception: pass
+    return out
+
+async def find_button_replies(acct: dict, days: int = 14) -> list[tuple[str, str]]: return await asyncio.to_thread(_find_button_replies_sync, acct, days)
+
 async def find_replies(acct: dict, days: int = 14) -> list[str]: return await asyncio.to_thread(_find_replies_sync, acct, days)
 
 def _test_sync(acct: dict):

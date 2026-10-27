@@ -125,7 +125,7 @@ async def resend_invites(meeting_id: str, payload: dict, request: Request, user:
                 body = (f"{user.display_name or user.email} invited you to: {m.title}\nWhen: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {m.join_url}\n" if m.join_url else "")
                         + (f"Meeting ID: {room.code}\n" if room else "") + (f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (f"\n{m.agenda}\n" if m.agenda else ""))
                 if a.get("platform") and a.get("reply_to"): ics = rsvp.set_organizer(ics, a["reply_to"])
-                await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url))
+                await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url, a["address"]))
                 sent.append({"to": to, "from": a["address"], "skipped": list(reasons)}); await rsvp.note_invited(db, m.id, [to]); ok = True; break
             except mailer.MailError as exc: reasons.append(f"{a['address']}: {exc}")
         if not ok: failed.append({"to": to, "reasons": reasons})
@@ -148,3 +148,12 @@ async def rsvp_ics(token: str, db: AsyncSession = Depends(get_db)):
     host = await db.get(User, m.owner_id)
     data = build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), host.email if host else "noreply@isift.au", [email], m.join_url, m.agenda or "")
     return Response(data, media_type="text/calendar", headers={"Content-Disposition": 'attachment; filename="invite.ics"'})
+
+
+@router.get("/invite-sender")
+async def invite_sender(user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Which address meeting invitations will be sent from, and whether the sign-in email is connected."""
+    from app.api.routes_booking import _senders
+    out = await _senders(db, user)
+    sl = await rsvp.senders(db, user)
+    return {"login": user.email, "from": sl[0]["address"] if sl else "", "connected": bool(sl), "mailboxes": [a.get("address") for a in out if not a.get("platform")]}
