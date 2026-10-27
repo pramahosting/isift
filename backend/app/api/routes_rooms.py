@@ -15,13 +15,13 @@ from urllib.parse import quote as _urlquote, urlsplit, urlunsplit
 from fastapi import APIRouter, Header, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.core.security import principal
 from app.core import runtime_settings as rs
-from app.models import User, Meeting, Room, RoomRecording, Job, AuditLog
+from app.models import User, Meeting, Room, RoomRecording, Job, AuditLog, IntegrationSetting
 
 log = logging.getLogger("isift")
 from app.services import webinar_live as _WLIVE, webinars as _WBS
@@ -59,6 +59,24 @@ async def ice_config() -> list[dict]:
         out.extend(_TURN_CACHE["servers"] if _TURN_CACHE["key"] == key else [])
     if not any(str(x.get("urls")).startswith("stun:") for x in out): out.insert(0, {"urls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]})
     return out
+
+def _invite_sig(body: str) -> str: return hmac.new(settings.local_auth_secret.encode(), ("invite-pass:" + body).encode(), "sha256").hexdigest()[:32]
+
+def invite_pass(code: str, email: str, hours: int = 12) -> str:
+    """A signed pass put in the link of an invitation sent from inside a running meeting: whoever opens it walks straight in
+    (no passcode, no waiting room) for the next few hours. Sign-in rules still apply."""
+    import base64
+    body = base64.urlsafe_b64encode(f"{code}|{email.lower()}|{int(time.time()) + hours * 3600}".encode()).decode().rstrip("=")
+    return f"{body}.{_invite_sig(body)}"
+
+def invite_pass_email(code: str, tok) -> str | None:
+    import base64
+    try:
+        body, sig = str(tok or "").split(".", 1)
+        if not hmac.compare_digest(sig, _invite_sig(body)): return None
+        c, email, exp = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode().split("|")
+        return email if c == code and int(exp) > time.time() else None
+    except Exception: return None
 
 def room_url(base_url: str, code: str) -> str:
     p = urlsplit(base_url or "")
@@ -176,17 +194,18 @@ async def invite_people(code: str, payload: dict, user: User = Depends(principal
     link = room_url(str(payload.get("base_url") or ""), code); who = user.display_name or user.email
     note = str(payload.get("message") or "").strip()[:500]
     host = room.host_id == user.id
-    lines = [f"{who} invites you to join the meeting “{room.title}” now.", "", f"Join: {link}", f"Meeting ID: {code}"]
-    if room.access == "passcode": lines.append(f"Passcode: {room.passcode}" if host else "This meeting needs a passcode: ask the person who invited you.")
+    lines = [f"{who} invites you to join the meeting “{room.title}” now.", "", "JOINLINK", f"Meeting ID: {code}"]
+    if room.access == "passcode": lines.append("This link gets you straight in. If it asks for a passcode, ask the person who invited you.")
     if note: lines += ["", note]
     subject = f"{who} invited you to “{room.title}”"
     senders = await _senders(db, user); emailed, failed, alerted = [], [], []
     for to in emails:
-        await notify(db, to, "invite", f"{who} invited you to “{room.title}”", note or "The meeting is happening now.", link, who); alerted.append(to)
+        mine = f"{link}?i={invite_pass(code, to)}"          # a personal link that lets this person straight in
+        await notify(db, to, "invite", f"{who} invited you to “{room.title}”", note or "The meeting is happening now.", mine, who); alerted.append(to)
         if not senders: continue
         err = ""
         for acct in senders:
-            try: await mailer.send(acct, [to], subject, "\n".join(lines)); emailed.append(to); err = ""; break
+            try: await mailer.send(acct, [to], subject, "\n".join(lines).replace("JOINLINK", f"Join now: {mine}")); emailed.append(to); err = ""; break
             except mailer.MailError as exc: err = str(exc)
         if err: failed.append({"to": to, "reason": err})
     db.add(AuditLog(actor=user.email, action="room.invite", resource_type="room", safe_metadata={"people": len(emails)})); await db.commit()
@@ -194,10 +213,21 @@ async def invite_people(code: str, payload: dict, user: User = Depends(principal
     msg += (f" and {len(emailed)} got an email." if emailed else ".") if senders else ". No email account is set up (Admin Console, Email sent by the app), so no email was sent."
     return {"alerted": alerted, "emailed": emailed, "failed": failed, "message": msg}
 
+async def _host_code(db: AsyncSession, code: str, create: bool = False) -> str | None:
+    """The host code of a room: a second secret, separate from the guest passcode, that lets the host be recognised when the link
+    is opened in a browser that is not signed in. Created the first time the host looks at it."""
+    row = await db.get(IntegrationSetting, f"hostcode:{code}")
+    if row and (row.value or {}).get("code"): return row.value["code"]
+    if not create: return None
+    k = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZ23456789") for _ in range(8)); k = k[:4] + "-" + k[4:]
+    if row: row.value = {"code": k}
+    else: db.add(IntegrationSetting(key=f"hostcode:{code}", value={"code": k}))
+    await db.commit(); return k
+
 @router.get("/rooms/{code}/host")
 async def room_host_view(code: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     room = await _host_room_any(db, code, user)
-    return {"access": room.access, "passcode": room.passcode, "waiting_room": room.waiting_room, "url": (await db.get(Meeting, room.meeting_id)).join_url if room.meeting_id else None}
+    return {"host_code": await _host_code(db, code, True), "access": room.access, "passcode": room.passcode, "waiting_room": room.waiting_room, "url": (await db.get(Meeting, room.meeting_id)).join_url if room.meeting_id else None}
 
 @router.patch("/rooms/{code}")
 async def room_change(code: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -575,9 +605,16 @@ async def room_socket(ws: WebSocket, code: str):
             await _send(ws, {"type": "error", "message": "This meeting has ended or the link is not valid."}); await ws.close(); return
         user = await _user_from_token(first.get("token"))
         is_host = bool(user and user.id == host_id)
+        if not is_host and str(first.get("host_code") or "").strip():          # not signed in as the host: the separate host code proves who they are
+            async with SessionLocal() as _hdb: real_hc = await _host_code(_hdb, code)
+            _hc = re.sub(r"[^A-Z0-9]", "", str(first.get("host_code")).upper()); _hc = _hc[:4] + "-" + _hc[4:]
+            ok_hc, why_hc = _passcode_ok(code + "#host", _hc, real_hc)
+            if not ok_hc: await _send(ws, {"type": "error", "code": "hostcode", "message": why_hc.replace("passcode", "host code")}); await ws.close(); return
+            is_host = True
         if access == "signed_in" and not user:
             await _send(ws, {"type": "error", "code": "signin", "message": "Sign in to join this meeting. It is only open to people with an account."}); await ws.close(); return
-        if access == "passcode" and not is_host:
+        inv_email = invite_pass_email(code, first.get("invite"))        # a personal link from someone inside the meeting
+        if access == "passcode" and not is_host and not inv_email:
             ok, why = _passcode_ok(code, first.get("passcode"), passcode)
             if not ok: await _send(ws, {"type": "error", "code": "passcode", "message": why}); await ws.close(); return
         name = (str(first.get("name") or "").strip() or (user.display_name if user else "") or "Guest")[:60]
@@ -634,7 +671,7 @@ async def room_socket(ws: WebSocket, code: str):
                 except Exception: pass
         if state.get("locked") and not is_host and not cohost_join:
             await _send(ws, {"type": "error", "code": "locked", "message": "The host has locked this meeting, so nobody new can join right now."}); pid = None; await ws.close(); return
-        if waiting_room and not is_host and not cohost_join:
+        if waiting_room and not is_host and not cohost_join and not inv_email:
             state["waiting"][pid] = {"ws": ws, "name": name, "user_id": user.id if user else None}
             await _send(ws, {"type": "waiting"}); await _tell_hosts(state)
         elif web_att and not state.get("web_live"):
@@ -1078,7 +1115,7 @@ async def save_recording(code: str, consent_acknowledged: bool = Form(...), clou
     db.add(AuditLog(actor=user.email, action="room.recording.saved", resource_type="room", safe_metadata={"bytes": size, "video": has_video}))
     await db.commit()
     if cloud:
-        emailed = bool(_mail_app_sender())
+        emailed = bool(await _recording_mail_account(user.email))
         if emailed:
             asyncio.create_task(_email_recording_link(user.email, user.display_name or "", room.title, rid, has_video, expires, _public_base(request)))
             note += " An email with a download link is on its way to you."
@@ -1124,9 +1161,20 @@ def recording_download_url(base: str, rid: str, expires_at: datetime | None) -> 
     exp = int(end.timestamp())
     return f"{base}/api/v1/recordings/{rid}/download?exp={exp}&sig={_dl_sig(rid, exp)}", end
 
+async def _recording_mail_account(to: str):
+    """The app's own sender, or else the host's connected mail account (so the link still arrives when Admin has no sender set up)."""
+    acct = _mail_app_sender()
+    if acct: return acct
+    try:
+        from app.services import calendar_sync as cal
+        async with SessionLocal() as db:
+            u = (await db.execute(select(User).where(func.lower(User.email) == to.lower()))).scalars().first()
+            return await cal.get_mail(db, u.id) if u else None
+    except Exception: return None
+
 async def _email_recording_link(to: str, name: str, title: str, rid: str, has_video: bool, expires_at, base: str) -> None:
     from app.integrations import mail
-    acct = _mail_app_sender()
+    acct = await _recording_mail_account(to)
     if not acct: return
     url, end = recording_download_url(base, rid, expires_at)
     kind = "video" if has_video else "audio"

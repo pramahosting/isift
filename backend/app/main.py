@@ -22,6 +22,7 @@ from app.api.routes_manuals import router as manuals_router
 from app.api.routes_account import router as account_router
 from app.api.routes_billing import router as billing_router
 from app.api.routes_support import router as support_router
+from app.api.routes_rsvp import router as rsvp_router
 from app.core.config import settings
 
 _bad = settings.hosted_problems()
@@ -62,6 +63,7 @@ app.include_router(manuals_router)
 app.include_router(account_router)
 app.include_router(billing_router)
 app.include_router(support_router)
+app.include_router(rsvp_router)
 
 @app.on_event("startup")
 async def load_saved_settings():

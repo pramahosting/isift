@@ -58,7 +58,11 @@ def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | 
     msg = EmailMessage(); msg["From"] = acct.get("from") or acct["address"];
     if acct.get("reply_to"): msg["Reply-To"] = acct["reply_to"]
     msg["To"] = ", ".join(to); msg["Subject"] = subject; msg.set_content(body)
-    if ics: msg.add_attachment(ics, maintype="text", subtype="calendar", filename="invite.ics", params={"method": method})
+    if ics:
+        # The calendar part sits inline beside the text (multipart/alternative) so Gmail, Outlook and Apple Mail show Accept / Decline / Maybe
+        # and put the event in the person's calendar; the same file is attached for programs that only look for an attachment.
+        msg.add_alternative(ics.decode("utf-8"), subtype="calendar", params={"method": method})
+        msg.add_attachment(ics, maintype="application", subtype="ics", filename="invite.ics")
     for fname, data, mime in attachments or []:                      # (file name, bytes, "type/subtype")
         mt, st = mime.split("/", 1); msg.add_attachment(data, maintype=mt, subtype=st, filename=fname)
     s = _smtp_connect(acct)

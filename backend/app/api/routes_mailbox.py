@@ -102,7 +102,9 @@ async def pull_contacts(aid: str, user: User = Depends(principal), db: AsyncSess
     try: people = await mb.correspondents(a)
     except mailer.MailError as exc: raise _wrap(exc)
     r = await import_contacts(db, user, people, a["address"])
-    return {"message": f"{r['added']} new contacts from the people you write to in {a['address']}.", "added": r["added"], "found": len(people)}
+    msg = (f"{r['added']} new contacts added from {a['address']} ({len(people)} people found in its latest mail)." if people
+           else f"No people were found in the latest Inbox and Sent mail of {a['address']}. If the mailbox has mail, check it is not empty or still loading.")
+    return {"message": msg, "added": r["added"], "found": len(people)}
 
 @router.patch("/accounts/{aid}")
 async def edit_account(aid: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
