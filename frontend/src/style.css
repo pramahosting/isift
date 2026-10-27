@@ -2144,3 +2144,9 @@ html,body{max-width:100%;overflow-x:hidden}
 .ol-rz:hover:before,.ol-rz:focus-visible:before{background:#0f6cbd;width:3px;left:2px}
 .ol-rz:focus-visible{outline:none}
 @media(max-width:720px){.ol-rz{display:none}.ol-folders,.ol-list{width:auto!important}}
+/* Mail: account row, arrow + address + edit/delete icons on one line */
+.ol-folders .ol-acctrow{display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:0}
+.ol-folders .ol-acctrow .ol-h{display:flex;flex-direction:row;align-items:center;flex:1 1 auto;width:auto;min-width:0;gap:4px;padding:8px 2px 8px 6px;line-height:1.2}
+.ol-folders .ol-acctrow .ol-h svg{flex:none}
+.ol-folders .ol-acctrow .ol-h b{flex:1 1 auto;min-width:0}
+.ol-folders .ol-acctrow .ol-rm{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:28px;padding:0}

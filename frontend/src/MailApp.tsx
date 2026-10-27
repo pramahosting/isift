@@ -22,7 +22,7 @@ export function MailApp({request,isAdmin,goSettings,onPulled,go}:{request:any;is
   const pending=React.useRef('');const picked=React.useRef(false);const [compose,setCompose]=useState<any>(null);const [adding,setAdding]=useState(false);const [editing,setEditing]=useState<any>(null);const [tab,setTab]=useState<'Home'|'View'>('Home');const [pane,setPane]=useState(true);
   const [ism,setIsm]=useState<any>(null);const [ismSetup,setIsmSetup]=useState(false);const [ismSet,setIsmSet]=useState<any>(null);const [ismDom,setIsmDom]=useState(false);const [ismPreset,setIsmPreset]=useState('');   // isiftmail: free iSift address for people with no email
 
-  const [wF,setWF]=useState<number>(()=>{try{return Math.min(480,Math.max(140,Number(localStorage.getItem('isift.mail.wf'))||250))}catch{return 250}});
+  const [wF,setWF]=useState<number>(()=>{try{return Math.min(480,Math.max(140,Number(localStorage.getItem('isift.mail.wf'))||280))}catch{return 280}});
   const [wL,setWL]=useState<number>(()=>{try{return Math.min(800,Math.max(220,Number(localStorage.getItem('isift.mail.wl'))||360))}catch{return 360}});
   /** Drag a divider to resize the folder pane or the message list. The sizes are remembered on this device. */
   const drag=(which:'f'|'l')=>(e:React.PointerEvent)=>{e.preventDefault();const x0=e.clientX,w0=which==='f'?wF:wL;const lo=which==='f'?140:220,hi=which==='f'?480:800;
