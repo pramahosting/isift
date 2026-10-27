@@ -2,7 +2,7 @@
 sending meeting invitations on their behalf, and picking up calendar invitations (iCalendar attachments) from the inbox.
 Message text is never stored: only the calendar data inside invitations is read.
 """
-import asyncio, base64, email, imaplib, smtplib, ssl
+import asyncio, base64, email, imaplib, re, smtplib, socket, ssl
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email import policy
@@ -21,13 +21,24 @@ PRESETS = {
 }
 ALLOWED_PORTS = {25, 465, 587, 2525, 143, 993}
 
+def clean_host(host: str) -> str:
+    """Tidy a pasted server name: drop scheme, path, :port, spaces and invisible characters."""
+    h = "".join(ch for ch in str(host or "") if ch.isprintable() and not ch.isspace() and ch not in "\u200b\u200c\u200d\ufeff\u00a0")
+    h = re.sub(r"^[a-z][a-z0-9+.-]*://", "", h, flags=re.I).split("/")[0].split("?")[0]
+    if "@" in h: h = h.rsplit("@", 1)[1]
+    if h.count(":") == 1: h = h.split(":")[0]
+    return h.strip(".").lower()
+
 def _check(host: str, port: int):
     if not host or port not in ALLOWED_PORTS: raise MailError("That mail server address or port is not allowed.")
     own = {h.strip().lower() for h in (settings.isiftmail_imap_host, settings.isiftmail_smtp_host) if (h or "").strip()}      # iSift's own mail server (isiftmail) may sit on a private network
-    if not settings.calendar_feed_allow_private and host.lower() not in own and not ics_feed._public(host): raise MailError("That mail server is not a public address, so it was refused.")
+    if not settings.calendar_feed_allow_private and host.lower() not in own:
+        try: public = ics_feed._public(host)
+        except ics_feed.FeedError: raise MailError(f"The server name \"{host}\" was not found. Check it for typos.")
+        if not public: raise MailError("That mail server is not a public address, so it was refused.")
 
 def _smtp_connect(acct: dict):
-    host, port = acct["smtp_host"], int(acct["smtp_port"]); _check(host, port)
+    host, port = clean_host(acct["smtp_host"]), int(acct["smtp_port"]); _check(host, port)
     try:
         if port == 465: s = smtplib.SMTP_SSL(host, port, timeout=20, context=ssl.create_default_context())
         else:
@@ -40,7 +51,8 @@ def _smtp_connect(acct: dict):
         elif acct.get("username"): s.login(acct["username"], acct["password"])
         return s
     except smtplib.SMTPAuthenticationError: raise MailError("The mail server refused the sign-in. Use an app password and your full address.")
-    except (smtplib.SMTPException, OSError) as exc: raise MailError(f"Could not use the sending server ({type(exc).__name__}).")
+    except socket.gaierror: raise MailError(f"The sending server name \"{host}\" was not found. Check it for typos (for example smtpout.secureserver.net).")
+    except (smtplib.SMTPException, OSError) as exc: raise MailError(f"Could not use the sending server {host}:{port} ({type(exc).__name__}).")
 
 def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, method: str = "REQUEST", attachments: list | None = None):
     msg = EmailMessage(); msg["From"] = acct.get("from") or acct["address"];
@@ -76,7 +88,7 @@ async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | 
     await asyncio.to_thread(_send_sync, acct, to, subject, body, ics, "REQUEST", attachments)
 
 def _imap_connect(acct: dict):
-    host, port = acct["imap_host"], int(acct["imap_port"]); _check(host, port)
+    host, port = clean_host(acct["imap_host"]), int(acct["imap_port"]); _check(host, port)
     try:
         m = imaplib.IMAP4_SSL(host, port, ssl_context=ssl.create_default_context(), timeout=25) if port != 143 else imaplib.IMAP4(host, port, timeout=25)
         if acct.get("access_token"):
@@ -85,7 +97,8 @@ def _imap_connect(acct: dict):
         else: m.login(acct["username"], acct["password"])
         return m
     except imaplib.IMAP4.error: raise MailError("The mailbox refused the sign-in. Use an app password and your full address.")
-    except OSError as exc: raise MailError(f"Could not reach the mailbox ({type(exc).__name__}).")
+    except socket.gaierror: raise MailError(f"The reading server name \"{host}\" was not found. Check it for typos (for example imap.secureserver.net).")
+    except OSError as exc: raise MailError(f"Could not reach the mailbox at {host}:{port} ({type(exc).__name__}).")
 
 def _calendar_parts(raw: bytes) -> list[str]:
     msg = email.message_from_bytes(raw, policy=policy.default); out = []
