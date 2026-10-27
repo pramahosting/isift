@@ -31,5 +31,7 @@ def build_ics(uid: str, title: str, start: datetime, end: datetime, organizer: s
     lines += [f"ATTENDEE;RSVP=TRUE;PARTSTAT=NEEDS-ACTION:mailto:{a}" for a in attendees]
     if desc.strip(): lines.append(f"DESCRIPTION:{_esc(desc)}")
     if join_url: lines += [f"LOCATION:{_esc(join_url)}", f"URL:{join_url}"]
-    lines += ["STATUS:CANCELLED" if cancel else "STATUS:CONFIRMED", f"SEQUENCE:{sequence}", "END:VEVENT", "END:VCALENDAR"]
+    lines += ["STATUS:CANCELLED" if cancel else "STATUS:CONFIRMED", f"SEQUENCE:{sequence}"]
+    if not cancel: lines += ["BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:{_esc('iSift meeting: ' + title + ' starts in 10 minutes')}", "TRIGGER:-PT10M", "END:VALARM"]   # the reminder is the calendar's own, headed with the iSift title
+    lines += ["END:VEVENT", "END:VCALENDAR"]
     return ("\r\n".join(_fold(l) for l in lines) + "\r\n").encode()

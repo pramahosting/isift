@@ -44,12 +44,18 @@ def calendar_links(title: str, start: datetime, end: datetime, join_url: str | N
     }
 
 def footer(base: str, m, email: str, join_url: str | None, details: str = "") -> str:
-    """Plain-text block for the invitation email: reply links, then add-to-calendar links."""
-    t = make_token(m.id, email); r = f"{base}/#/rsvp/{t}"; cl = calendar_links(m.title, m.start_at, m.end_at, join_url, details)
-    return ("\n— Reply to this invitation —\n"
-            f"Accept: {r}?r=accepted\nMaybe: {r}?r=tentative\nDecline: {r}?r=declined\nSuggest another day or time: {r}?r=proposed\n"
-            "\n— Add it to your calendar —\n"
-            f"Google Calendar: {cl['google']}\nOutlook.com: {cl['outlook']}\nMicrosoft 365: {cl['office365']}\nYahoo Calendar: {cl['yahoo']}\n")
+    """Plain-text end of the invitation: one short link to answer or add the event to a calendar."""
+    return f"\nAccept, decline or add to your calendar: {base}/#/rsvp/{make_token(m.id, email)}\n"
+
+def html_body(text: str, base: str, m, email: str, join_url: str | None) -> str:
+    """The same invitation as a small HTML page: the message, then one-word links (Accept, Maybe, Decline, Suggest a time, Add to calendar)."""
+    from html import escape
+    r = f"{base}/#/rsvp/{make_token(m.id, email)}"
+    body = escape(text.strip()).replace("\n", "<br>")
+    if join_url: body = body.replace(escape(join_url), f'<a href="{escape(join_url)}">{escape(join_url)}</a>')
+    a = lambda label, q, bg="#fff", fg="#1a56db": f'<a href="{r}?r={q}" style="display:inline-block;margin:0 6px 8px 0;padding:8px 16px;border:1px solid #1a56db;border-radius:6px;background:{bg};color:{fg};text-decoration:none;font-weight:600">{label}</a>'
+    return ('<div style="font:15px/1.5 Arial,Helvetica,sans-serif;color:#202124">' + body +
+            '<p style="margin:18px 0 6px;color:#5f6368">Will you come?</p><div>' + a("Accept", "accepted", "#1a56db", "#fff") + a("Maybe", "tentative") + a("Decline", "declined") + a("Suggest a time", "proposed") + a("Add to calendar", "calendar") + "</div></div>")
 
 def _key(meeting_id: str) -> str: return f"rsvp:{meeting_id}"
 
@@ -80,7 +86,14 @@ async def senders(db, user) -> list[dict]:
     then the app's own sender as a fallback."""
     from app.api.routes_booking import _senders
     out = await _senders(db, user)
-    return [a for a in out if not a.get("platform")] + [a for a in out if a.get("platform")]
+    own = [a for a in out if not a.get("platform")]
+    own.sort(key=lambda a: (a.get("address") or "").lower() != (user.email or "").lower())          # the mailbox that is the host's sign-in address goes first
+    name = (getattr(user, "display_name", "") or "").replace('"', "").strip()
+    app = []
+    for a in out:
+        if a.get("platform"):                                   # the app's sender: show the host's name, and send replies to the host's own address
+            a = dict(a); a["from"] = f'{name or user.email} via iSift <{a.get("address")}>'; a["reply_to"] = user.email; app.append(a)
+    return own + app
 
 async def send_each(acct, recipients: list[str], subject: str, body: str, m, base: str, join_url: str | None, ics: bytes | None, details: str = "") -> None:
     """One email per person, each with that person's own reply links (so the host knows who answered). `acct` is one account or a list to try in turn."""
@@ -89,7 +102,7 @@ async def send_each(acct, recipients: list[str], subject: str, body: str, m, bas
     for r in recipients:
         err = None
         for a in accts:
-            try: await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), ics); err = None; break
+            try: await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), ics, html=html_body(body, base, m, r, join_url)); err = None; break
             except mailer.MailError as exc: err = exc
         if err: raise err
 
@@ -97,12 +110,14 @@ async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str
     """Email the host that someone replied. Uses the app's own sender, or the host's connected mail account."""
     from app.integrations import mail as mailer
     from app.services import signup, calendar_sync as cal
-    acct = signup.app_sender() or await cal.get_mail(db, host.id)
-    if not acct: return
+    accts = await senders(db, host)
+    if not accts:
+        log.warning("Reply from %s to %s not emailed: no mail account is set up", who, m.title); return
     body = f"{who} {LABEL.get(status, status)} your meeting: {m.title}\n"
     if status == "proposed" and proposed: body += f"Suggested time: {proposed}\n"
     if note: body += f"Note: {note}\n"
     body += "\nOpen the meeting in iSift (Meetings, then the meeting) to see every reply"
     body += " and use the suggested time." if status == "proposed" else "."
-    try: await mailer.send(acct, [host.email], f"{who} {LABEL.get(status, status)}: {m.title}", body)
-    except Exception: log.exception("Could not email the host about a reply")
+    for a in accts:
+        try: await mailer.send(a, [host.email], f"{who} {LABEL.get(status, status)}: {m.title}", body); return
+        except Exception: log.exception("Could not email the host about a reply (from %s)", a.get("address"))

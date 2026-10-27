@@ -54,10 +54,14 @@ def _smtp_connect(acct: dict):
     except socket.gaierror: raise MailError(f"The sending server name \"{host}\" was not found. Check it for typos (for example smtpout.secureserver.net).")
     except (smtplib.SMTPException, OSError) as exc: raise MailError(f"Could not use the sending server {host}:{port} ({type(exc).__name__}).")
 
-def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, method: str = "REQUEST", attachments: list | None = None):
+def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, method: str = "REQUEST", attachments: list | None = None, html: str | None = None):
     msg = EmailMessage(); msg["From"] = acct.get("from") or acct["address"];
     if acct.get("reply_to"): msg["Reply-To"] = acct["reply_to"]
     msg["To"] = ", ".join(to); msg["Subject"] = subject; msg.set_content(body)
+    # Headers that mail filters expect from a genuine sender: a date and a message id from the sender's own domain.
+    msg["Date"] = email.utils.formatdate(localtime=False); msg["Message-ID"] = email.utils.make_msgid(domain=(msg["From"].rsplit("@", 1)[-1].strip(" >") or "isift.au"))
+    msg["Auto-Submitted"] = "auto-generated"
+    if html: msg.add_alternative(html, subtype="html")
     if ics:
         # The calendar part sits inline beside the text (multipart/alternative) so Gmail, Outlook and Apple Mail show Accept / Decline / Maybe
         # and put the event in the person's calendar; the same file is attached for programs that only look for an attachment.
@@ -72,9 +76,10 @@ def _send_sync(acct: dict, to: list[str], subject: str, body: str, ics: bytes | 
         try: s.quit()
         except Exception: pass
 
-async def _send_resend(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None, attachments: list | None):
+async def _send_resend(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None, attachments: list | None, html: str | None = None):
     import httpx
     j = {"from": acct.get("from") or acct["address"], "to": to, "subject": subject, "text": body}
+    if html: j["html"] = html
     if acct.get("reply_to"): j["reply_to"] = acct["reply_to"]
     files = [{"filename": "invite.ics", "content": base64.b64encode(ics).decode(), "content_type": "text/calendar"}] if ics else []
     files += [{"filename": f, "content": base64.b64encode(d).decode()} for f, d, _m in attachments or []]
@@ -87,9 +92,9 @@ async def _send_resend(acct: dict, to: list[str], subject: str, body: str, ics: 
         except Exception: why = r.text
         raise MailError(f"The email service refused the message: {str(why)[:160]}")
 
-async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, attachments: list | None = None):
-    if acct.get("resend_key"): return await _send_resend(acct, to, subject, body, ics, attachments)
-    await asyncio.to_thread(_send_sync, acct, to, subject, body, ics, "REQUEST", attachments)
+async def send(acct: dict, to: list[str], subject: str, body: str, ics: bytes | None = None, attachments: list | None = None, html: str | None = None):
+    if acct.get("resend_key"): return await _send_resend(acct, to, subject, body, ics, attachments, html)
+    await asyncio.to_thread(_send_sync, acct, to, subject, body, ics, "REQUEST", attachments, html)
 
 def _imap_connect(acct: dict):
     host, port = clean_host(acct["imap_host"]), int(acct["imap_port"]); _check(host, port)

@@ -95,3 +95,50 @@ async def accept_proposal(meeting_id: str, payload: dict, request: Request, user
     elif invited: note += " Updated invitations were not sent: add a mail account first (Mail, Add account, or Connections)."
     db.add(AuditLog(actor=user.email, action="meeting.accept_proposal", resource_type="meeting", safe_metadata={})); await db.commit()
     return {"message": note.strip(), "start_at": _aware(m.start_at).isoformat()}
+
+
+@router.post("/meetings/{meeting_id}/resend-invites")
+async def resend_invites(meeting_id: str, payload: dict, request: Request, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Send the invitation again to everyone invited (or one address) and say exactly which mailbox sent it, or why none could."""
+    from app.api.routes_connections import _room_for
+    from app.integrations import mail as mailer
+    from app.services.invites import build_ics
+    m = await _mine(db, user, meeting_id)
+    if m.status == "cancelled": raise HTTPException(409, "This meeting was cancelled.")
+    v = await rsvp.load(db, m.id); room = await _room_for(db, m)
+    invited = sorted(set(v["invited"]) | set(((room.options or {}).get("invitees") or []) if room else []))
+    only = str(payload.get("email") or "").strip().lower()
+    if only: invited = [only] if only in invited else []
+    if not invited: raise HTTPException(422, "Nobody is invited to this meeting yet. Add people with Edit.")
+    sl = await rsvp.senders(db, user)
+    if not sl: raise HTTPException(422, "No mail account is connected. Add one under Mail, Add account, then try again.")
+    tz = await cal.user_timezone(db); base = rsvp.public_base(request)
+    sent, failed = [], []
+    for to in invited:
+        reasons = []
+        for a in sl:
+            try:
+                ics = build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), a["address"], invited, m.join_url, ((f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (m.agenda or "")), sequence=int(datetime.now(timezone.utc).timestamp()))
+                body = (f"{user.display_name or user.email} invited you to: {m.title}\nWhen: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {m.join_url}\n" if m.join_url else "")
+                        + (f"Meeting ID: {room.code}\n" if room else "") + (f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (f"\n{m.agenda}\n" if m.agenda else ""))
+                await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url))
+                sent.append({"to": to, "from": a["address"]}); await rsvp.note_invited(db, m.id, [to]); break
+            except mailer.MailError as exc: reasons.append(f"{a['address']}: {exc}")
+        else: failed.append({"to": to, "reasons": reasons})
+    msg = ""
+    other = sorted({x["from"] for x in sent if x["from"].lower() != (user.email or "").lower()})
+    if sent: msg += "Sent " + "; ".join(f"to {s['to']} from {s['from']}" for s in sent) + ". If it is not in the Inbox, check Spam and Promotions." + (f" It came from {other[0]}, not {user.email}. To send from {user.email}, add that mailbox in Mail (Add account)." if other else "")
+    if failed: msg += (" " if msg else "") + "Not sent: " + "; ".join(f"{f['to']} ({' | '.join(f['reasons'])})" for f in failed)
+    db.add(AuditLog(actor=user.email, action="meeting.resend_invites", resource_type="meeting", safe_metadata={"sent": len(sent), "failed": len(failed)})); await db.commit()
+    return {"sent": sent, "failed": failed, "message": msg.strip()}
+
+
+@router.get("/rsvp/{token}/ics")
+async def rsvp_ics(token: str, db: AsyncSession = Depends(get_db)):
+    """The event as a calendar file, for Apple Calendar and anything else that opens .ics."""
+    from fastapi.responses import Response
+    from app.services.invites import build_ics
+    m, email = await _from_token(db, token)
+    host = await db.get(User, m.owner_id)
+    data = build_ics(m.id, m.title, _aware(m.start_at), _aware(m.end_at), host.email if host else "noreply@isift.au", [email], m.join_url, m.agenda or "")
+    return Response(data, media_type="text/calendar", headers={"Content-Disposition": 'attachment; filename="invite.ics"'})
