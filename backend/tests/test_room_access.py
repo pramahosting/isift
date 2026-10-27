@@ -899,7 +899,7 @@ def test_account_profile_password_company_and_invite_alert(client):
         assert inv.status_code == 200, inv.text
         assert inv.json()["alerted"] == ["bella@acme.com", "nobody@example.org"]
         n = [i for i in client.get("/api/v1/notifications", headers=bh).json()["items"] if i["kind"] == "invite"]
-        assert n and n[0]["url"].endswith(f"#/room/{r['code']}") and "Come now" in n[0]["text"]
+        assert n and f"#/room/{r['code']}?i=" in n[0]["url"] and "Come now" in n[0]["text"]          # the alert carries a personal link that lets them straight in
         client.post("/api/v1/notifications/read", json={"all": True}, headers=bh); assert client.get("/api/v1/notifications", headers=bh).json()["unread"] == 0
         assert client.post(f"/api/v1/rooms/{r['code']}/invite", json={"emails": "not-an-email"}, headers=h).status_code == 422
     finally:
