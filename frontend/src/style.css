@@ -2212,3 +2212,7 @@ html,body{max-width:100%;overflow-x:hidden}
 .hero-playbook{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;font-weight:600;color:#1d4ed8;text-decoration:none}
 .hero-playbook:hover{text-decoration:underline}.hero-playbook small{color:#64748b;font-weight:500}
 @media(max-width:520px){.hero-copy .hero-watch{margin:10px 0 0 0}}
+
+.notifpush{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid #e2e8f0;font-size:13px}
+.notifpush span{display:inline-flex;align-items:center;gap:6px;flex:1 1 100%}
+.notifalerts.pushask{top:auto;bottom:16px}
