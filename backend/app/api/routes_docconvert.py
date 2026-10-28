@@ -48,7 +48,7 @@ async def pdf_to_wp(payload: dict, user: User = Depends(principal)):
     """{name, data (base64 PDF)} -> {html, pages, notes}: the PDF rebuilt as a WordPerfect document."""
     try: raw = base64.b64decode(str(payload.get("data") or ""), validate=False)
     except Exception: raise HTTPException(422, "The file could not be read.")
-    try: res = await asyncio.to_thread(dc.pdf_to_wp, raw)
+    try: res = await asyncio.to_thread(dc.pdf_to_wp, raw, str(payload.get("mode") or "exact") != "flow")
     except dc.ConvertError as exc: raise HTTPException(422, str(exc))
     except Exception:
         log.exception("PDF to WordPerfect failed")
@@ -72,3 +72,39 @@ async def import_office(payload: dict, user: User = Depends(principal)):
         if ext == "xlsx": r = await asyncio.to_thread(dc.xlsx_to_book, raw); return {"kind": "sheet", "title": title, "content": r["content"], "notes": r["notes"]}
         r = await asyncio.to_thread(dc.pptx_to_deck, raw); return {"kind": "deck", "title": title, "content": r["content"], "notes": r["notes"]}
     except dc.ConvertError as e: raise HTTPException(422, str(e))
+
+
+@router.post("/file-to-pdf")
+async def file_to_pdf(payload: dict, user: User = Depends(principal)):
+    """{name, data (base64 .docx / .pptx / .xlsx / .html / .txt)} -> {filename, mime, data}: a file from the person's computer as a PDF. Nothing is saved in iSift."""
+    name = str(payload.get("name") or "")
+    try: raw = base64.b64decode(str(payload.get("data") or "").split(",", 1)[-1], validate=False)
+    except Exception: raise HTTPException(422, "The file could not be read.")
+    if not raw: raise HTTPException(422, "The file is empty.")
+    ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+    base = re.sub(r"\.[A-Za-z0-9]+$", "", name)[:120] or "converted"
+    if ext in ("docx", "pptx", "xlsx") and raw[:2] != b"PK": raise HTTPException(422, f"That is not a real .{ext} file. Older .doc, .xls and .ppt files must be saved in the newer format first.")
+    fn = {"docx": dc.docx_to_pdf, "pptx": dc.pptx_to_pdf, "xlsx": dc.xlsx_to_pdf}.get(ext)
+    try:
+        if fn: pdf = await asyncio.to_thread(fn, raw, base)
+        elif ext in ("html", "htm", "txt", "md"):
+            t = raw.decode("utf-8", "replace")
+            html = t if ext in ("html", "htm") else "".join(f"<p>{dc.esc(l) if l else '<br>'}</p>" for l in t.splitlines())
+            pdf = await asyncio.to_thread(dc.wp_to_pdf, html, base)
+        else: raise HTTPException(422, "Choose a Word (.docx), PowerPoint (.pptx), Excel (.xlsx), HTML or text file.")
+    except dc.ConvertError as e: raise HTTPException(422, str(e))
+    return {"filename": f"{base}.pdf", "mime": "application/pdf", "data": base64.b64encode(pdf).decode()}
+
+
+@router.post("/pdf-to-docx")
+async def pdf_to_docx(payload: dict, user: User = Depends(principal)):
+    """{name, data (base64 PDF), mode?} -> {filename, mime, data}: a PDF as a Word file, straight away. mode "flow" gives reflowing text instead of exact pages."""
+    name = str(payload.get("name") or "")
+    try: raw = base64.b64decode(str(payload.get("data") or "").split(",", 1)[-1], validate=False)
+    except Exception: raise HTTPException(422, "The file could not be read.")
+    base = re.sub(r"\.[A-Za-z0-9]+$", "", name)[:120] or "converted"
+    try:
+        res = await asyncio.to_thread(dc.pdf_to_wp, raw, str(payload.get("mode") or "exact") != "flow")
+        docx = await asyncio.to_thread(dc.wp_to_docx, res["html"], base)
+    except dc.ConvertError as e: raise HTTPException(422, str(e))
+    return {"filename": f"{base}.docx", "mime": MIME["docx"], "data": base64.b64encode(docx).decode(), "notes": res["notes"]}

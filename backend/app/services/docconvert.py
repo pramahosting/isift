@@ -58,8 +58,14 @@ def clean_html(html: str) -> str:
     return h
 
 
+_EXACT_PAGE = re.compile(r'<div style="[^"]*position:relative;width:([\d.]+)pt;height:([\d.]+)pt')
+
 def wp_to_pdf(html: str, title: str = "") -> bytes:
-    return _pdf_from_html(f"<!doctype html><meta charset='utf-8'><title>{esc(title)}</title><style>{_PAGE_CSS}</style><body>{clean_html(html) or '<p></p>'}")
+    css = _PAGE_CSS
+    m = _EXACT_PAGE.search(html or "")
+    if m:       # a document made of exact pages (from a PDF): the PDF has the same page size, no margins, one page per page
+        css = f"@page{{size:{m.group(1)}pt {m.group(2)}pt;margin:0}}body{{margin:0;font:12pt Arial,sans-serif}}body>div[style*='position:relative']{{page-break-after:always;margin:0!important}}body>div[style*='position:relative']:last-child{{page-break-after:auto}}"
+    return _pdf_from_html(f"<!doctype html><meta charset='utf-8'><title>{esc(title)}</title><style>{css}</style><body>{clean_html(html) or '<p></p>'}")
 
 
 def _css_color(s: str | None):
@@ -231,8 +237,54 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
             if n == "hr": loose = None; doc.add_paragraph("―" * 20); continue
             if n == "img":
                 loose = None; p = doc.add_paragraph(); runs(p, type("W", (), {"children": [ch]})(), {})
-    block(soup)
+    pages_ = [d for d in soup.find_all("div") if re.search(r"position:relative", d.get("style") or "") and re.search(r"width:[\d.]+pt", d.get("style") or "") and re.search(r"background-image:url\(data:image", d.get("style") or "")]
+    if pages_: _exact_docx(doc, pages_, style_of, css_fmt, runs)
+    else: block(soup)
     bio = io.BytesIO(); doc.save(bio); return bio.getvalue()
+
+
+def _exact_docx(doc, pages, style_of, css_fmt, runs) -> None:
+    """Exact pages (from a PDF) as Word pages: the page graphics are a picture behind the text, and every line of text is a positioned text frame."""
+    import copy
+    from docx.enum.section import WD_SECTION
+    from docx.oxml import OxmlElement, parse_xml
+    from docx.oxml.ns import qn, nsdecls
+    from docx.shared import Pt, Emu
+    first = True
+    for n, pg in enumerate(pages):
+        css = style_of(pg)
+        pw = float(re.match(r"([\d.]+)", css.get("width", "595")).group(1)); ph = float(re.match(r"([\d.]+)", css.get("height", "842")).group(1))
+        sec = doc.sections[0] if first else doc.add_section(WD_SECTION.NEW_PAGE)
+        first = False
+        sec.page_width, sec.page_height = Pt(pw), Pt(ph)
+        sec.left_margin = sec.right_margin = sec.top_margin = sec.bottom_margin = Pt(0); sec.header_distance = sec.footer_distance = Pt(0)
+        m = re.search(r"background-image:url\(data:image/(png|jpeg);base64,([A-Za-z0-9+/=]+)\)", pg.get("style") or "")
+        par0 = doc.add_paragraph(); par0.paragraph_format.space_after = Pt(0); par0.paragraph_format.space_before = Pt(0)
+        par0.paragraph_format.line_spacing = Pt(1)
+        if m:
+            try:
+                inline = doc.part.new_pic_inline(io.BytesIO(base64.b64decode(m.group(2))), Emu(int(pw * 12700)), Emu(int(ph * 12700)))
+                graphic = copy.deepcopy(inline.find(qn("a:graphic")))
+                anchor = parse_xml(f'<w:drawing {nsdecls("w", "wp", "a", "pic", "r")}><wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="1" layoutInCell="1" allowOverlap="1">'
+                                   f'<wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+                                   f'<wp:extent cx="{int(pw * 12700)}" cy="{int(ph * 12700)}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/><wp:docPr id="{100 + n}" name="Page {n + 1}"/><wp:cNvGraphicFramePr/></wp:anchor></w:drawing>')
+                anchor.find(qn("wp:anchor")).append(graphic)
+                par0.add_run()._r.append(anchor)
+            except Exception: pass
+        for ln in pg.find_all("div", recursive=False):
+            lc = style_of(ln)
+            try: x = float(re.match(r"-?([\d.]+)", lc.get("left", "0")).group(0)); y = float(re.match(r"-?([\d.]+)", lc.get("top", "0")).group(0))
+            except Exception: continue
+            w = float(re.match(r"([\d.]+)", lc.get("width", "60")).group(1)); lh = float(re.match(r"([\d.]+)", lc.get("line-height", "12")).group(1))
+            if not ln.get_text().strip(): continue
+            p = doc.add_paragraph()
+            pf = p.paragraph_format; pf.space_after = Pt(0); pf.space_before = Pt(0)
+            from docx.enum.text import WD_LINE_SPACING
+            pf.line_spacing_rule = WD_LINE_SPACING.EXACTLY; pf.line_spacing = Pt(lh)
+            fp = OxmlElement("w:framePr")
+            for k, v in (("w:w", int((w * 1.12 + 6) * 20)), ("w:hSpace", 0), ("w:wrap", "around"), ("w:vAnchor", "page"), ("w:hAnchor", "page"), ("w:x", int(x * 20)), ("w:y", int(y * 20))): fp.set(qn(k), str(v))
+            p._p.get_or_add_pPr().insert(0, fp)
+            runs(p, ln, css_fmt(lc, {}))
 
 
 # ------------------------------------------------------------------ SpreadTable
@@ -474,7 +526,81 @@ def _family(fontname: str) -> str:
     return "Arial,Helvetica,sans-serif" if f else ""
 
 
-def pdf_to_wp(data: bytes) -> dict:
+def pdf_to_wp_exact(data: bytes) -> dict:
+    """Each PDF page rebuilt exactly as it looks: the page's graphics (backgrounds, shapes, pictures, gradients, QR codes) are drawn as the page background with the
+    text taken out, and the real text is laid back on top in the same place, font, size and colour. The text stays editable."""
+    import pypdfium2 as pdfium
+    from pdfminer.high_level import extract_pages
+    from pdfminer.layout import LAParams, LTChar, LTTextContainer, LTTextLine
+    if not data[:5] == b"%PDF-": raise ConvertError("That file is not a PDF.")
+    try: pdf = pdfium.PdfDocument(data)
+    except Exception: raise ConvertError("The PDF could not be opened. It may be damaged or password protected.")
+    n_pages = len(pdf); out, warn, texty = [], [], 0
+
+    def runs(lines, size, fam):
+        spans = []
+        for ln in lines:
+            for ch in ln:
+                if not isinstance(ch, LTChar): continue
+                t = ch.get_text(); fn = (ch.fontname or "").lower()
+                col = _hex(getattr(ch.graphicstate, "ncolor", None))
+                if col and max(int(col[i:i + 2], 16) for i in (1, 3, 5)) <= 40: col = ""
+                key = ("bold" in fn or "black" in fn or "heavy" in fn, "italic" in fn or "oblique" in fn, col, round(ch.size * 2) / 2, _family(ch.fontname))
+                if t == "\n": continue
+                if spans and spans[-1][0] == key: spans[-1][1].append(t)
+                else: spans.append((key, [t]))
+        html = ""
+        for (b, i, c, sz, fam2), chars in spans:
+            t = esc("".join(chars)).replace("  ", "&nbsp; ")
+            st = []
+            if c: st.append(f"color:{c}")
+            if abs(sz - size) >= 0.75: st.append(f"font-size:{sz:g}pt")
+            if fam2 and fam2 != fam: st.append(f"font-family:{fam2}")
+            if st: t = f'<span style="{";".join(st)}">{t}</span>'
+            if b: t = f"<b>{t}</b>"
+            if i: t = f"<i>{t}</i>"
+            html += t
+        return html
+
+    layouts = list(extract_pages(io.BytesIO(data), laparams=LAParams(line_margin=0.3, boxes_flow=0.5, char_margin=2.0)))
+    for pi in range(n_pages):
+        lay = layouts[pi] if pi < len(layouts) else None
+        page = pdf[pi]
+        pw, ph = page.get_size()
+        try:
+            for o in list(page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_TEXT])): page.remove_obj(o)
+            page.gen_content()
+        except Exception: warn.append(f"Page {pi + 1}: the page text could not be separated from its graphics.")
+        img = page.render(scale=1.6).to_pil().convert("RGB")
+        bio = io.BytesIO(); img.save(bio, "PNG", optimize=True); mime, blob = "png", bio.getvalue()
+        if len(blob) > 2_500_000:
+            bio = io.BytesIO(); img.save(bio, "JPEG", quality=88, optimize=True); mime, blob = "jpeg", bio.getvalue()
+        boxes = []
+        for el in (lay or []):
+            if isinstance(el, LTTextContainer):
+                for ln in el:
+                    if isinstance(ln, LTTextLine) and ln.get_text().strip(): boxes.append(ln)
+        texty += len(boxes)
+        items = []
+        for ln in boxes:
+            sz, fm = Counter(), Counter()
+            for ch in ln:
+                if isinstance(ch, LTChar) and ch.get_text().strip(): sz[round(ch.size * 2) / 2] += 1; fm[_family(ch.fontname)] += 1
+            size = sz.most_common(1)[0][0] if sz else 11; fam = fm.most_common(1)[0][0] if fm else ""
+            top = ph - ln.y1; h = max(ln.y1 - ln.y0, size)
+            st = f"position:absolute;left:{ln.x0:.1f}pt;top:{top:.1f}pt;width:{max(ln.x1 - ln.x0, 4):.1f}pt;white-space:nowrap;font-size:{size:g}pt;line-height:{h:.1f}pt" + (f";font-family:{fam}" if fam else "")
+            items.append(f'<div style="{st}">{runs([ln], size, fam)}</div>')
+        out.append(f'<div style="position:relative;width:{pw:.1f}pt;height:{ph:.1f}pt;background-image:url(data:image/{mime};base64,{base64.b64encode(blob).decode()});background-size:100% 100%;background-repeat:no-repeat;overflow:hidden;margin:0 0 14pt 0">' + "".join(items) + "</div>")
+    if not texty: warn.append("This PDF has no selectable text (a scan), so its pages are shown as pictures. Scanned pages cannot be turned into editable text here.")
+    return {"html": "".join(out) or "<p><br></p>", "pages": n_pages, "notes": warn}
+
+
+def pdf_to_wp(data: bytes, exact: bool = False) -> dict:
+    if exact: return pdf_to_wp_exact(data)
+    return _pdf_to_wp_flow(data)
+
+
+def _pdf_to_wp_flow(data: bytes) -> dict:
     """Rebuild a PDF as an editable WordPerfect document: headings (by type size), paragraphs, bold / italic, text colour, bullet lists, centred lines and the
     pictures inside the PDF. A PDF is a fixed page, so the page breaks and exact positions are not kept, and tables become plain paragraphs. A page with no
     selectable text (a scan) is placed as a picture so nothing is lost."""
@@ -868,3 +994,214 @@ def pptx_to_deck(data: bytes) -> dict:
     n = ["Slide text, bullets, background colours and speaker notes are brought in. PowerPresentation does not hold pictures, charts or custom layouts from PowerPoint, so those are not brought in."]
     if pic_slides: n[0] += f" {pic_slides} slide(s) had pictures."
     return {"content": json.dumps({"v": 1, "theme": "light", "slides": slides or [{"layout": "content", "title": "", "body": [], "notes": ""}]}), "notes": n}
+
+
+# ------------------------------------------------------------------ Microsoft files straight to PDF (nothing is saved in iSift)
+
+def docx_to_pdf(data: bytes, title: str = "") -> bytes:
+    return wp_to_pdf(docx_to_wp(data)["html"], title)
+
+
+def _rgb_of(color) -> str:
+    """A python-pptx / openpyxl colour as #rrggbb, or "" when it is a theme colour that cannot be resolved here."""
+    try:
+        v = str(color.rgb) if color.rgb is not None else ""
+        if re.match(r"^[0-9A-Fa-f]{8}$", v): v = v[2:]                    # Excel writes ARGB
+        if re.match(r"^[0-9A-Fa-f]{6}$", v): return "#" + v.lower()
+    except Exception: pass
+    return ""
+
+
+def pptx_to_pdf(data: bytes, title: str = "") -> bytes:
+    """Each slide as one PDF page the size of the slide: backgrounds, shapes with their fills, pictures, tables and text with its font, size, colour and bullets."""
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE as T
+    try: prs = Presentation(io.BytesIO(data))
+    except Exception: raise ConvertError("That file could not be opened as a PowerPoint presentation.")
+    K = 12700.0
+    W, H = prs.slide_width / K, prs.slide_height / K
+    pages = []
+
+    def run_html(r, default_size):
+        t = esc(r.text or "")
+        if not t: return ""
+        f = r.font; st = []
+        col = ""
+        try: col = _rgb_of(f.color) if f.color is not None and f.color.type is not None else ""
+        except Exception: pass
+        if col: st.append(f"color:{col}")
+        st.append(f"font-size:{(f.size.pt if f.size else default_size):g}pt")
+        if f.name: st.append(f"font-family:'{re.sub(chr(39), '', f.name)}',Arial,sans-serif")
+        t = f'<span style="{";".join(st)}">{t}</span>'
+        if f.bold: t = f"<b>{t}</b>"
+        if f.italic: t = f"<i>{t}</i>"
+        if f.underline: t = f"<u>{t}</u>"
+        return t
+
+    def text_html(shape, default_size):
+        out = []
+        for p in shape.text_frame.paragraphs:
+            inner = "".join(run_html(r, default_size) for r in p.runs)
+            if not inner.strip() and not p.runs: out.append(f'<div style="height:{default_size * 1.2:g}pt"></div>'); continue
+            al = {1: "left", 2: "center", 3: "right", 4: "justify"}.get(int(p.alignment) if p.alignment is not None else 1, "left")
+            ppr = p._p.pPr
+            bullet = ppr is not None and ppr.find("{http://schemas.openxmlformats.org/drawingml/2006/main}buChar") is not None
+            lvl = p.level or 0
+            pre = '<span style="display:inline-block;width:1.1em">&#8226;</span>' if bullet else ""
+            out.append(f'<div style="text-align:{al};margin-left:{lvl * 18 + (0 if not bullet else 0)}pt;margin-bottom:2pt;line-height:1.15">{pre}{inner}</div>')
+        return "".join(out)
+
+    def draw(shapes, items, dx=0.0, dy=0.0):
+        for sh in shapes:
+            try:
+                if sh.left is None or sh.top is None or sh.width is None: continue
+                x, y, w, h = sh.left / K, sh.top / K, sh.width / K, (sh.height or 0) / K
+            except Exception: continue
+            pos = f"position:absolute;left:{x:.1f}pt;top:{y:.1f}pt;width:{w:.1f}pt;height:{h:.1f}pt;"
+            if sh.shape_type == T.GROUP:
+                draw(sh.shapes, items); continue
+            if sh.shape_type == T.PICTURE:
+                try:
+                    img = sh.image; mime = img.content_type
+                    if mime not in ("image/png", "image/jpeg", "image/gif"):
+                        from PIL import Image
+                        bio = io.BytesIO(); Image.open(io.BytesIO(img.blob)).convert("RGBA").save(bio, "PNG"); blob, mime = bio.getvalue(), "image/png"
+                    else: blob = img.blob
+                    items.append(f'<img style="{pos}" src="data:{mime};base64,{base64.b64encode(blob).decode()}">')
+                except Exception: pass
+                continue
+            if getattr(sh, "has_table", False) and sh.has_table:
+                rows = []
+                for ri, r in enumerate(sh.table.rows):
+                    tds = ""
+                    for c in r.cells:
+                        if c.is_spanned: continue
+                        bg = ""
+                        try:
+                            if c.fill.type == 1: bg = f";background:{_rgb_of(c.fill.fore_color)}"
+                        except Exception: pass
+                        if not bg and sh.table.first_row and ri == 0: bg = ";background:#4f81bd;color:#ffffff;font-weight:bold"        # PowerPoint's default table look
+                        elif not bg and sh.table.horz_banding: bg = ";background:" + ("#d0d8e8" if ri % 2 else "#e9edf4")
+                        sp = (f' colspan="{c.span_width}"' if c.is_merge_origin and c.span_width > 1 else "") + (f' rowspan="{c.span_height}"' if c.is_merge_origin and c.span_height > 1 else "")
+                        tds += f'<td{sp} style="border:1px solid #888;padding:3pt 5pt{bg}">{text_html(c, 12)}</td>'
+                    rows.append(f"<tr>{tds}</tr>")
+                items.append(f'<table style="{pos}border-collapse:collapse;table-layout:fixed">' + "".join(rows) + "</table>"); continue
+            st = pos
+            try:
+                if sh.fill.type == 1:
+                    c = _rgb_of(sh.fill.fore_color)
+                    if c: st += f"background:{c};"
+            except Exception: pass
+            try:
+                if sh.line.fill.type == 1:
+                    c = _rgb_of(sh.line.color)
+                    if c: st += f"border:{max((sh.line.width or 9525) / 12700, 0.75):g}pt solid {c};"
+            except Exception: pass
+            try:
+                ast = str(sh.auto_shape_type)
+                if "OVAL" in ast or "ELLIPSE" in ast: st += "border-radius:50%;"
+                elif "ROUNDED" in ast: st += f"border-radius:{min(w, h) * 0.16:.1f}pt;"
+            except Exception: pass
+            inner = ""
+            if getattr(sh, "has_text_frame", False) and sh.text_frame.text.strip():
+                dsz = 40 if (getattr(sh, "is_placeholder", False) and sh.placeholder_format.type in (1, 3)) else 18
+                try:
+                    va = sh.text_frame.vertical_anchor
+                    anchor = {1: "top", 3: "middle", 4: "bottom"}.get(int(va), "top") if va is not None else ("middle" if sh.shape_type == T.AUTO_SHAPE else "top")
+                except Exception: anchor = "top"
+                jc = {"top": "flex-start", "middle": "center", "bottom": "flex-end"}[anchor]
+                inner = f'<div style="display:flex;flex-direction:column;justify-content:{jc};height:100%;box-sizing:border-box;padding:3.6pt 7.2pt">{text_html(sh, dsz)}</div>'
+            items.append(f'<div style="{st}box-sizing:border-box;overflow:hidden">{inner}</div>')
+
+    for sl in prs.slides:
+        items = []
+        bg = "#ffffff"
+        for holder in (sl, sl.slide_layout, sl.slide_layout.slide_master):
+            try:
+                if holder.background.fill.type == 1: bg = _rgb_of(holder.background.fill.fore_color) or bg; break
+            except Exception: continue
+        for layer in (sl.slide_layout.slide_master, sl.slide_layout):                # logos and bars drawn on the master / layout, behind the slide
+            try: draw([x for x in layer.shapes if not x.is_placeholder], items)
+            except Exception: pass
+        draw(sl.shapes, items)
+        pages.append(f'<section style="position:relative;width:{W:.1f}pt;height:{H:.1f}pt;background:{bg};overflow:hidden;page-break-after:always;font-family:Calibri,Arial,sans-serif">' + "".join(items) + "</section>")
+    css = f"@page{{size:{W:.1f}pt {H:.1f}pt;margin:0}}body{{margin:0}}section:last-child{{page-break-after:auto}}"
+    return _pdf_from_html(f"<!doctype html><meta charset='utf-8'><title>{esc(title)}</title><style>{css}</style><body>" + ("".join(pages) or "<section></section>"))
+
+
+def xlsx_to_pdf(data: bytes, title: str = "") -> bytes:
+    """Every sheet as PDF pages, with the worked-out values, fills, fonts, colours, borders, column widths and merged cells."""
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    try: wb = load_workbook(io.BytesIO(data), data_only=False)
+    except Exception: raise ConvertError("That file could not be opened as an Excel workbook.")
+    try: wbv = load_workbook(io.BytesIO(data), data_only=True)
+    except Exception: wbv = None
+
+    def fmt_value(v, nf):
+        if v is None: return ""
+        if isinstance(v, bool): return "TRUE" if v else "FALSE"
+        if hasattr(v, "strftime"):
+            try: return v.strftime("%d/%m/%Y %H:%M" if getattr(v, "hour", 0) or getattr(v, "minute", 0) else "%d/%m/%Y")
+            except Exception: return str(v)
+        if isinstance(v, (int, float)):
+            nf = nf or "General"
+            dec = len(nf.split(".")[1].split(";")[0].rstrip("%_)").replace("#", "0")) if "." in nf and "0" in nf else 0
+            if "%" in nf: return f"{v * 100:,.{dec}f}%"
+            if "0" in nf and nf != "General":
+                s = f"{v:,.{dec}f}" if "," in nf else f"{v:.{dec}f}"
+                return ("$" if "$" in nf else "") + s
+            return f"{v:.10g}"
+        return str(v)
+
+    pages = []
+    for ws in wb.worksheets[:50]:
+        wv = wbv[ws.title] if wbv is not None and ws.title in wbv.sheetnames else ws
+        maxr, maxc = min(ws.max_row, 3000), min(ws.max_column, 80)
+        merged, skip = {}, set()
+        for rng in ws.merged_cells.ranges:
+            merged[(rng.min_row, rng.min_col)] = (rng.max_row - rng.min_row + 1, rng.max_col - rng.min_col + 1)
+            for r in range(rng.min_row, rng.max_row + 1):
+                for c in range(rng.min_col, rng.max_col + 1):
+                    if (r, c) != (rng.min_row, rng.min_col): skip.add((r, c))
+        widths = [(ws.column_dimensions[get_column_letter(c)].width or 8.43) * 7 for c in range(1, maxc + 1)]
+        total = sum(widths) or 1
+        rows = []
+        for r in range(1, maxr + 1):
+            rh = ws.row_dimensions[r].height
+            tds = ""
+            for c in range(1, maxc + 1):
+                if (r, c) in skip: continue
+                cell = ws.cell(row=r, column=c); val = wv.cell(row=r, column=c).value
+                st = []
+                try:
+                    if cell.fill and cell.fill.fill_type == "solid":
+                        bg = _rgb_of(cell.fill.fgColor)
+                        if bg and bg != "#000000": st.append(f"background:{bg}")
+                except Exception: pass
+                f = cell.font
+                if f is not None:
+                    try:
+                        fc = _rgb_of(f.color) if f.color is not None else ""
+                        if fc: st.append(f"color:{fc}")
+                    except Exception: pass
+                    if f.b: st.append("font-weight:bold")
+                    if f.i: st.append("font-style:italic")
+                    if f.sz: st.append(f"font-size:{f.sz:g}pt")
+                    if f.name: st.append(f"font-family:'{re.sub(chr(39), '', f.name)}',Arial,sans-serif")
+                    if f.u: st.append("text-decoration:underline")
+                al = cell.alignment.horizontal if cell.alignment is not None else None
+                if al in ("left", "center", "right"): st.append(f"text-align:{al}")
+                elif isinstance(val, (int, float)) and not isinstance(val, bool): st.append("text-align:right")
+                b = cell.border
+                for side, nm in ((b.left, "left"), (b.right, "right"), (b.top, "top"), (b.bottom, "bottom")):
+                    if side is not None and side.style: st.append(f"border-{nm}:1px solid " + (_rgb_of(side.color) if side.color is not None and _rgb_of(side.color) else "#555"))
+                sp = ""
+                if (r, c) in merged: rs, cs = merged[(r, c)]; sp = (f' rowspan="{rs}"' if rs > 1 else "") + (f' colspan="{cs}"' if cs > 1 else "")
+                tds += f'<td{sp} style="{";".join(st)}">{esc(fmt_value(val, cell.number_format))}</td>'
+            rows.append(f'<tr{f" style=height:{rh * 1.333:.0f}px" if rh else ""}>{tds}</tr>')
+        zoom = min(1.0, 1000 / total)
+        grid = "<colgroup>" + "".join(f'<col style="width:{w:.0f}px">' for w in widths) + "</colgroup>"
+        pages.append(f'<h2 style="font:bold 12pt Arial;margin:0 0 6pt">{esc(ws.title)}</h2><table style="border-collapse:collapse;table-layout:fixed;width:{total:.0f}px;zoom:{zoom:.3f};font:10pt Arial,sans-serif">{grid}{"".join(rows)}</table><div style="page-break-after:always"></div>')
+    css = "@page{size:A4 landscape;margin:12mm}td{padding:2px 4px;overflow:hidden;white-space:nowrap;border:0.5px solid #e3e6ec;vertical-align:bottom}"
+    return _pdf_from_html(f"<!doctype html><meta charset='utf-8'><title>{esc(title)}</title><style>{css}</style><body>{''.join(pages)}")

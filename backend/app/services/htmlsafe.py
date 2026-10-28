@@ -27,14 +27,34 @@ for _k in ("margin", "margin-top", "margin-bottom", "margin-left", "margin-right
 for _k in ("border", "border-top", "border-bottom", "border-left", "border-right"):
     _CSS[_k] = re.compile(r"^(none|\d{1,2}(\.\d)?(px|pt)? (solid|dashed|dotted|double) " + _COLOR + r")$")
 
+_CSS.update({
+    "position": re.compile(r"^(relative|absolute)$"), "left": re.compile(r"^" + _LEN + r"$"), "top": re.compile(r"^" + _LEN + r"$"),
+    "white-space": re.compile(r"^(nowrap|pre|normal|pre-wrap)$"), "overflow": re.compile(r"^(hidden|visible)$"), "background-size": re.compile(r"^(100% 100%|cover|contain)$"),
+    "background-repeat": re.compile(r"^no-repeat$"), "min-height": re.compile(r"^" + _LEN + r"$"),
+})
+BG_IMG = re.compile(r"^url\(data:image/(png|jpeg);base64,[A-Za-z0-9+/=]{16,40000000}\)$")      # a page picture stored in the file itself; never a web address
+
+def _split_decl(style: str):
+    """Split on ; but not inside brackets (a data: address contains a semicolon)."""
+    depth, cur = 0, ""
+    for ch in style:
+        if ch == "(": depth += 1
+        elif ch == ")": depth = max(0, depth - 1)
+        if ch == ";" and depth == 0: yield cur; cur = ""
+        else: cur += ch
+    if cur: yield cur
+
 def safe_style(style: str) -> str:
     out = []
-    for part in (style or "").split(";"):
+    for part in _split_decl(style or ""):
         if ":" not in part: continue
         k, v = part.split(":", 1); k = k.strip().lower(); v = re.sub(r"\s+", " ", v.strip())
+        if k == "background-image":
+            if BG_IMG.match(v): out.append(f"{k}:{v}")
+            continue
         rx = _CSS.get(k)
         if rx and rx.match(v) and not re.search(r"url|expression|javascript|@|\\|<|>", v, re.I): out.append(f"{k}:{v}")
-    return ";".join(out[:20])
+    return ";".join(out[:24])
 
 class _S(HTMLParser):
     def __init__(self): super().__init__(convert_charrefs=True); self.out: list[str] = []; self.skip = 0; self.open: list[str] = []
