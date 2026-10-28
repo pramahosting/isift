@@ -61,7 +61,7 @@ def html_body(text: str, base: str, m, email: str, join_url: str | None, host: s
     lk = lambda label, q: f'<a href="{r}?r={q}" style="color:#1a56db">{label}</a>'
     return ('<div style="font:15px/1.5 Arial,Helvetica,sans-serif;color:#202124">' + body +
             '<p style="margin:20px 0 8px;color:#5f6368">Will you join?</p><div>' + btn("Yes", "Accepted", "accepted", True) + btn("No", "Declined", "declined") + btn("Maybe", "Maybe", "tentative") + "</div>"
-            '<p style="margin:6px 0 0;color:#5f6368;font-size:13px">Each button opens a short reply to the host: just press Send. You can also ' + lk("suggest another time", "proposed") + " or " + f'<a href="{base}/api/v1/rsvp/{make_token(m.id, email)}/calendar" target="_blank" style="color:#1a56db">add it to a calendar</a>' + ".</p></div>")
+            '<p style="margin:6px 0 0;color:#5f6368;font-size:13px">' + ("Each button opens a short reply to the host: just press Send." if host else "One tap on a button records your answer and tells the host.") + ' You can also ' + lk("suggest another time", "proposed") + " or " + f'<a href="{base}/api/v1/rsvp/{make_token(m.id, email)}/calendar" target="_blank" style="color:#1a56db">add it to a calendar</a>' + ".</p></div>")
 
 def set_organizer(ics: bytes | None, email: str, name: str = "") -> bytes | None:
     """Make the host's own address the organizer, so a Yes / No / Maybe pressed in the guest's mail program is emailed back to the host."""
@@ -105,13 +105,12 @@ async def senders(db, user, allow_app: bool = False) -> list[dict]:
     own = [a for a in out if not a.get("platform")]
     mine = [a for a in own if (a.get("address") or "").lower() == (user.email or "").lower()]
     if mine: return mine[:1]
-    if own and allow_app: return own                  # notices to the host only; invitations never use some other mailbox of theirs
     name = (getattr(user, "display_name", "") or "").replace('"', "").strip()
     app = []
     for a in out:
         if a.get("platform"):
             a = dict(a); a["from"] = f'{name or user.email} via iSift <{a.get("address")}>'; a["reply_to"] = user.email; app.append(a)
-    return app
+    return app + (own if allow_app else [])         # notices to the host: iSift's own address first (signed for isift.au), their mailboxes only as a fallback
 
 async def send_each(acct, recipients: list[str], subject: str, body: str, m, base: str, join_url: str | None, ics: bytes | None, details: str = "") -> dict:
     """One email per person, each with that person's own reply links (so the host knows who answered). `acct` is one account or a list to try in turn."""
@@ -135,14 +134,22 @@ async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str
     accts = await senders(db, host, allow_app=True)
     if not accts:
         log.warning("Reply from %s to %s not emailed: no mail account is set up", who, m.title); return "No email account is set up to send from, so the host was not emailed."
-    body = f"{who} {LABEL.get(status, status)} your meeting: {m.title}\n"
+    try:
+        from sqlalchemy import select, func
+        from app.models import User as _U
+        u = (await db.execute(select(_U).where(func.lower(_U.email) == who.lower()))).scalars().first()
+        nm = (getattr(u, "display_name", "") or "").strip() if u else ""
+    except Exception: nm = ""
+    shown_who = f"{nm} ({who})" if nm and nm.lower() != who.lower() else who
+    body = f"{shown_who} {LABEL.get(status, status)} your meeting: {m.title}\n"
     if status == "proposed" and proposed: body += f"Suggested time: {proposed}\n"
     if note: body += f"Note: {note}\n"
     body += "\nOpen the meeting in iSift (Meetings, then the meeting) to see every reply"
     body += " and use the suggested time." if status == "proposed" else "."
     why = []
     for a in accts:
-        try: await mailer.send(a, [host.email], f"{who} {LABEL.get(status, status)}: {m.title}", body); return ""
+        if a.get("platform"): a = dict(a); a["from"] = f'iSift Meetings <{a.get("address")}>'; a.pop("reply_to", None)      # a notice from iSift, not "via iSift" in the guest's name
+        try: await mailer.send(a, [host.email], f"{nm or who} {LABEL.get(status, status)}: {m.title}", body); return ""
         except Exception as exc:
             log.exception("Could not email the host about a reply (from %s)", a.get("address")); why.append(f"{a.get('address')}: {str(exc)[:160]}")
     return "The host could not be emailed (" + " | ".join(why) + ")."
