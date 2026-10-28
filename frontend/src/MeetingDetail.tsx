@@ -186,6 +186,7 @@ function Replies({id,request,notice,onChanged,reload}:{id:string;request:any;not
   return <div className="md-invite"><div className="md-invhead"><b>Replies</b><span className="muted small">{c.accepted} accepted · {c.tentative} maybe · {c.declined} declined · {c.proposed} suggested a new time · {c.waiting} waiting</span></div>
     <ul className="md-replies" style={{listStyle:'none',padding:0,margin:0,display:'grid',gap:6}}>{d.responses.map((r:any)=><li key={r.email} style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
       <span style={{minWidth:200}}>{r.email}</span><b>{L[r.status]||r.status}</b>
+      {r.host_notice&&r.host_notice!=='sent'&&<span className="syncerr small">Email to you failed: {r.host_notice}</span>}
       {r.status==='proposed'&&r.proposed_start&&<><span>{when(r.proposed_start)}</span><button className="primary" disabled={!!busy} onClick={()=>use(r.email)}>{busy===r.email?'Moving…':'Use this time'}</button></>}
       {r.note&&<span className="muted">“{r.note}”</span>}</li>)}</ul></div>;
 }
