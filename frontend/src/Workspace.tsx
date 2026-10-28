@@ -189,8 +189,8 @@ export function NotesPage({request,kind,focus,onFocused}:{request:any;kind:'doc'
       {(kind==='wp'||kind==='deck')&&shelf&&!ro&&<ShapeShelf onPick={lib=>shapeApi.current?.insertShape(lib)}/>}
       {kind==='doc'?<textarea className="ws-doc" value={content} aria-label="Note text" placeholder={ro?'':'Start typing…'} readOnly={ro} onChange={e=>{setContent(e.target.value);queue({content:e.target.value})}}/>
       :kind==='board'?<Board key={'b:'+open.id} name={title} pictureRef={pic} toolsHost={host} readOnly={ro} libOpen={shelf} content={content} onChange={c=>{setContent(c);queue({content:c})}}/>
-      :kind==='wp'?<WordEditor ref={shapeApi} shelf={shelf} onShelf={flipShelf} key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
-      :kind==='sheet'?<SheetEditor key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
-      :<DeckEditor ref={shapeApi} shelf={shelf} onShelf={flipShelf} key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>}</>:<p className="muted pad">Choose or create {kind==='doc'||kind==='wp'?'a '+meta.noun:'a '+meta.noun}.</p>}</section></div>
+      :kind==='wp'?<WordEditor request={request} ref={shapeApi} shelf={shelf} onShelf={flipShelf} key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
+      :kind==='sheet'?<SheetEditor request={request} key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>
+      :<DeckEditor request={request} ref={shapeApi} shelf={shelf} onShelf={flipShelf} key={open.id+':'+base.current} title={title} content={content} readOnly={ro} onChange={c=>{setContent(c);queue({content:c})}}/>}</>:<p className="muted pad">Choose or create {kind==='doc'||kind==='wp'?'a '+meta.noun:'a '+meta.noun}.</p>}</section></div>
     {sharing&&open&&level===4&&<ShareDialog request={request} note={open.id} kind={kind} title={title} content={content} picture={()=>pic.current?pic.current():null} onClose={()=>setSharing(false)}/>}</>;
 }

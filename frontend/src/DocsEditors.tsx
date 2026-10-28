@@ -3,8 +3,10 @@ import {shapePng} from './Whiteboard';
 import {libOf} from './WbLib';
 import {Bold,Italic,Underline,Strikethrough,List,ListOrdered,AlignLeft,AlignCenter,AlignRight,AlignJustify,Link2,Table2,Undo2,Redo2,Eraser,Upload,Download,Printer,Plus,Trash2,Copy,ArrowUp,ArrowDown,Play,X,ChevronLeft,ChevronRight,Shapes} from 'lucide-react';
 import {evaluate,show,colName,toCsv,fromCsv,Cells} from './sheetcalc';
+import {DownloadMenu} from './DownloadMenu';
+import {convertDownload,deckShapes,sheetShown} from './docConvert';
 
-type EdProps={content:string;onChange:(c:string)=>void;readOnly?:boolean;title:string;shelf?:boolean;onShelf?:()=>void};
+type EdProps={request?:any;content:string;onChange:(c:string)=>void;readOnly?:boolean;title:string;shelf?:boolean;onShelf?:()=>void};
 export type ShapeApi={insertShape:(lib:any)=>void};
 const download=(name:string,text:string,type:string)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)};
 const safeName=(t:string,ext:string)=>`${(t||'file').replace(/[^\w\- ]+/g,'').trim()||'file'}.${ext}`;
@@ -16,7 +18,7 @@ function cleanHtml(html:string):string{ // for files brought in from outside: no
   d.body.querySelectorAll('*').forEach(el=>{for(const a of Array.from(el.attributes)){const n=a.name.toLowerCase();if(n.startsWith('on')||(n==='href'&&!/^(https?:|mailto:)/i.test(a.value.trim()))||(n!=='href'&&n!=='style'&&n!=='colspan'&&n!=='rowspan'&&!(el.tagName==='IMG'&&((n==='src'&&/^data:image\/png;base64,/i.test(a.value))||n==='width'||n==='height'||n==='alt'))))el.removeAttribute(a.name)}});
   d.body.querySelectorAll('img').forEach(i=>{if(!/^data:image\/png;base64,/i.test(i.getAttribute('src')||''))i.remove()});
   return d.body.innerHTML}
-export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({content,onChange,readOnly,title,shelf,onShelf},api){
+export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({content,onChange,readOnly,title,shelf,onShelf,request},api){
   const ref=useRef<HTMLDivElement>(null);const saved=useRef<Range|null>(null);const [pic,setPic]=useState<HTMLImageElement|null>(null);const file=useRef<HTMLInputElement>(null);const [words,setWords]=useState(0);
   const count=()=>setWords(((ref.current?.innerText||'').trim().match(/\S+/g)||[]).length);
   useEffect(()=>{if(ref.current){ref.current.innerHTML=content||'<p><br></p>';count()}},[]);
@@ -32,6 +34,7 @@ export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({conten
   const link=()=>{const u=window.prompt('Link address (https://…)');if(u&&/^(https?:\/\/|mailto:)/i.test(u.trim()))cmd('createLink',u.trim())};
   const table=()=>cmd('insertHTML','<table border="1"><tbody>'+'<tr><td><br></td><td><br></td><td><br></td></tr>'.repeat(3)+'</tbody></table><p><br></p>');
   const imp=async(f?:File)=>{if(!f||!ref.current)return;const t=await f.text();const html=/\.html?$/i.test(f.name)?cleanHtml(t):t.split(/\r?\n/).map(l=>`<p>${l?esc(l):'<br>'}</p>`).join('');ref.current.innerHTML=html;changed()};
+  const curHtml=()=>{const el=ref.current;if(!el)return content||'';const c=el.cloneNode(true) as HTMLElement;c.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel'));return c.innerHTML};
   const exportHtml=()=>download(safeName(title,'html'),`<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><body>${ref.current?.innerHTML||''}`,'text/html');
   const print=()=>{const w=window.open('','_blank');if(!w)return;w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><style>body{font:12pt Georgia,serif;margin:2cm}table{border-collapse:collapse}td,th{border:1px solid #888;padding:4px 8px}</style><body>${cleanHtml(ref.current?.innerHTML||'')}`);w.document.close();w.focus();w.print()};
   return <div className="wp">
@@ -47,13 +50,13 @@ export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({conten
     </div>}
     <div className="wp-page" ref={ref} contentEditable={!readOnly} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Document" aria-readonly={!!readOnly} onInput={changed} onKeyUp={remember} onMouseUp={pickPic} onBlur={remember} spellCheck/>
     <div className="wp-foot"><small className="muted">{words} {words===1?'word':'words'}{readOnly?' · read only':''}</small>
-      <span>{tb('Download as a web page',<Download size={16}/>,exportHtml)}{tb('Print or save as PDF',<Printer size={16}/>,print)}</span></div>
+      <span>{request?<DownloadMenu label="Download this document" items={[{label:'PDF',run:()=>convertDownload(request,'wp','pdf',title,curHtml())},{label:'Word (.docx)',run:()=>convertDownload(request,'wp','docx',title,curHtml())},{label:'Web page (.html)',run:async()=>exportHtml()}]}/>:tb('Download as a web page',<Download size={16}/>,exportHtml)}{tb('Print or save as PDF',<Printer size={16}/>,print)}</span></div>
   </div>});
 
 /* ---------------- SpreadTable: workbooks ---------------- */
 type Sheet={name:string;cells:Cells;rows:number;cols:number};
-const parseBook=(c:string):{v:number;sheets:Sheet[]}=>{try{const v=JSON.parse(c);if(v&&Array.isArray(v.sheets)&&v.sheets.length)return {v:1,sheets:v.sheets.map((s:any)=>({name:String(s.name||'Sheet'),cells:s.cells||{},rows:Math.min(1000,Math.max(20,s.rows||100)),cols:Math.min(52,Math.max(6,s.cols||26))}))}}catch{}return {v:1,sheets:[{name:'Sheet1',cells:{},rows:100,cols:26}]}};
-export function SheetEditor({content,onChange,readOnly,title}:EdProps){
+export const parseBook=(c:string):{v:number;sheets:Sheet[]}=>{try{const v=JSON.parse(c);if(v&&Array.isArray(v.sheets)&&v.sheets.length)return {v:1,sheets:v.sheets.map((s:any)=>({name:String(s.name||'Sheet'),cells:s.cells||{},rows:Math.min(1000,Math.max(20,s.rows||100)),cols:Math.min(52,Math.max(6,s.cols||26))}))}}catch{}return {v:1,sheets:[{name:'Sheet1',cells:{},rows:100,cols:26}]}};
+export function SheetEditor({content,onChange,readOnly,title,request}:EdProps){
   const [book,setBook]=useState(()=>parseBook(content));const [si,setSi]=useState(0);const [sel,setSel]=useState({r:1,c:0});const [edit,setEdit]=useState<string|null>(null);const grid=useRef<HTMLDivElement>(null);const file=useRef<HTMLInputElement>(null);
   const sh=book.sheets[Math.min(si,book.sheets.length-1)];const val=useMemo(()=>evaluate(sh.cells),[sh.cells]);
   const save=(b:typeof book)=>{setBook(b);if(!readOnly)onChange(JSON.stringify(b))};
@@ -81,7 +84,7 @@ export function SheetEditor({content,onChange,readOnly,title}:EdProps){
       <input className="st-formula" aria-label="Formula bar" placeholder={readOnly?'':'Type a value or a formula such as =SUM(A1:A5)'} value={edit!==null?edit:(sh.cells[cur]??'')} readOnly={!!readOnly} onChange={e=>setEdit(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commit(edit??'');move(1,0);grid.current?.focus()}else if(e.key==='Escape'){setEdit(null);grid.current?.focus()}}} onBlur={()=>{if(edit!==null&&!readOnly)commit(edit)}}/>
       {!readOnly&&<><button type="button" className="iconbtn" title="Open a CSV file into this sheet" aria-label="Import CSV" onClick={()=>file.current?.click()}><Upload size={16}/></button><input ref={file} type="file" accept=".csv,.tsv,text/csv" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/>
         <button type="button" className="textbtn" onClick={()=>setCells(c=>c,{rows:Math.min(1000,sh.rows+50)})}>+ 50 rows</button><button type="button" className="textbtn" onClick={()=>setCells(c=>c,{cols:Math.min(52,sh.cols+6)})}>+ 6 columns</button></>}
-      <button type="button" className="iconbtn" title="Download this sheet as CSV" aria-label="Download CSV" onClick={()=>download(safeName(`${title} ${sh.name}`,'csv'),toCsv(sh.cells,sh.rows,sh.cols),'text/csv')}><Download size={16}/></button>
+      {request?<DownloadMenu label="Download this workbook" items={[{label:'Excel (.xlsx)',run:()=>convertDownload(request,'sheet','xlsx',title,JSON.stringify(book))},{label:'PDF',run:()=>convertDownload(request,'sheet','pdf',title,JSON.stringify(book),{shown:sheetShown(book)})},{label:'CSV (this sheet)',run:async()=>download(safeName(`${title} ${sh.name}`,'csv'),toCsv(sh.cells,sh.rows,sh.cols),'text/csv')}]}/>:<button type="button" className="iconbtn" title="Download this sheet as CSV" aria-label="Download CSV" onClick={()=>download(safeName(`${title} ${sh.name}`,'csv'),toCsv(sh.cells,sh.rows,sh.cols),'text/csv')}><Download size={16}/></button>}
     </div>
     <div className="st-grid" ref={grid} tabIndex={0} role="grid" aria-label={`Sheet ${sh.name}`} onKeyDown={key} onPaste={paste} onCopy={copy}>
       <table><thead><tr><th className="st-corner"/>{Array.from({length:sh.cols},(_,c)=><th key={c} className={sel.c===c?'on':''}>{colName(c)}</th>)}</tr></thead>
@@ -97,14 +100,14 @@ export function SheetEditor({content,onChange,readOnly,title}:EdProps){
 /* ---------------- PowerPresentation: slides ---------------- */
 type Slide={layout:'title'|'content'|'two'|'section'|'blank';title:string;body:string[];body2?:string[];notes:string;bg?:string;shapes?:SShape[]};
 type SShape={id:string;lib:string;text:string;x:number;y:number;w:number};
-const THEMES:Record<string,{bg:string;fg:string;accent:string}>={light:{bg:'#ffffff',fg:'#172033',accent:'#2b62f0'},dark:{bg:'#172033',fg:'#f4f6fb',accent:'#7da2ff'},warm:{bg:'#fff7ed',fg:'#3b2a1a',accent:'#e0561f'},green:{bg:'#f0fbf4',fg:'#12301f',accent:'#1c9a5b'}};
-const parseDeck=(c:string):{v:number;theme:string;slides:Slide[]}=>{try{const v=JSON.parse(c);if(v&&Array.isArray(v.slides)&&v.slides.length)return {v:1,theme:THEMES[v.theme]?v.theme:'light',slides:v.slides.map((s:any)=>({layout:['title','content','two','section','blank'].includes(s.layout)?s.layout:'content',title:String(s.title||''),body:Array.isArray(s.body)?s.body.map(String):[],body2:Array.isArray(s.body2)?s.body2.map(String):[],notes:String(s.notes||''),bg:typeof s.bg==='string'?s.bg:undefined,shapes:Array.isArray(s.shapes)?s.shapes.filter((q:any)=>q&&typeof q.lib==='string'&&libOf(q.lib)&&[q.x,q.y,q.w].every((n:any)=>Number.isFinite(n))).slice(0,60).map((q:any)=>({id:String(q.id||Math.random().toString(36).slice(2,8)),lib:q.lib,text:String(q.text??'').slice(0,300),x:+q.x,y:+q.y,w:Math.max(20,Math.min(960,+q.w))})):[]}))}}catch{}return {v:1,theme:'light',slides:[{layout:'title',title:'Presentation title',body:['Subtitle or presenter'],notes:''}]}};
+export const THEMES:Record<string,{bg:string;fg:string;accent:string}>={light:{bg:'#ffffff',fg:'#172033',accent:'#2b62f0'},dark:{bg:'#172033',fg:'#f4f6fb',accent:'#7da2ff'},warm:{bg:'#fff7ed',fg:'#3b2a1a',accent:'#e0561f'},green:{bg:'#f0fbf4',fg:'#12301f',accent:'#1c9a5b'}};
+export const parseDeck=(c:string):{v:number;theme:string;slides:Slide[]}=>{try{const v=JSON.parse(c);if(v&&Array.isArray(v.slides)&&v.slides.length)return {v:1,theme:THEMES[v.theme]?v.theme:'light',slides:v.slides.map((s:any)=>({layout:['title','content','two','section','blank'].includes(s.layout)?s.layout:'content',title:String(s.title||''),body:Array.isArray(s.body)?s.body.map(String):[],body2:Array.isArray(s.body2)?s.body2.map(String):[],notes:String(s.notes||''),bg:typeof s.bg==='string'?s.bg:undefined,shapes:Array.isArray(s.shapes)?s.shapes.filter((q:any)=>q&&typeof q.lib==='string'&&libOf(q.lib)&&[q.x,q.y,q.w].every((n:any)=>Number.isFinite(n))).slice(0,60).map((q:any)=>({id:String(q.id||Math.random().toString(36).slice(2,8)),lib:q.lib,text:String(q.text??'').slice(0,300),x:+q.x,y:+q.y,w:Math.max(20,Math.min(960,+q.w))})):[]}))}}catch{}return {v:1,theme:'light',slides:[{layout:'title',title:'Presentation title',body:['Subtitle or presenter'],notes:''}]}};
 function SlideView({s,theme,w}:{s:Slide;theme:string;w:number}){
   const t=THEMES[theme]||THEMES.light;const k=w/960;const list=(a:string[]|undefined)=><ul>{(a||[]).filter(x=>x.trim()).map((x,i)=><li key={i}>{x}</li>)}</ul>;
   return <div className="pp-slide" style={{width:w,height:w*9/16}}><div style={{width:960,height:540,transform:`scale(${k})`,transformOrigin:'top left',background:s.bg||t.bg,color:t.fg,['--ac' as any]:t.accent}} className={`pp-in pp-${s.layout}`}>
     {s.layout!=='blank'&&<h2>{s.title}</h2>}{s.layout==='two'?<div className="pp-cols">{list(s.body)}{list(s.body2)}</div>:s.layout==='blank'?null:list(s.body)}
     {(s.shapes||[]).map(q=>{const lib=libOf(q.lib);if(!lib)return null;const p=shapePng(lib,q.text);return <img key={q.id} className="pp-shape" src={p.url} alt={lib.label} draggable={false} style={{left:q.x,top:q.y,width:q.w,height:q.w*p.h/p.w}}/>})}</div></div>}
-export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({content,onChange,readOnly,title,shelf,onShelf},api){
+export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({content,onChange,readOnly,title,shelf,onShelf,request},api){
   const [deck,setDeck]=useState(()=>parseDeck(content));const [i,setI]=useState(0);const [show_,setShow]=useState(false);const stage=useRef<HTMLDivElement>(null);const [w,setW]=useState(560);
   useEffect(()=>{const el=stage.current;if(!el)return;const f=()=>setW(Math.max(240,Math.min(900,el.clientWidth)));f();const ro=new ResizeObserver(f);ro.observe(el);return()=>ro.disconnect()},[]);
   const idx=Math.min(i,deck.slides.length-1);const s=deck.slides[idx];
@@ -135,7 +138,7 @@ export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({conten
         <button type="button" className="iconbtn" title="Delete slide" aria-label="Delete slide" onClick={del}><Trash2 size={16}/></button>
         <label className="wb-boardsz">Theme <select value={deck.theme} onChange={e=>save({...deck,theme:e.target.value})} aria-label="Theme">{Object.keys(THEMES).map(t=><option key={t} value={t}>{t[0].toUpperCase()+t.slice(1)}</option>)}</select></label></>}
       <button type="button" className="iconbtn" title="Print all slides or save as PDF" aria-label="Print slides" onClick={printAll}><Printer size={16}/></button>
-      <button type="button" className="iconbtn" title="Download the presentation as a file" aria-label="Download presentation" onClick={exportJson}><Download size={16}/></button>
+      {request?<DownloadMenu label="Download this presentation" items={[{label:'PowerPoint (.pptx)',run:()=>convertDownload(request,'deck','pptx',title,JSON.stringify(deck),{shapes:deckShapes(deck)})},{label:'PDF',run:()=>convertDownload(request,'deck','pdf',title,JSON.stringify(deck),{shapes:deckShapes(deck)})},{label:'iSift file (.json)',run:async()=>exportJson()}]}/>:<button type="button" className="iconbtn" title="Download the presentation as a file" aria-label="Download presentation" onClick={exportJson}><Download size={16}/></button>}
       {onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
     </div>
     <div className="pp-main">

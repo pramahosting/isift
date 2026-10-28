@@ -12,7 +12,8 @@ RUN npm run build
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOSTED=true APP_ENV=production AUTH_MODE=local ALLOW_LOCAL_AUTH=true \
     RUN_WORKER=true WEB_DIR=/app/web AUDIO_STORAGE_DIR=/data/audio PORT=8000
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# ffmpeg for recordings; Pango and fonts for the Doc Converter (PDF, Word, Excel and PowerPoint files)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-liberation fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
