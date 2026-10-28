@@ -111,7 +111,7 @@ def test_convert_route_needs_sign_in_and_returns_the_file(client):
     j = r.json(); assert j["filename"] == "My doc1.docx" and base64.b64decode(j["data"])[:2] == b"PK" and "wordprocessingml" in j["mime"]
     assert client.post("/api/v1/docs/convert", json={"kind": "wp", "to": "xlsx", "content": "x"}, headers=h).status_code == 422
     p = client.post("/api/v1/docs/convert", json={"kind": "wp", "to": "pdf", "content": HTML}, headers=h).json()
-    back = client.post("/api/v1/docs/pdf-to-wp", json={"name": "a.pdf", "data": p["data"]}, headers=h)
+    back = client.post("/api/v1/docs/pdf-to-wp", json={"name": "a.pdf", "data": p["data"], "mode": "flow"}, headers=h)
     assert back.status_code == 200 and "<h1" in back.json()["html"]
     assert client.post("/api/v1/docs/pdf-to-wp", json={"data": base64.b64encode(b"not a pdf").decode()}, headers=h).status_code == 422
 
@@ -163,3 +163,29 @@ def test_pdf_to_wordperfect_keeps_colours_and_shading():
     h = htmlsafe.clean(dc.pdf_to_wp(pdf)["html"])
     assert "color:#bf382a" in h or "color:#c0392b" in h
     assert "background-color:#1a56db" in h and "color:#ffffff" in h and "color:#188038" in h and "font-size:18pt" in h
+
+
+def test_pdf_to_wordperfect_exact_keeps_the_page_look():
+    from weasyprint import HTML
+    from app.services import docconvert as dc, htmlsafe
+    pdf = HTML(string='<div style="background:#172033;color:#fff;padding:20px;font:bold 20pt Arial;width:300px">White on navy</div><p style="color:#c0392b">Red line</p>').write_pdf()
+    r = dc.pdf_to_wp(pdf, True); h = htmlsafe.clean(r["html"])
+    assert "background-image:url(data:image/" in h and "position:absolute" in h and "White on navy" in h and "color:#ffffff" in h and "color:#c0392b" in h or "#bf382a" in h
+    assert "<script" not in h and "http" not in h.replace("https://", "")
+    # the exact pages become a Word file with the graphics behind the text and the text in positioned frames, and a PDF the same size
+    from docx import Document
+    docx = dc.wp_to_docx(h, "t"); d = Document(io.BytesIO(docx))
+    assert "behindDoc=\"1\"" in d.element.xml and "w:framePr" in d.element.xml and any("White on navy" in p.text for p in d.paragraphs)
+    assert dc.wp_to_pdf(h, "t")[:5] == b"%PDF-"
+
+
+def test_files_from_the_computer_convert_straight_to_pdf(client):
+    docx, xlsx, pptx = _office_files(); h = _auth(client)
+    for name, raw in (("a.docx", docx), ("b.xlsx", xlsx), ("c.pptx", pptx), ("d.txt", b"hello")):
+        r = client.post("/api/v1/docs/file-to-pdf", json={"name": name, "data": base64.b64encode(raw).decode()}, headers=h)
+        assert r.status_code == 200 and base64.b64decode(r.json()["data"])[:5] == b"%PDF-" and r.json()["filename"].endswith(".pdf"), (name, r.text)
+    assert client.post("/api/v1/docs/file-to-pdf", json={"name": "x.exe", "data": base64.b64encode(b"MZ").decode()}, headers=h).status_code == 422
+    from weasyprint import HTML
+    pdf = HTML(string="<h1 style='color:#c0392b'>Hi</h1>").write_pdf()
+    r = client.post("/api/v1/docs/pdf-to-docx", json={"name": "p.pdf", "data": base64.b64encode(pdf).decode()}, headers=h)
+    assert r.status_code == 200 and base64.b64decode(r.json()["data"])[:2] == b"PK"
