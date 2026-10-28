@@ -45,7 +45,9 @@ async def rsvp_answer(token: str, payload: dict, db: AsyncSession = Depends(get_
         shown = ""
         if proposed:
             tz = await cal.user_timezone(db); shown = datetime.fromisoformat(proposed).astimezone(tz).strftime("%A %d %B %Y, %H:%M") + f" ({tz})"
-        await rsvp.tell_host(db, m, host, email, status, shown, note, str(await cal.user_timezone(db)))
+        problem = await rsvp.tell_host(db, m, host, email, status, shown, note, str(await cal.user_timezone(db)))
+        v2 = await rsvp.load(db, m.id)
+        if email in v2["responses"]: v2["responses"][email]["host_notice"] = problem or "sent"; await rsvp.save(db, m.id, v2)
     db.add(AuditLog(actor=email, action="meeting.rsvp", resource_type="meeting", safe_metadata={"status": status})); await db.commit()
     msg = {"accepted": "Thanks. You are going, and the host has been told.", "tentative": "Thanks. The host knows you might come.", "declined": "Thanks. The host knows you cannot come.",
            "proposed": "Thanks. Your suggested time was sent to the host, who can accept it."}[status]
@@ -179,8 +181,9 @@ async def rsvp_answer_page(token: str, status: str, request: Request, db: AsyncS
     word = {"accepted": "You accepted", "tentative": "You replied Maybe to", "declined": "You declined"}[status]
     if any(x in ua for x in ("bot", "spider", "preview", "scanner", "safelinks", "proofpoint", "barracuda", "mimecast")):
         return _page(m.title, f"<h1>{escape(m.title)}</h1><p>Open this link in your browser to reply.</p>")      # mail scanners must not answer for the guest
-    await rsvp_answer(token, {"status": status}, db)
-    return _page(m.title, f'<div class="tick">&#10003;</div><h1>{word} this meeting</h1><p><b>{escape(m.title)}</b></p><p>The host has been told by email. You can close this tab.</p>')
+    res = await rsvp_answer(token, {"status": status}, db)
+    told = (await rsvp.load(db, m.id))["responses"].get(email, {}).get("host_notice") == "sent"
+    return _page(m.title, f'<div class="tick">&#10003;</div><h1>{word} this meeting</h1><p><b>{escape(m.title)}</b></p><p>' + ("The host has been told by email." if told else "Your answer is recorded for the host.") + " You can close this tab.</p>")
 
 @router.get("/rsvp/{token}/calendar")
 async def rsvp_calendar_page(token: str, db: AsyncSession = Depends(get_db)):

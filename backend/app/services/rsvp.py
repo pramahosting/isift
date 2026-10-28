@@ -128,21 +128,24 @@ async def send_each(acct, recipients: list[str], subject: str, body: str, m, bas
         if err: raise err
     return {"used": used, "skipped": skipped}
 
-async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str, tz_name: str) -> None:
+async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str, tz_name: str) -> str:
     """Email the host that someone replied. Uses the app's own sender, or the host's connected mail account."""
     from app.integrations import mail as mailer
     from app.services import signup, calendar_sync as cal
     accts = await senders(db, host, allow_app=True)
     if not accts:
-        log.warning("Reply from %s to %s not emailed: no mail account is set up", who, m.title); return
+        log.warning("Reply from %s to %s not emailed: no mail account is set up", who, m.title); return "No email account is set up to send from, so the host was not emailed."
     body = f"{who} {LABEL.get(status, status)} your meeting: {m.title}\n"
     if status == "proposed" and proposed: body += f"Suggested time: {proposed}\n"
     if note: body += f"Note: {note}\n"
     body += "\nOpen the meeting in iSift (Meetings, then the meeting) to see every reply"
     body += " and use the suggested time." if status == "proposed" else "."
+    why = []
     for a in accts:
-        try: await mailer.send(a, [host.email], f"{who} {LABEL.get(status, status)}: {m.title}", body); return
-        except Exception: log.exception("Could not email the host about a reply (from %s)", a.get("address"))
+        try: await mailer.send(a, [host.email], f"{who} {LABEL.get(status, status)}: {m.title}", body); return ""
+        except Exception as exc:
+            log.exception("Could not email the host about a reply (from %s)", a.get("address")); why.append(f"{a.get('address')}: {str(exc)[:160]}")
+    return "The host could not be emailed (" + " | ".join(why) + ")."
 
 
 def _ics_fields(txt: str) -> dict:
