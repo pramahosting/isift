@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState,useCallback,forwardRef,useImperativeHandle} from 'react';
+import {importOffice} from './docConvert';
 import {shapePng} from './Whiteboard';
 import {libOf} from './WbLib';
 import {Bold,Italic,Underline,Strikethrough,List,ListOrdered,AlignLeft,AlignCenter,AlignRight,AlignJustify,Link2,Table2,Undo2,Redo2,Eraser,Upload,Download,Printer,Plus,Trash2,Copy,ArrowUp,ArrowDown,Play,X,ChevronLeft,ChevronRight,Shapes} from 'lucide-react';
@@ -15,8 +16,8 @@ const esc=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,
 /* ---------------- WordPerfect: documents ---------------- */
 function cleanHtml(html:string):string{ // for files brought in from outside: no scripts, no event handlers, no script links
   const d=new DOMParser().parseFromString(html,'text/html');d.querySelectorAll('script,style,iframe,object,embed,svg,form,link,meta').forEach(n=>n.remove());
-  d.body.querySelectorAll('*').forEach(el=>{for(const a of Array.from(el.attributes)){const n=a.name.toLowerCase();if(n.startsWith('on')||(n==='href'&&!/^(https?:|mailto:)/i.test(a.value.trim()))||(n!=='href'&&n!=='style'&&n!=='colspan'&&n!=='rowspan'&&!(el.tagName==='IMG'&&((n==='src'&&/^data:image\/png;base64,/i.test(a.value))||n==='width'||n==='height'||n==='alt'))))el.removeAttribute(a.name)}});
-  d.body.querySelectorAll('img').forEach(i=>{if(!/^data:image\/png;base64,/i.test(i.getAttribute('src')||''))i.remove()});
+  d.body.querySelectorAll('*').forEach(el=>{for(const a of Array.from(el.attributes)){const n=a.name.toLowerCase();if(n.startsWith('on')||(n==='href'&&!/^(https?:|mailto:)/i.test(a.value.trim()))||(n!=='href'&&n!=='style'&&n!=='colspan'&&n!=='rowspan'&&!(el.tagName==='IMG'&&((n==='src'&&/^data:image\/(png|jpeg|gif|webp);base64,/i.test(a.value))||n==='width'||n==='height'||n==='alt'))))el.removeAttribute(a.name)}});
+  d.body.querySelectorAll('img').forEach(i=>{if(!/^data:image\/(png|jpeg|gif|webp);base64,/i.test(i.getAttribute('src')||''))i.remove()});
   return d.body.innerHTML}
 export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({content,onChange,readOnly,title,shelf,onShelf,request},api){
   const ref=useRef<HTMLDivElement>(null);const saved=useRef<Range|null>(null);const [pic,setPic]=useState<HTMLImageElement|null>(null);const file=useRef<HTMLInputElement>(null);const [words,setWords]=useState(0);
@@ -29,11 +30,15 @@ export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({conten
   const resizePic=(f:number)=>{if(!pic)return;const w=Math.max(30,Math.min(700,Math.round((pic.width||100)*f))),h=Math.round(w*(pic.naturalHeight||pic.height)/(pic.naturalWidth||pic.width||1));pic.setAttribute('width',String(w));pic.setAttribute('height',String(h));changed()};
   const pickPic=(e:React.MouseEvent)=>{const t=e.target as HTMLElement;ref.current?.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel'));if(t.tagName==='IMG'&&!readOnly){t.classList.add('sel');setPic(t as HTMLImageElement)}else setPic(null);remember()};
   const cmd=(c:string,v?:string)=>{ref.current?.focus();document.execCommand(c,false,v);changed()};
-  const changed=()=>{if(readOnly||!ref.current)return;ref.current.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel'));const h=ref.current.innerHTML;if(pic)pic.classList.add('sel');onChange(h);count()};
+  // Saving reads the whole page, so it waits for a short pause in typing: a long document (or one with pictures) stays responsive while you type.
+  const timer=useRef<number|null>(null);const latest=useRef(onChange);latest.current=onChange;
+  const flush=()=>{if(timer.current!==null){window.clearTimeout(timer.current);timer.current=null}if(readOnly||!ref.current)return;const el=ref.current;const sel=el.querySelectorAll('img.sel');sel.forEach(i=>i.classList.remove('sel'));const h=el.innerHTML;sel.forEach(i=>i.classList.add('sel'));latest.current(h);count()};
+  const changed=()=>{if(readOnly)return;if(timer.current!==null)window.clearTimeout(timer.current);timer.current=window.setTimeout(flush,350)};
+  useEffect(()=>()=>{if(timer.current!==null)flush()},[]);
   const tb=(label:string,icon:React.ReactNode,fn:()=>void)=><button type="button" className="iconbtn" title={label} aria-label={label} onMouseDown={e=>e.preventDefault()} onClick={fn}>{icon}</button>;
   const link=()=>{const u=window.prompt('Link address (https://…)');if(u&&/^(https?:\/\/|mailto:)/i.test(u.trim()))cmd('createLink',u.trim())};
   const table=()=>cmd('insertHTML','<table border="1"><tbody>'+'<tr><td><br></td><td><br></td><td><br></td></tr>'.repeat(3)+'</tbody></table><p><br></p>');
-  const imp=async(f?:File)=>{if(!f||!ref.current)return;const t=await f.text();const html=/\.html?$/i.test(f.name)?cleanHtml(t):t.split(/\r?\n/).map(l=>`<p>${l?esc(l):'<br>'}</p>`).join('');ref.current.innerHTML=html;changed()};
+  const [msg,setMsg]=useState('');const imp=async(f?:File)=>{if(!f||!ref.current)return;setMsg('');if(/\.docx$/i.test(f.name)){if(!request){setMsg('Word files can be opened here once you are signed in.');return}try{setMsg('Opening the Word file…');const r=await importOffice(request,f);ref.current.innerHTML=r.content;flush();setMsg(r.notes?.join(' ')||'Word file opened. Edit it here, then download it as Word (.docx) again.')}catch(e:any){setMsg(e?.message||'That file could not be opened.')}return}const t=await f.text();const html=/\.html?$/i.test(f.name)?cleanHtml(t):t.split(/\r?\n/).map(l=>`<p>${l?esc(l):'<br>'}</p>`).join('');ref.current.innerHTML=html;changed()};
   const curHtml=()=>{const el=ref.current;if(!el)return content||'';const c=el.cloneNode(true) as HTMLElement;c.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel'));return c.innerHTML};
   const exportHtml=()=>download(safeName(title,'html'),`<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><body>${ref.current?.innerHTML||''}`,'text/html');
   const print=()=>{const w=window.open('','_blank');if(!w)return;w.document.write(`<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><style>body{font:12pt Georgia,serif;margin:2cm}table{border-collapse:collapse}td,th{border:1px solid #888;padding:4px 8px}</style><body>${cleanHtml(ref.current?.innerHTML||'')}`);w.document.close();w.focus();w.print()};
@@ -46,10 +51,10 @@ export const WordEditor=forwardRef<ShapeApi,EdProps>(function WordEditor({conten
       <span className="wb-sep"/>{tb('Link',<Link2 size={16}/>,link)}{tb('Insert a 3 by 3 table',<Table2 size={16}/>,table)}{tb('Clear formatting',<Eraser size={16}/>,()=>cmd('removeFormat'))}
       <span className="wb-sep"/>{tb('Undo',<Undo2 size={16}/>,()=>cmd('undo'))}{tb('Redo',<Redo2 size={16}/>,()=>cmd('redo'))}
       {pic&&<><span className="wb-sep"/><span className="small muted">Shape</span><button type="button" className="textbtn" onMouseDown={e=>e.preventDefault()} onClick={()=>resizePic(0.8)}>Smaller</button><button type="button" className="textbtn" onMouseDown={e=>e.preventDefault()} onClick={()=>resizePic(1.25)}>Larger</button></>}
-      {tb('Open a text or HTML file into this document',<Upload size={16}/>,()=>file.current?.click())}<input ref={file} type="file" accept=".txt,.md,.html,.htm,text/plain,text/html" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/><span className="wb-sep"/>{onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onMouseDown={e=>e.preventDefault()} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
+      {tb('Open a Word (.docx), text or HTML file into this document',<Upload size={16}/>,()=>file.current?.click())}<input ref={file} type="file" accept=".docx,.txt,.md,.html,.htm,text/plain,text/html" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/><span className="wb-sep"/>{onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onMouseDown={e=>e.preventDefault()} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
     </div>}
-    <div className="wp-page" ref={ref} contentEditable={!readOnly} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Document" aria-readonly={!!readOnly} onInput={changed} onKeyUp={remember} onMouseUp={pickPic} onBlur={remember} spellCheck/>
-    <div className="wp-foot"><small className="muted">{words} {words===1?'word':'words'}{readOnly?' · read only':''}</small>
+    <div className="wp-page" ref={ref} contentEditable={!readOnly} suppressContentEditableWarning role="textbox" aria-multiline="true" aria-label="Document" aria-readonly={!!readOnly} onInput={changed} onKeyUp={remember} onMouseUp={pickPic} onBlur={()=>{remember();flush()}} spellCheck/>
+    <div className="wp-foot"><small className="muted">{words} {words===1?'word':'words'}{readOnly?' · read only':''}{msg?` · ${msg}`:''}</small>
       <span>{request?<DownloadMenu label="Download this document" items={[{label:'PDF',run:()=>convertDownload(request,'wp','pdf',title,curHtml())},{label:'Word (.docx)',run:()=>convertDownload(request,'wp','docx',title,curHtml())},{label:'Web page (.html)',run:async()=>exportHtml()}]}/>:tb('Download as a web page',<Download size={16}/>,exportHtml)}{tb('Print or save as PDF',<Printer size={16}/>,print)}</span></div>
   </div>});
 
@@ -71,7 +76,7 @@ export function SheetEditor({content,onChange,readOnly,title,request}:EdProps){
     else if(!readOnly&&e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){setEdit(e.key);e.preventDefault()}};
   const paste=(e:React.ClipboardEvent)=>{if(readOnly||edit!==null)return;const t=e.clipboardData.getData('text');if(!t)return;e.preventDefault();const rows=t.replace(/\r/g,'').replace(/\n$/,'').split('\n').map(l=>l.split('\t'));setCells(c=>{rows.forEach((row,i)=>row.forEach((v,j)=>{const r=sel.r+i,cc=sel.c+j;if(r<=sh.rows&&cc<sh.cols){if(v==='')delete c[ref(r,cc)];else c[ref(r,cc)]=v}}));return c})};
   const copy=(e:React.ClipboardEvent)=>{if(edit!==null)return;e.preventDefault();e.clipboardData.setData('text',sh.cells[cur]??'')};
-  const imp=async(f?:File)=>{if(!f||readOnly)return;const cells=fromCsv(await f.text());let mr=20,mc=6;for(const k of Object.keys(cells)){const m=/^([A-Z]+)(\d+)$/.exec(k)!;mr=Math.max(mr,+m[2]);mc=Math.max(mc,[...m[1]].reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0))}setCells(()=>cells,{rows:Math.min(1000,Math.max(sh.rows,mr)),cols:Math.min(52,Math.max(sh.cols,mc))})};
+  const [msg,setMsg]=useState('');const imp=async(f?:File)=>{if(!f||readOnly)return;if(/\.xlsx$/i.test(f.name)){if(!request){setMsg('Excel files can be opened here once you are signed in.');return}try{setMsg('Opening the Excel file…');const r=await importOffice(request,f);const b=parseBook(r.content);save(b);setSi(0);setSel({r:1,c:0});setMsg(r.notes?.join(' ')||'Excel file opened.')}catch(e:any){setMsg(e?.message||'That file could not be opened.')}return}const cells=fromCsv(await f.text());let mr=20,mc=6;for(const k of Object.keys(cells)){const m=/^([A-Z]+)(\d+)$/.exec(k)!;mr=Math.max(mr,+m[2]);mc=Math.max(mc,[...m[1]].reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0))}setCells(()=>cells,{rows:Math.min(1000,Math.max(sh.rows,mr)),cols:Math.min(52,Math.max(sh.cols,mc))})};
   useEffect(()=>{grid.current?.querySelector('.on')?.scrollIntoView({block:'nearest',inline:'nearest'})},[sel]);
   const shown=(r:number,c:number)=>{const raw=sh.cells[ref(r,c)];if(raw===undefined)return '';const v=val(ref(r,c));return show(v)};
   const num=(r:number,c:number)=>{const raw=sh.cells[ref(r,c)];return raw!==undefined&&typeof val(ref(r,c))==='number'};
@@ -82,7 +87,7 @@ export function SheetEditor({content,onChange,readOnly,title,request}:EdProps){
     <div className="ws-tools st-bar">
       <input className="st-name" readOnly value={cur} aria-label="Selected cell"/>
       <input className="st-formula" aria-label="Formula bar" placeholder={readOnly?'':'Type a value or a formula such as =SUM(A1:A5)'} value={edit!==null?edit:(sh.cells[cur]??'')} readOnly={!!readOnly} onChange={e=>setEdit(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();commit(edit??'');move(1,0);grid.current?.focus()}else if(e.key==='Escape'){setEdit(null);grid.current?.focus()}}} onBlur={()=>{if(edit!==null&&!readOnly)commit(edit)}}/>
-      {!readOnly&&<><button type="button" className="iconbtn" title="Open a CSV file into this sheet" aria-label="Import CSV" onClick={()=>file.current?.click()}><Upload size={16}/></button><input ref={file} type="file" accept=".csv,.tsv,text/csv" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/>
+      {!readOnly&&<><button type="button" className="iconbtn" title="Open an Excel (.xlsx) or CSV file into this workbook" aria-label="Open Excel or CSV file" onClick={()=>file.current?.click()}><Upload size={16}/></button><input ref={file} type="file" accept=".xlsx,.csv,.tsv,text/csv" hidden onChange={e=>{imp(e.target.files?.[0]);e.target.value=''}}/>
         <button type="button" className="textbtn" onClick={()=>setCells(c=>c,{rows:Math.min(1000,sh.rows+50)})}>+ 50 rows</button><button type="button" className="textbtn" onClick={()=>setCells(c=>c,{cols:Math.min(52,sh.cols+6)})}>+ 6 columns</button></>}
       {request?<DownloadMenu label="Download this workbook" items={[{label:'Excel (.xlsx)',run:()=>convertDownload(request,'sheet','xlsx',title,JSON.stringify(book))},{label:'PDF',run:()=>convertDownload(request,'sheet','pdf',title,JSON.stringify(book),{shown:sheetShown(book)})},{label:'CSV (this sheet)',run:async()=>download(safeName(`${title} ${sh.name}`,'csv'),toCsv(sh.cells,sh.rows,sh.cols),'text/csv')}]}/>:<button type="button" className="iconbtn" title="Download this sheet as CSV" aria-label="Download CSV" onClick={()=>download(safeName(`${title} ${sh.name}`,'csv'),toCsv(sh.cells,sh.rows,sh.cols),'text/csv')}><Download size={16}/></button>}
     </div>
@@ -94,7 +99,7 @@ export function SheetEditor({content,onChange,readOnly,title,request}:EdProps){
     </div>
     <div className="st-tabs" role="tablist" aria-label="Sheets">{book.sheets.map((s,i)=><button key={i} type="button" role="tab" aria-selected={i===si} className={`wb-cat${i===si?' on':''}`} onClick={()=>{setSi(i);setSel({r:1,c:0});setEdit(null)}} onDoubleClick={()=>!readOnly&&rename()}>{s.name}</button>)}
       {!readOnly&&<><button type="button" className="iconbtn" title="Add a sheet" aria-label="Add sheet" onClick={addSheet}><Plus size={16}/></button><button type="button" className="textbtn" onClick={rename}>Rename</button><button type="button" className="textbtn danger" onClick={del}>Delete sheet</button></>}
-      <small className="muted">Formulas: + − * / ^ &amp; and SUM, AVERAGE, MIN, MAX, COUNT, IF, AND, OR, ROUND, ABS and more.{readOnly?' Read only.':''}</small></div>
+      <small className="muted">Formulas: + − * / ^ &amp; and SUM, AVERAGE, MIN, MAX, COUNT, IF, AND, OR, ROUND, ABS and more.{readOnly?' Read only.':''}{msg?` ${msg}`:''}</small></div>
   </div>}
 
 /* ---------------- PowerPresentation: slides ---------------- */
@@ -108,7 +113,7 @@ function SlideView({s,theme,w}:{s:Slide;theme:string;w:number}){
     {s.layout!=='blank'&&<h2>{s.title}</h2>}{s.layout==='two'?<div className="pp-cols">{list(s.body)}{list(s.body2)}</div>:s.layout==='blank'?null:list(s.body)}
     {(s.shapes||[]).map(q=>{const lib=libOf(q.lib);if(!lib)return null;const p=shapePng(lib,q.text);return <img key={q.id} className="pp-shape" src={p.url} alt={lib.label} draggable={false} style={{left:q.x,top:q.y,width:q.w,height:q.w*p.h/p.w}}/>})}</div></div>}
 export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({content,onChange,readOnly,title,shelf,onShelf,request},api){
-  const [deck,setDeck]=useState(()=>parseDeck(content));const [i,setI]=useState(0);const [show_,setShow]=useState(false);const stage=useRef<HTMLDivElement>(null);const [w,setW]=useState(560);
+  const [deck,setDeck]=useState(()=>parseDeck(content));const pptIn=useRef<HTMLInputElement>(null);const [pmsg,setPmsg]=useState('');const [i,setI]=useState(0);const [show_,setShow]=useState(false);const stage=useRef<HTMLDivElement>(null);const [w,setW]=useState(560);
   useEffect(()=>{const el=stage.current;if(!el)return;const f=()=>setW(Math.max(240,Math.min(900,el.clientWidth)));f();const ro=new ResizeObserver(f);ro.observe(el);return()=>ro.disconnect()},[]);
   const idx=Math.min(i,deck.slides.length-1);const s=deck.slides[idx];
   const save=(d:typeof deck)=>{setDeck(d);if(!readOnly)onChange(JSON.stringify(d))};
@@ -133,6 +138,7 @@ export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({conten
   return <div className="pp">
     <div className="ws-tools pp-bar">
       <button type="button" className="primary" onClick={()=>setShow(true)}><Play size={15}/> Present</button>
+      {!readOnly&&request&&<><button type="button" className="iconbtn" title="Open a PowerPoint (.pptx) file into this presentation" aria-label="Open PowerPoint file" onClick={()=>pptIn.current?.click()}><Upload size={16}/></button><input ref={pptIn} type="file" accept=".pptx" hidden onChange={async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;try{setPmsg('Opening the PowerPoint file…');const r=await importOffice(request,f);save(parseDeck(r.content));setI(0);setPmsg(r.notes?.join(' ')||'PowerPoint file opened.')}catch(er:any){setPmsg(er?.message||'That file could not be opened.')}}}/></>}
       {!readOnly&&<><button type="button" className="textbtn" onClick={add}><Plus size={14}/> New slide</button><button type="button" className="iconbtn" title="Duplicate slide" aria-label="Duplicate slide" onClick={dup}><Copy size={16}/></button>
         <button type="button" className="iconbtn" title="Move up" aria-label="Move slide up" onClick={()=>mv(-1)}><ArrowUp size={16}/></button><button type="button" className="iconbtn" title="Move down" aria-label="Move slide down" onClick={()=>mv(1)}><ArrowDown size={16}/></button>
         <button type="button" className="iconbtn" title="Delete slide" aria-label="Delete slide" onClick={del}><Trash2 size={16}/></button>
@@ -140,6 +146,7 @@ export const DeckEditor=forwardRef<ShapeApi,EdProps>(function DeckEditor({conten
       <button type="button" className="iconbtn" title="Print all slides or save as PDF" aria-label="Print slides" onClick={printAll}><Printer size={16}/></button>
       {request?<DownloadMenu label="Download this presentation" items={[{label:'PowerPoint (.pptx)',run:()=>convertDownload(request,'deck','pptx',title,JSON.stringify(deck),{shapes:deckShapes(deck)})},{label:'PDF',run:()=>convertDownload(request,'deck','pdf',title,JSON.stringify(deck),{shapes:deckShapes(deck)})},{label:'iSift file (.json)',run:async()=>exportJson()}]}/>:<button type="button" className="iconbtn" title="Download the presentation as a file" aria-label="Download presentation" onClick={exportJson}><Download size={16}/></button>}
       {onShelf&&<button type="button" className={`textbtn se-shapesbtn${shelf?' on':''}`} title={shelf?'Hide the shape library':'Show the shape library'} aria-pressed={!!shelf} onClick={onShelf}><Shapes size={16}/> Shapes</button>}
+      {pmsg&&<small className="muted" role="status">{pmsg}</small>}
     </div>
     <div className="pp-main">
       <div className="pp-strip" role="listbox" aria-label="Slides">{deck.slides.map((x,j)=><button key={j} type="button" role="option" aria-selected={j===idx} className={`pp-thumb${j===idx?' on':''}`} onClick={()=>setI(j)}><span>{j+1}</span><SlideView s={x} theme={deck.theme} w={150}/></button>)}</div>

@@ -27,3 +27,8 @@ export async function convertSaved(request:any,kind:'wp'|'sheet'|'deck',to:strin
   if(kind==='sheet')return convertDownload(request,kind,to,title,content,{shown:sheetShown(parseBook(content))});
   if(kind==='deck')return convertDownload(request,kind,to,title,content,{shapes:deckShapes(parseDeck(content))});
   return convertDownload(request,kind,to,title,content)}
+
+/** A Word, Excel or PowerPoint file read by the server into {kind, title, content, notes} that an iSift editor can open. */
+export async function importOffice(request:any,f:File):Promise<{kind:'wp'|'sheet'|'deck';title:string;content:string;notes:string[]}>{
+  const data:string=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
+  return request('/docs/import',{method:'POST',body:JSON.stringify({name:f.name,data})})}
