@@ -371,3 +371,22 @@ class WebinarPoll(Base):
     votes: Mapped[dict] = mapped_column(JSON, default=dict)                   # voter key -> [option numbers]
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class MarketingAsset(Base):
+    """A video, playbook or other file the administrator keeps for sales and marketing. `public` files can be opened without signing in (the landing-page video is one)."""
+    __tablename__ = "marketing_assets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    kind: Mapped[str] = mapped_column(String(12), default="document")          # video | document | other
+    title: Mapped[str] = mapped_column(String(200), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    filename: Mapped[str] = mapped_column(String(255), default="")
+    mimetype: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    storage: Mapped[str] = mapped_column(String(12), default="database")       # r2 | database
+    object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    public: Mapped[bool] = mapped_column(Boolean, default=False)
+    landing: Mapped[bool] = mapped_column(Boolean, default=False)              # the video behind the Watch button on the home page (only one)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

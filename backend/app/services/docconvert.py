@@ -526,7 +526,19 @@ def _family(fontname: str) -> str:
     return "Arial,Helvetica,sans-serif" if f else ""
 
 
-def pdf_to_wp_exact(data: bytes) -> dict:
+def warm() -> bool:
+    """Loads the heavy libraries in a worker so the first real conversion starts fast."""
+    import pypdfium2, pdfminer.high_level, weasyprint, docx, openpyxl, pptx  # noqa: F401
+    return True
+
+
+def pdf_page_count(data: bytes) -> int:
+    import pypdfium2 as pdfium
+    try: return len(pdfium.PdfDocument(data))
+    except Exception: raise ConvertError("The PDF could not be opened. It may be damaged or password protected.")
+
+
+def pdf_to_wp_exact(data: bytes, pages: list | None = None) -> dict:
     """Each PDF page rebuilt exactly as it looks: the page's graphics (backgrounds, shapes, pictures, gradients, QR codes) are drawn as the page background with the
     text taken out, and the real text is laid back on top in the same place, font, size and colour. The text stays editable."""
     import pypdfium2 as pdfium
@@ -536,6 +548,7 @@ def pdf_to_wp_exact(data: bytes) -> dict:
     try: pdf = pdfium.PdfDocument(data)
     except Exception: raise ConvertError("The PDF could not be opened. It may be damaged or password protected.")
     n_pages = len(pdf); out, warn, texty = [], [], 0
+    want = list(range(n_pages)) if pages is None else [i for i in pages if 0 <= i < n_pages]
 
     def runs(lines, size, fam):
         spans = []
@@ -562,9 +575,9 @@ def pdf_to_wp_exact(data: bytes) -> dict:
             html += t
         return html
 
-    layouts = list(extract_pages(io.BytesIO(data), laparams=LAParams(line_margin=0.3, boxes_flow=0.5, char_margin=2.0)))
-    for pi in range(n_pages):
-        lay = layouts[pi] if pi < len(layouts) else None
+    layouts = {l.pageid - 1 if False else i: l for i, l in zip(sorted(want), extract_pages(io.BytesIO(data), page_numbers=sorted(want), laparams=LAParams(line_margin=0.3, boxes_flow=0.5, char_margin=2.0)))}
+    for pi in sorted(want):
+        lay = layouts.get(pi)
         page = pdf[pi]
         pw, ph = page.get_size()
         try:
@@ -593,6 +606,15 @@ def pdf_to_wp_exact(data: bytes) -> dict:
         out.append(f'<div style="position:relative;width:{pw:.1f}pt;height:{ph:.1f}pt;background-image:url(data:image/{mime};base64,{base64.b64encode(blob).decode()});background-size:100% 100%;background-repeat:no-repeat;overflow:hidden;margin:0 0 14pt 0">' + "".join(items) + "</div>")
     if not texty: warn.append("This PDF has no selectable text (a scan), so its pages are shown as pictures. Scanned pages cannot be turned into editable text here.")
     return {"html": "".join(out) or "<p><br></p>", "pages": n_pages, "notes": warn}
+
+
+def run_convert(kind: str, to: str, content: str, title: str, shown, shapes) -> bytes:
+    if (kind, to) == ("wp", "pdf"): return wp_to_pdf(content, title)
+    if (kind, to) == ("wp", "docx"): return wp_to_docx(content, title)
+    if (kind, to) == ("sheet", "pdf"): return sheet_to_pdf(content, shown, title)
+    if (kind, to) == ("sheet", "xlsx"): return sheet_to_xlsx(content, title)
+    if (kind, to) == ("deck", "pdf"): return deck_to_pdf(content, shapes, title)
+    return deck_to_pptx(content, shapes, title)
 
 
 def pdf_to_wp(data: bytes, exact: bool = False) -> dict:

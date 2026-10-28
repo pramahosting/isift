@@ -66,6 +66,8 @@ app.include_router(account_router)
 app.include_router(billing_router)
 app.include_router(support_router)
 app.include_router(rsvp_router)
+from app.api.routes_marketing import router as marketing_router
+app.include_router(marketing_router)
 
 @app.on_event("startup")
 async def load_saved_settings():

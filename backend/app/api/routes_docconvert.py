@@ -18,13 +18,41 @@ def _name(title: str, ext: str) -> str:
     return f"{base}.{ext}"
 
 
-def _run(kind: str, to: str, content: str, title: str, shown, shapes) -> bytes:
-    if (kind, to) == ("wp", "pdf"): return dc.wp_to_pdf(content, title)
-    if (kind, to) == ("wp", "docx"): return dc.wp_to_docx(content, title)
-    if (kind, to) == ("sheet", "pdf"): return dc.sheet_to_pdf(content, shown, title)
-    if (kind, to) == ("sheet", "xlsx"): return dc.sheet_to_xlsx(content, title)
-    if (kind, to) == ("deck", "pdf"): return dc.deck_to_pdf(content, shapes, title)
-    return dc.deck_to_pptx(content, shapes, title)
+_POOL = None
+
+
+def _pool():
+    """Conversions run in separate worker processes, so several files (and the pages of one big PDF) are converted at the same time on different CPU cores."""
+    global _POOL
+    if _POOL is None:
+        import multiprocessing, os
+        from concurrent.futures import ProcessPoolExecutor
+        n = int(os.environ.get("DOCCONVERT_WORKERS") or max(2, min(4, (os.cpu_count() or 2))))
+        _POOL = ProcessPoolExecutor(max_workers=n, mp_context=multiprocessing.get_context("spawn"))
+    return _POOL
+
+
+@router.on_event("startup")
+async def _warm_workers():
+    """Start the conversion workers when the app starts, so the first conversion is not slowed by loading the libraries."""
+    try:
+        pool = _pool(); loop = asyncio.get_running_loop()
+        for _ in range(pool._max_workers): loop.run_in_executor(pool, dc.warm)
+    except Exception: log.warning("Conversion workers could not be started early")
+
+
+async def _go(fn, *args):
+    """Run fn(*args) in the worker pool; if the pool is unavailable, run it in a thread so the conversion still happens."""
+    global _POOL
+    loop = asyncio.get_running_loop()
+    try: return await loop.run_in_executor(_pool(), fn, *args)
+    except (OSError, RuntimeError) as exc:
+        if exc.__class__.__name__ in ("BrokenProcessPool", "PermissionError", "OSError", "RuntimeError"):
+            log.warning("Worker pool unavailable (%s); converting in a thread", exc.__class__.__name__)
+            try: _POOL = None
+            except Exception: pass
+            return await asyncio.to_thread(fn, *args)
+        raise
 
 
 @router.post("/convert")
@@ -35,7 +63,7 @@ async def convert(payload: dict, user: User = Depends(principal)):
     content = payload.get("content")
     if not isinstance(content, str): raise HTTPException(422, "Nothing to convert.")
     title = str(payload.get("title") or "")[:200]
-    try: data = await asyncio.to_thread(_run, kind, to, content, title, payload.get("shown"), payload.get("shapes") if isinstance(payload.get("shapes"), dict) else {})
+    try: data = await _go(dc.run_convert, kind, to, content, title, payload.get("shown"), payload.get("shapes") if isinstance(payload.get("shapes"), dict) else {})
     except dc.ConvertError as exc: raise HTTPException(422, str(exc))
     except Exception:
         log.exception("Conversion failed (%s to %s)", kind, to)
@@ -43,12 +71,23 @@ async def convert(payload: dict, user: User = Depends(principal)):
     return {"filename": _name(title, to), "mime": MIME[to], "data": base64.b64encode(data).decode()}
 
 
+async def _pdf_wp(raw: bytes, exact: bool) -> dict:
+    """A PDF as a WordPerfect document. A long PDF in exact mode is split into page groups that are converted at the same time."""
+    if not exact: return await _go(dc.pdf_to_wp, raw, False)
+    n = await _go(dc.pdf_page_count, raw)
+    if n <= 4: return await _go(dc.pdf_to_wp_exact, raw, None)
+    workers = max(2, min(4, __import__("os").cpu_count() or 2)); size = max(2, -(-n // workers))
+    parts = await asyncio.gather(*[_go(dc.pdf_to_wp_exact, raw, list(range(i, min(n, i + size)))) for i in range(0, n, size)])
+    notes = list(dict.fromkeys(x for p in parts for x in p["notes"]))
+    return {"html": "".join(p["html"] for p in parts), "pages": n, "notes": notes}
+
+
 @router.post("/pdf-to-wp")
 async def pdf_to_wp(payload: dict, user: User = Depends(principal)):
     """{name, data (base64 PDF)} -> {html, pages, notes}: the PDF rebuilt as a WordPerfect document."""
     try: raw = base64.b64decode(str(payload.get("data") or ""), validate=False)
     except Exception: raise HTTPException(422, "The file could not be read.")
-    try: res = await asyncio.to_thread(dc.pdf_to_wp, raw, str(payload.get("mode") or "exact") != "flow")
+    try: res = await _pdf_wp(raw, str(payload.get("mode") or "exact") != "flow")
     except dc.ConvertError as exc: raise HTTPException(422, str(exc))
     except Exception:
         log.exception("PDF to WordPerfect failed")
@@ -68,9 +107,9 @@ async def import_office(payload: dict, user: User = Depends(principal)):
     if raw[:2] != b"PK": raise HTTPException(422, f"That is not a real .{ext} file. Older .doc, .xls and .ppt files must be saved in the newer format first.")
     title = re.sub(r"\.[A-Za-z0-9]+$", "", name)[:200] or "Imported"
     try:
-        if ext == "docx": r = await asyncio.to_thread(dc.docx_to_wp, raw); return {"kind": "wp", "title": title, "content": r["html"], "notes": r["notes"]}
-        if ext == "xlsx": r = await asyncio.to_thread(dc.xlsx_to_book, raw); return {"kind": "sheet", "title": title, "content": r["content"], "notes": r["notes"]}
-        r = await asyncio.to_thread(dc.pptx_to_deck, raw); return {"kind": "deck", "title": title, "content": r["content"], "notes": r["notes"]}
+        if ext == "docx": r = await _go(dc.docx_to_wp, raw); return {"kind": "wp", "title": title, "content": r["html"], "notes": r["notes"]}
+        if ext == "xlsx": r = await _go(dc.xlsx_to_book, raw); return {"kind": "sheet", "title": title, "content": r["content"], "notes": r["notes"]}
+        r = await _go(dc.pptx_to_deck, raw); return {"kind": "deck", "title": title, "content": r["content"], "notes": r["notes"]}
     except dc.ConvertError as e: raise HTTPException(422, str(e))
 
 
@@ -86,11 +125,11 @@ async def file_to_pdf(payload: dict, user: User = Depends(principal)):
     if ext in ("docx", "pptx", "xlsx") and raw[:2] != b"PK": raise HTTPException(422, f"That is not a real .{ext} file. Older .doc, .xls and .ppt files must be saved in the newer format first.")
     fn = {"docx": dc.docx_to_pdf, "pptx": dc.pptx_to_pdf, "xlsx": dc.xlsx_to_pdf}.get(ext)
     try:
-        if fn: pdf = await asyncio.to_thread(fn, raw, base)
+        if fn: pdf = await _go(fn, raw, base)
         elif ext in ("html", "htm", "txt", "md"):
             t = raw.decode("utf-8", "replace")
             html = t if ext in ("html", "htm") else "".join(f"<p>{dc.esc(l) if l else '<br>'}</p>" for l in t.splitlines())
-            pdf = await asyncio.to_thread(dc.wp_to_pdf, html, base)
+            pdf = await _go(dc.wp_to_pdf, html, base)
         else: raise HTTPException(422, "Choose a Word (.docx), PowerPoint (.pptx), Excel (.xlsx), HTML or text file.")
     except dc.ConvertError as e: raise HTTPException(422, str(e))
     return {"filename": f"{base}.pdf", "mime": "application/pdf", "data": base64.b64encode(pdf).decode()}
@@ -104,7 +143,7 @@ async def pdf_to_docx(payload: dict, user: User = Depends(principal)):
     except Exception: raise HTTPException(422, "The file could not be read.")
     base = re.sub(r"\.[A-Za-z0-9]+$", "", name)[:120] or "converted"
     try:
-        res = await asyncio.to_thread(dc.pdf_to_wp, raw, str(payload.get("mode") or "exact") != "flow")
-        docx = await asyncio.to_thread(dc.wp_to_docx, res["html"], base)
+        res = await _pdf_wp(raw, str(payload.get("mode") or "exact") != "flow")
+        docx = await _go(dc.wp_to_docx, res["html"], base)
     except dc.ConvertError as e: raise HTTPException(422, str(e))
     return {"filename": f"{base}.docx", "mime": MIME["docx"], "data": base64.b64encode(docx).decode(), "notes": res["notes"]}
