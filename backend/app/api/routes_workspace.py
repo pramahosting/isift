@@ -208,7 +208,7 @@ async def send_message(cid: str, payload: dict, user: User = Depends(principal),
 
 # ---------------- docs and whiteboards ----------------
 KINDS = ("doc", "board", "wp", "sheet", "deck")        # Notes, Whiteboards, WordPerfect, SpreadTable, PowerPresentation
-LIMIT = 2_000_000
+LIMIT = 200_000_000
 
 def _note_out(n: Note, full=True, access: str = "owner", owner: dict | None = None) -> dict:
     d = {"id": n.id, "kind": n.kind, "title": n.title, "updated_at": _utc(n.updated_at), "access": access}

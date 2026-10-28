@@ -4,7 +4,7 @@ PDF editing uses pypdf, pypdfium2, pdfminer.six and ReportLab (all permissive li
 Word editing uses python-docx on the body paragraphs. All functions are synchronous; callers run them in a thread."""
 import base64, io, logging
 
-MAX_BYTES = 12 * 1024 * 1024
+MAX_BYTES = 1024 * 1024 * 1024
 MAX_PAGES = 30
 MAX_OPS = 500
 PNG = b"\x89PNG\r\n\x1a\n"

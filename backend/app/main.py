@@ -10,6 +10,7 @@ from app.api.routes_calls import router as calls_router
 from app.api.routes_workspace import router as workspace_router
 from app.api.routes_sharing import router as sharing_router
 from app.api.routes_docedit import router as docedit_router
+from app.api.routes_docconvert import router as docconvert_router
 from app.api.routes_mailbox import router as mailbox_router
 from app.api.routes_isiftmail import router as isiftmail_router
 from app.api.routes_isiftmail_abuse import router as isiftmail_abuse_router
@@ -50,6 +51,7 @@ app.include_router(calls_router)
 app.include_router(workspace_router)
 app.include_router(sharing_router)
 app.include_router(docedit_router)
+app.include_router(docconvert_router)
 app.include_router(mailbox_router)
 app.include_router(isiftmail_router)
 app.include_router(isiftmail_abuse_router)
