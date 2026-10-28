@@ -6,11 +6,13 @@ export function RsvpPage({token,api,first}:{token:string;api:string;first:string
   const [info,setInfo]=useState<any>(null);const [err,setErr]=useState('');const [pick,setPick]=useState(first==='calendar'?'':first);const [when,setWhen]=useState('');const [note,setNote]=useState('');
   const [calOpen,setCalOpen]=useState(first==='calendar');const [busy,setBusy]=useState(false);const [done,setDone]=useState('');
   useEffect(()=>{fetch(`${api}/rsvp/${token}`).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)setErr(j.detail||'This reply link is not valid.');else setInfo(j)}).catch(()=>setErr('Could not reach the server.'))},[token,api]);
+  const auto=React.useRef(false);
   const send=async(status:string)=>{setBusy(true);setErr('');try{
     const body:any={status,note};if(status==='proposed'){if(!when){setErr('Choose the day and time you suggest.');setBusy(false);return}body.proposed_start=new Date(when).toISOString()}
     const r=await fetch(`${api}/rsvp/${token}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));
     if(!r.ok)setErr(typeof j.detail==='string'?j.detail:'Your reply could not be sent.');else{setDone(j.message);setInfo((i:any)=>({...i,answer:{status}}))}
   }catch{setErr('Could not reach the server.')}finally{setBusy(false)}};
+  useEffect(()=>{if(info&&!auto.current&&['accepted','tentative','declined'].includes(first)&&!info.answer){auto.current=true;send(first)}},[info]);
   const fmt=(d:string)=>new Date(d).toLocaleString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'numeric',minute:'2-digit'});
   if(err&&!info)return <div className="rm-center"><div className="rm-card"><h1>Invitation</h1><p>{err}</p></div></div>;
   if(!info)return <div className="rm-center"><div className="rm-card"><p>Loading…</p></div></div>;
