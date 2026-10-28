@@ -55,13 +55,13 @@ def html_body(text: str, base: str, m, email: str, join_url: str | None, host: s
     body = escape(text.strip()).replace("\n", "<br>")
     if join_url: body = body.replace(escape(join_url), f'<a href="{escape(join_url)}">{escape(join_url)}</a>')
     def btn(label, word, status, strong=False):
-        href = "mailto:" + quote(host) + "?" + urlencode({"subject": f"{word}: {m.title}", "body": f"Just press Send.\n\nisift-reply:{m.id}:{status}:"}, quote_via=quote) if host else f"{r}?r={status}"
+        href = "mailto:" + quote(host) + "?" + urlencode({"subject": f"{word}: {m.title}", "body": f"Just press Send.\n\nisift-reply:{m.id}:{status}:"}, quote_via=quote) if host else f"{base}/api/v1/rsvp/{make_token(m.id, email)}/answer/{status}"
         st = "background:#1a56db;color:#fff" if strong else "background:#fff;color:#1a56db"
         return f'<a href="{href}" style="display:inline-block;margin:0 8px 8px 0;padding:9px 22px;border:1px solid #1a56db;border-radius:6px;{st};text-decoration:none;font-weight:600">{label}</a>'
     lk = lambda label, q: f'<a href="{r}?r={q}" style="color:#1a56db">{label}</a>'
     return ('<div style="font:15px/1.5 Arial,Helvetica,sans-serif;color:#202124">' + body +
             '<p style="margin:20px 0 8px;color:#5f6368">Will you join?</p><div>' + btn("Yes", "Accepted", "accepted", True) + btn("No", "Declined", "declined") + btn("Maybe", "Maybe", "tentative") + "</div>"
-            '<p style="margin:6px 0 0;color:#5f6368;font-size:13px">Each button opens a short reply to the host: just press Send. You can also ' + lk("suggest another time", "proposed") + " or " + lk("add it to a calendar", "calendar") + ".</p></div>")
+            '<p style="margin:6px 0 0;color:#5f6368;font-size:13px">Each button opens a short reply to the host: just press Send. You can also ' + lk("suggest another time", "proposed") + " or " + f'<a href="{base}/api/v1/rsvp/{make_token(m.id, email)}/calendar" target="_blank" style="color:#1a56db">add it to a calendar</a>' + ".</p></div>")
 
 def set_organizer(ics: bytes | None, email: str, name: str = "") -> bytes | None:
     """Make the host's own address the organizer, so a Yes / No / Maybe pressed in the guest's mail program is emailed back to the host."""

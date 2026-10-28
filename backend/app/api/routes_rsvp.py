@@ -157,3 +157,37 @@ async def invite_sender(user: User = Depends(principal), db: AsyncSession = Depe
     out = await _senders(db, user)
     sl = await rsvp.senders(db, user)
     return {"login": user.email, "from": (sl[0].get("from") or sl[0]["address"]) if sl else "", "connected": bool(sl and not sl[0].get("platform")), "via_app": bool(sl and sl[0].get("platform")), "name": user.display_name or "", "mailboxes": [a.get("address") for a in out if not a.get("platform")]}
+
+
+# ---- plain pages opened from the invitation email: no iSift app, no sign-in ----
+def _page(title: str, body: str):
+    from fastapi.responses import HTMLResponse
+    from html import escape
+    return HTMLResponse(f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{escape(title)}</title>
+<style>body{{margin:0;background:#f4f6fb;font:16px/1.5 Arial,Helvetica,sans-serif;color:#202124;display:flex;min-height:100vh;align-items:center;justify-content:center}}
+.c{{background:#fff;border-radius:12px;box-shadow:0 2px 14px #0002;padding:28px 30px;max-width:420px;width:calc(100% - 32px);text-align:center}}h1{{font-size:20px;margin:0 0 8px}}p{{margin:6px 0;color:#5f6368}}
+a.b{{display:block;margin:10px 0;padding:11px;border:1px solid #1a56db;border-radius:8px;color:#1a56db;text-decoration:none;font-weight:600}}.tick{{font-size:40px;color:#188038}}</style></head><body><div class="c">{body}</div></body></html>''')
+
+@router.get("/rsvp/{token}/answer/{status}")
+async def rsvp_answer_page(token: str, status: str, request: Request, db: AsyncSession = Depends(get_db)):
+    """What Yes / No / Maybe in the email open: records the answer, tells the host, and shows a one-line confirmation."""
+    from html import escape
+    ua = (request.headers.get("user-agent") or "").lower()
+    try: m, email = await _from_token(db, token)
+    except HTTPException as e: return _page("Invitation", f"<h1>Invitation</h1><p>{escape(str(e.detail))}</p>")
+    if status not in ("accepted", "tentative", "declined"): return _page("Invitation", "<h1>Invitation</h1><p>This reply link is not valid.</p>")
+    word = {"accepted": "You accepted", "tentative": "You replied Maybe to", "declined": "You declined"}[status]
+    if any(x in ua for x in ("bot", "spider", "preview", "scanner", "safelinks", "proofpoint", "barracuda", "mimecast")):
+        return _page(m.title, f"<h1>{escape(m.title)}</h1><p>Open this link in your browser to reply.</p>")      # mail scanners must not answer for the guest
+    await rsvp_answer(token, {"status": status}, db)
+    return _page(m.title, f'<div class="tick">&#10003;</div><h1>{word} this meeting</h1><p><b>{escape(m.title)}</b></p><p>The host has been told by email. You can close this tab.</p>')
+
+@router.get("/rsvp/{token}/calendar")
+async def rsvp_calendar_page(token: str, db: AsyncSession = Depends(get_db)):
+    from html import escape
+    try: m, email = await _from_token(db, token)
+    except HTTPException as e: return _page("Invitation", f"<h1>Invitation</h1><p>{escape(str(e.detail))}</p>")
+    c = rsvp.calendar_links(m.title, m.start_at, m.end_at, m.join_url, m.agenda or "")
+    ics = f"/api/v1/rsvp/{token}/ics"
+    links = "".join(f'<a class="b" target="_blank" rel="noopener" href="{escape(u)}">{escape(n)}</a>' for n, u in (("Google Calendar", c["google"]), ("Outlook.com / Hotmail", c["outlook"]), ("Microsoft 365", c["office365"]), ("Yahoo Calendar", c["yahoo"]), ("Apple Calendar / other (.ics file)", ics)))
+    return _page("Add to calendar", f"<h1>Add to your calendar</h1><p><b>{escape(m.title)}</b></p><p>Choose your calendar:</p>{links}")
