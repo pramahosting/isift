@@ -2202,3 +2202,13 @@ html,body{max-width:100%;overflow-x:hidden}
 .mkt .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line,#d9e2ec);border-radius:8px;background:#fff;cursor:pointer}
 .mkt .iconbtn:hover{background:#f1f5f9}.mkt .iconbtn.danger{color:#b42318}
 @media(max-width:520px){.hero-copy .hero-watch{margin:10px 0 0 0;display:flex;width:fit-content}}
+
+/* colourful Watch button + playbook link */
+.hero-copy .hero-watch,.hero-watch{min-height:50px;padding:0 24px 0 14px;font-size:14px;font-weight:700;color:#fff;border:0;border-radius:999px;margin:0 0 0 12px;display:inline-flex;align-items:center;gap:10px;vertical-align:top;cursor:pointer;background:linear-gradient(120deg,#f97316,#ec4899 55%,#8b5cf6);box-shadow:0 8px 22px #ec489940;transition:transform .15s,box-shadow .15s}
+.hero-watch:hover{transform:translateY(-1px);box-shadow:0 12px 28px #ec489955}
+.hero-watch .hw-ic{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#ffffff2e;animation:hwpulse 2.2s ease-in-out infinite}
+@keyframes hwpulse{0%,100%{box-shadow:0 0 0 0 #ffffff66}50%{box-shadow:0 0 0 7px #ffffff00}}
+@media(prefers-reduced-motion:reduce){.hero-watch .hw-ic{animation:none}}
+.hero-playbook{display:inline-flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;font-weight:600;color:#1d4ed8;text-decoration:none}
+.hero-playbook:hover{text-decoration:underline}.hero-playbook small{color:#64748b;font-weight:500}
+@media(max-width:520px){.hero-copy .hero-watch{margin:10px 0 0 0}}
