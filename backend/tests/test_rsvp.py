@@ -34,7 +34,7 @@ def test_footer_has_reply_and_calendar_links():
     f = rsvp.footer("https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
     assert "#/rsvp/" in f and len(f) < 300 and "calendar.google.com" not in f          # one short link in the plain text
     h = rsvp.html_body("Hello\nJoin: https://isift.au/#/room/abc", "https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc")
-    assert "?r=proposed" in h and "?r=calendar" in h          # no accept button that opens a web page
+    assert "?r=proposed" in h and "/calendar" in h and "?r=calendar" not in h
     h2 = rsvp.html_body("Join: https://isift.au/#/room/abc", "https://isift.au", M, "a@x.com", "https://isift.au/#/room/abc", "host@yahoo.com")
     assert h2.index("#/room/abc") < h2.index(">Yes<") < h2.index(">No<") < h2.index(">Maybe<") and "mailto:host%40yahoo.com" in h2 and "isift-reply%3Am-1%3Aaccepted%3A" in h2 and "?r=accepted" not in h2
 
@@ -49,6 +49,12 @@ def test_reply_reaches_host_and_proposal_moves_meeting(client):
     assert client.get("/api/v1/rsvp/bad.token").status_code == 404
     assert client.post(f"/api/v1/rsvp/{tok}", json={"status": "nope"}).status_code == 422
     assert client.post(f"/api/v1/rsvp/{tok}", json={"status": "accepted"}).status_code == 200
+    pg = client.get(f"/api/v1/rsvp/{tok}/answer/declined"); assert pg.status_code == 200 and "You declined" in pg.text and "<script" not in pg.text   # plain page, not the app
+    assert client.get(f"/api/v1/rsvp/{tok}").json()["answer"]["status"] == "declined"
+    bot = client.get(f"/api/v1/rsvp/{tok}/answer/accepted", headers={"user-agent": "Microsoft SafeLinks bot"}); assert "browser to reply" in bot.text
+    assert client.get(f"/api/v1/rsvp/{tok}").json()["answer"]["status"] == "declined"                        # a mail scanner did not answer
+    cp = client.get(f"/api/v1/rsvp/{tok}/calendar"); assert "Google Calendar" in cp.text and "Yahoo" in cp.text and ".ics" in cp.text
+    client.post(f"/api/v1/rsvp/{tok}", json={"status": "accepted"})
     got = client.get(f"/api/v1/meetings/{mid}/responses", headers=h).json()
     assert got["counts"]["accepted"] == 1 and got["responses"][0]["email"] == "guest@example.com"
     assert client.get(f"/api/v1/meetings/{mid}/responses").status_code in (401, 403)          # hosts only
@@ -144,4 +150,4 @@ def test_senders_use_login_mailbox_else_app_sender_via_isift(client, monkeypatch
     assert [a["address"] for a in out] == ["app@gmail.com"] and out[0]["from"] == "No Body via iSift <app@gmail.com>" and out[0]["reply_to"] == "nobody@corp.com"
     from types import SimpleNamespace as NS
     h = rsvp.html_body("Hi", "https://x.au", NS(id="m1", title="T"), "g@x.com", None, "")                 # app sender: Yes / No / Maybe record in iSift
-    assert "?r=accepted" in h and "mailto:" not in h
+    assert "/answer/accepted" in h and "mailto:" not in h
