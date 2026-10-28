@@ -97,15 +97,15 @@ NO_MAILBOX = "Connect your email so invitations go from your own address: open M
 
 async def senders(db, user, allow_app: bool = False) -> list[dict]:
     """Where invitations are sent from: always the host's own address. The mailbox that matches the sign-in email is used alone when it is connected
-    (Gmail, Outlook, Microsoft 365, Yahoo, a company mailbox: any kind). If it is not connected, nothing is sent: no other mailbox and not the app's sender.
-    allow_app is for notices to the host themselves, which may use any of their mailboxes or the app's sender."""
+    (Gmail, Outlook, Microsoft 365, Yahoo, a company mailbox: any kind).
+    If it is not connected, the invitation goes out the way Zoom's does: from the app's address as "Name via iSift", replies set to the host, and the
+    Yes / No / Maybe links record the answer in iSift, which emails the host. allow_app is for notices to the host themselves, which may use any of their mailboxes or the app's sender."""
     from app.api.routes_booking import _senders
     out = await _senders(db, user)
     own = [a for a in out if not a.get("platform")]
     mine = [a for a in own if (a.get("address") or "").lower() == (user.email or "").lower()]
     if mine: return mine[:1]
-    if not allow_app: return []                       # never another address: the person must connect their own login email
-    if own: return own
+    if own and allow_app: return own                  # notices to the host only; invitations never use some other mailbox of theirs
     name = (getattr(user, "display_name", "") or "").replace('"', "").strip()
     app = []
     for a in out:
@@ -123,7 +123,7 @@ async def send_each(acct, recipients: list[str], subject: str, body: str, m, bas
         for a in accts:
             try:
                 oi = set_organizer(ics, a["reply_to"]) if a.get("platform") and a.get("reply_to") else ics        # the app's sender: replies still go to the host
-                await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), oi, html=html_body(body, base, m, r, join_url, a.get("address") or "")); err = None; used.append((r, a.get("address"))); break
+                await mailer.send(a, [r], subject, body + footer(base, m, r, join_url, details), oi, html=html_body(body, base, m, r, join_url, "" if a.get("platform") else (a.get("address") or ""))); err = None; used.append((r, a.get("address"))); break
             except mailer.MailError as exc: err = exc; skipped.append(f"{a.get('address')}: {exc}")
         if err: raise err
     return {"used": used, "skipped": skipped}

@@ -114,7 +114,7 @@ async def resend_invites(meeting_id: str, payload: dict, request: Request, user:
     if only: invited = [only] if only in invited else []
     if not invited: raise HTTPException(422, "Nobody is invited to this meeting yet. Add people with Edit.")
     sl = await rsvp.senders(db, user)
-    if not sl: raise HTTPException(422, "Connect your email first, so invitations go from your own address (Mail, Add account, enter your login email), then try again.")
+    if not sl: raise HTTPException(422, "No email can be sent from here yet. Connect your email in Mail (Add account), or ask the administrator to set up the app's email.")
     tz = await cal.user_timezone(db); base = rsvp.public_base(request)
     sent, failed = [], []
     for to in invited:
@@ -125,15 +125,15 @@ async def resend_invites(meeting_id: str, payload: dict, request: Request, user:
                 body = (f"{user.display_name or user.email} invited you to: {m.title}\nWhen: {_aware(m.start_at).astimezone(tz).strftime('%A %d %B %Y, %H:%M')} ({tz})\n" + (f"Join: {m.join_url}\n" if m.join_url else "")
                         + (f"Meeting ID: {room.code}\n" if room else "") + (f"Passcode: {room.passcode}\n" if room and room.passcode else "") + (f"\n{m.agenda}\n" if m.agenda else ""))
                 if a.get("platform") and a.get("reply_to"): ics = rsvp.set_organizer(ics, a["reply_to"])
-                await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url, a["address"]))
+                await mailer.send(a, [to], f"Invitation: {m.title}", body + rsvp.footer(base, m, to, m.join_url, m.agenda or ""), ics, html=rsvp.html_body(body, base, m, to, m.join_url, "" if a.get("platform") else a["address"]))
                 sent.append({"to": to, "from": a["address"], "skipped": list(reasons)}); await rsvp.note_invited(db, m.id, [to]); ok = True; break
             except mailer.MailError as exc: reasons.append(f"{a['address']}: {exc}")
         if not ok: failed.append({"to": to, "reasons": reasons})
     msg = ""
     other = sorted({x["from"] for x in sent if x["from"].lower() != (user.email or "").lower()})
-    if sent: msg += "Sent " + "; ".join(f"to {s['to']} from {s['from']}" for s in sent) + ". If it is not in the Inbox, check Spam and Promotions." + (f" It came from {other[0]}, not {user.email}. To send from {user.email}, add that mailbox in Mail (Add account)." if other else "")
+    if sent: msg += "Sent " + "; ".join(f"to {s['to']} from {s['from']}" for s in sent) + ". If it is not in the Inbox, check Spam and Promotions." + (f" It was sent as \"{user.display_name or user.email} via iSift\" with replies set to {user.email}; answers are recorded in iSift and emailed to you. To send from {user.email} itself, add that mailbox in Mail (Add account)." if other else "")
     why = sorted({r for x in sent for r in x.get("skipped", [])})
-    if why: msg += " Your own mailbox could not send, so the app's sender was used. Reason: " + " | ".join(why)
+    if why: msg += " Your own mailbox could not send. Reason: " + " | ".join(why)
     if failed: msg += (" " if msg else "") + "Not sent: " + "; ".join(f"{f['to']} ({' | '.join(f['reasons'])})" for f in failed)
     db.add(AuditLog(actor=user.email, action="meeting.resend_invites", resource_type="meeting", safe_metadata={"sent": len(sent), "failed": len(failed)})); await db.commit()
     return {"sent": sent, "failed": failed, "message": msg.strip()}
@@ -156,4 +156,4 @@ async def invite_sender(user: User = Depends(principal), db: AsyncSession = Depe
     from app.api.routes_booking import _senders
     out = await _senders(db, user)
     sl = await rsvp.senders(db, user)
-    return {"login": user.email, "from": sl[0]["address"] if sl else "", "connected": bool(sl), "mailboxes": [a.get("address") for a in out if not a.get("platform")]}
+    return {"login": user.email, "from": (sl[0].get("from") or sl[0]["address"]) if sl else "", "connected": bool(sl and not sl[0].get("platform")), "via_app": bool(sl and sl[0].get("platform")), "name": user.display_name or "", "mailboxes": [a.get("address") for a in out if not a.get("platform")]}
