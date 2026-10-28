@@ -131,7 +131,7 @@ def test_resend_invitations_reports_which_mailbox_or_why_not(client, monkeypatch
     assert r3.status_code == 422
 
 
-def test_senders_use_only_the_login_address_and_never_the_app_sender(client, monkeypatch):
+def test_senders_use_login_mailbox_else_app_sender_via_isift(client, monkeypatch):
     import asyncio
     from app.api import routes_booking
     from app.services import rsvp
@@ -140,9 +140,8 @@ def test_senders_use_only_the_login_address_and_never_the_app_sender(client, mon
     class U: email = "host@yahoo.com"; display_name = "Pramod Singh"
     assert [a["address"] for a in asyncio.run(rsvp.senders(None, U()))] == ["Host@Yahoo.com"]          # the login address alone
     class V: email = "nobody@corp.com"; display_name = "No Body"
-    assert asyncio.run(rsvp.senders(None, V())) == []                                                      # login address not connected: no other mailbox is used
-    async def only_app(db, owner): return [{"address": "app@gmail.com", "platform": True}]
-    monkeypatch.setattr(routes_booking, "_senders", only_app)
-    assert asyncio.run(rsvp.senders(None, U())) == []                                                      # invitations are never sent from the app's sender
-    out = asyncio.run(rsvp.senders(None, U(), allow_app=True))                                             # only notices to the host themselves
-    assert out[0]["from"] == "Pramod Singh via iSift <app@gmail.com>" and out[0]["reply_to"] == "host@yahoo.com"
+    out = asyncio.run(rsvp.senders(None, V()))                                                             # not connected: the Zoom way, never another mailbox
+    assert [a["address"] for a in out] == ["app@gmail.com"] and out[0]["from"] == "No Body via iSift <app@gmail.com>" and out[0]["reply_to"] == "nobody@corp.com"
+    from types import SimpleNamespace as NS
+    h = rsvp.html_body("Hi", "https://x.au", NS(id="m1", title="T"), "g@x.com", None, "")                 # app sender: Yes / No / Maybe record in iSift
+    assert "?r=accepted" in h and "mailto:" not in h
