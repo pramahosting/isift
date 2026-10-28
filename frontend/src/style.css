@@ -2179,3 +2179,6 @@ html,body{max-width:100%;overflow-x:hidden}
 .dconv-mode b{display:flex;align-items:center;gap:6px;font-size:14px}.dconv-mode small{color:#5a6785;font-size:12.5px;line-height:1.35}.dconv-mode.on{border-color:var(--cobalt,#2b62f0);box-shadow:0 0 0 2px #2b62f033;background:#f4f7ff}
 .dconv-panel{max-width:720px}.dconv-pick{display:flex;flex-direction:column;gap:4px;margin:8px 0}.dconv-pick select{max-width:460px}
 .spin{animation:dcspin 1s linear infinite}@keyframes dcspin{to{transform:rotate(360deg)}}
+.dconv-look{border:1px solid var(--line,#d7deee);border-radius:10px;padding:10px 14px;margin:0 0 12px;display:grid;gap:6px}.dconv-look label{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.wp-page:has(> div[style*="position:relative"]){padding:0;overflow:auto}
+.wp-page > div[style*="position:relative"]{margin-left:auto;margin-right:auto;box-shadow:0 1px 6px #0003}

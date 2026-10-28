@@ -32,3 +32,9 @@ export async function convertSaved(request:any,kind:'wp'|'sheet'|'deck',to:strin
 export async function importOffice(request:any,f:File):Promise<{kind:'wp'|'sheet'|'deck';title:string;content:string;notes:string[]}>{
   const data:string=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
   return request('/docs/import',{method:'POST',body:JSON.stringify({name:f.name,data})})}
+
+const fileB64=(f:File):Promise<string>=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]||'');r.onerror=()=>no(new Error('The file could not be read.'));r.readAsDataURL(f)});
+/** A file from the person's computer (.docx, .pptx, .xlsx, .html, .txt) converted to PDF and saved to their downloads. Nothing is stored in iSift. */
+export async function uploadToPdf(request:any,f:File){const r=await request('/docs/file-to-pdf',{method:'POST',body:JSON.stringify({name:f.name,data:await fileB64(f)})});saveFile(r.filename,r.mime,r.data)}
+/** A PDF from the person's computer as a Word file; mode 'exact' keeps the page looking the same, 'flow' gives reflowing text. */
+export async function pdfToDocx(request:any,f:File,mode:'exact'|'flow'){const r=await request('/docs/pdf-to-docx',{method:'POST',body:JSON.stringify({name:f.name,data:await fileB64(f),mode})});saveFile(r.filename,r.mime,r.data);return r.notes as string[]}
