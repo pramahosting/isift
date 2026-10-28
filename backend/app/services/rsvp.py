@@ -138,7 +138,11 @@ async def tell_host(db, m, host, who: str, status: str, proposed: str, note: str
         from sqlalchemy import select, func
         from app.models import User as _U
         u = (await db.execute(select(_U).where(func.lower(_U.email) == who.lower()))).scalars().first()
-        nm = (getattr(u, "display_name", "") or "").strip() if u else ""
+        names = [(getattr(u, "display_name", "") or "").strip() if u else ""]
+        from app.models import Contact as _C
+        names += [(c.name or "").strip() for c in (await db.execute(select(_C).where(_C.owner_id == host.id, func.lower(_C.email) == who.lower()))).scalars().all()]
+        names = [n for n in names if n and n.lower() != who.lower() and "@" not in n]
+        nm = max(names, key=lambda n: (len(n.split()), len(n))) if names else ""        # the fullest name known: the guest's own profile or the host's contact card
     except Exception: nm = ""
     shown_who = f"{nm} ({who})" if nm and nm.lower() != who.lower() else who
     body = f"{shown_who} {LABEL.get(status, status)} your meeting: {m.title}\n"

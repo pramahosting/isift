@@ -26,10 +26,17 @@ def _pdf_from_html(doc: str) -> bytes:
 
 
 def _png(data_url: str | None) -> bytes | None:
-    m = re.match(r"^data:image/png;base64,([A-Za-z0-9+/=]+)$", data_url or "")
+    """A picture stored in the document (png, jpeg, gif or webp) as bytes Word can place; webp is turned into png."""
+    m = re.match(r"^data:image/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$", data_url or "")
     if not m: return None
-    try: return base64.b64decode(m.group(1))
+    try: raw = base64.b64decode(m.group(2))
     except Exception: return None
+    if m.group(1) == "webp":
+        try:
+            from PIL import Image
+            bio = io.BytesIO(); Image.open(io.BytesIO(raw)).convert("RGBA").save(bio, "PNG"); return bio.getvalue()
+        except Exception: return None
+    return raw
 
 
 # ------------------------------------------------------------------ WordPerfect
@@ -90,6 +97,33 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
                 k, v = part.split(":", 1); out[k.strip().lower()] = v.strip()
         return out
 
+    def css_fmt(css, f):
+        """Colours, fonts, sizes and shading from an element's style, carried onto the text inside it."""
+        if css.get("font-weight") in ("bold", "700", "800", "900"): f["b"] = True
+        if css.get("font-style") == "italic": f["i"] = True
+        if "underline" in css.get("text-decoration", ""): f["u"] = True
+        if "line-through" in css.get("text-decoration", ""): f["s"] = True
+        col = _css_color(css.get("color"))
+        if col: f["color"] = col
+        bg = _css_color(css.get("background-color") or css.get("background"))
+        if bg: f["bg"] = bg
+        m = re.match(r"^([\d.]+)(px|pt)$", css.get("font-size", ""))
+        if m: f["size"] = round(float(m.group(1)) * (0.75 if m.group(2) == "px" else 1), 1)
+        fam = (css.get("font-family") or "").split(",")[0].strip().strip("'\"")
+        if fam: f["font"] = fam
+        return f
+
+    def shade(el_pr, hexcol):
+        shd = OxmlElement("w:shd"); shd.set(qn("w:val"), "clear"); shd.set(qn("w:color"), "auto"); shd.set(qn("w:fill"), hexcol.upper()); el_pr.append(shd)
+
+    def para_fmt(par, css):
+        a = css.get("text-align")
+        if a in ALIGN: par.alignment = ALIGN[a]
+        m = re.match(r"^([\d.]+)(px|pt)$", css.get("margin-left", ""))
+        if m: par.paragraph_format.left_indent = Pt(float(m.group(1)) * (0.75 if m.group(2) == "px" else 1))
+        bg = _css_color(css.get("background-color") or css.get("background"))
+        if bg: shade(par._p.get_or_add_pPr(), bg)
+
     def add_link(par, text, url, fmt):
         rid = par.part.relate_to(url, RT.HYPERLINK, is_external=True)
         h = OxmlElement("w:hyperlink"); h.set(qn("r:id"), rid)
@@ -111,6 +145,8 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
                 r.bold = fmt.get("b") or None; r.italic = fmt.get("i") or None; r.underline = fmt.get("u") or None; r.font.strike = fmt.get("s") or None
                 if fmt.get("color"): r.font.color.rgb = RGBColor.from_string(fmt["color"].upper())
                 if fmt.get("size"): r.font.size = Pt(fmt["size"])
+                if fmt.get("font"): r.font.name = fmt["font"]; r._r.get_or_add_rPr().rFonts.set(qn("w:eastAsia"), fmt["font"])
+                if fmt.get("bg"): shade(r._r.get_or_add_rPr(), fmt["bg"])
             elif isinstance(ch, Tag):
                 n = ch.name; f = dict(fmt); css = style_of(ch)
                 if n in ("b", "strong") or css.get("font-weight") in ("bold", "700", "800", "900"): f["b"] = True
@@ -119,8 +155,7 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
                 if n in ("s", "strike", "del") or "line-through" in css.get("text-decoration", ""): f["s"] = True
                 col = _css_color(css.get("color") or (ch.get("color") if n == "font" else None))
                 if col: f["color"] = col
-                m = re.match(r"^([\d.]+)px$", css.get("font-size", ""))
-                if m: f["size"] = round(float(m.group(1)) * 0.75, 1)
+                css_fmt(css, f)
                 if n == "a" and re.match(r"^(https?:|mailto:)", ch.get("href", ""), re.I): f["href"] = ch["href"]
                 if n == "br": par.add_run().add_break(); continue
                 if n == "img":
@@ -149,23 +184,25 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
                 loose = None
                 for li in ch.find_all("li", recursive=False):
                     p = doc.add_paragraph(style="List Bullet" if n == "ul" else "List Number")
-                    runs(p, li, {})
+                    runs(p, li, css_fmt(style_of(li), {})); para_fmt(p, {k: v for k, v in style_of(li).items() if k != "margin-left"})
                     for sub in li.find_all(["ul", "ol"], recursive=False): block(li, None, level + 1); break
                 continue
             if n in ("h1", "h2", "h3", "h4", "h5", "h6"):
                 loose = None
-                p = doc.add_heading(level=min(int(n[1]), 3)); runs(p, ch, {})
+                p = doc.add_heading(level=min(int(n[1]), 3)); cf = css_fmt(style_of(ch), {}); runs(p, ch, cf)
                 for r in p.runs:
-                    r.font.name = "Georgia"
+                    if not cf.get("font"): r.font.name = "Georgia"
                     if r.font.color is None or r.font.color.rgb is None: r.font.color.rgb = RGBColor.from_string("172033")
-                a = style_of(ch).get("text-align") or ch.get("align")
-                if a in ALIGN: p.alignment = ALIGN[a]
+                css0 = style_of(ch)
+                if not css0.get("text-align") and ch.get("align") in ALIGN: css0["text-align"] = ch["align"]
+                para_fmt(p, css0)
                 continue
             if n in ("p", "div", "blockquote") and not ch.find(["p", "div", "ul", "ol", "table", "h1", "h2", "h3", "blockquote"]):
                 loose = None
-                p = doc.add_paragraph(style="Quote" if n == "blockquote" else None); runs(p, ch, {})
-                a = style_of(ch).get("text-align") or ch.get("align")
-                if a in ALIGN: p.alignment = ALIGN[a]
+                p = doc.add_paragraph(style="Quote" if n == "blockquote" else None); runs(p, ch, css_fmt(style_of(ch), {}))
+                css0 = style_of(ch)
+                if not css0.get("text-align") and ch.get("align") in ALIGN: css0["text-align"] = ch["align"]
+                para_fmt(p, css0)
                 continue
             if n == "table":
                 loose = None
@@ -177,7 +214,8 @@ def wp_to_docx(html: str, title: str = "") -> bytes:
                     ci = 0
                     for c in r.find_all(["td", "th"], recursive=False):
                         if ci >= ncols: break
-                        cell = t.cell(ri, ci); cp = cell.paragraphs[0]; runs(cp, c, {"b": True} if c.name == "th" else {})
+                        cell = t.cell(ri, ci); cp = cell.paragraphs[0]; ccss = style_of(c); cf = css_fmt(ccss, {"b": True} if c.name == "th" else {}); runs(cp, c, cf); para_fmt(cp, {k: v for k, v in ccss.items() if k == "text-align"})
+                        if cf.get("bg"): shade(cell._tc.get_or_add_tcPr(), cf["bg"])
                         span = int(c.get("colspan") or 1)
                         if span > 1 and ci + span <= ncols: cell.merge(t.cell(ri, ci + span - 1))
                         ci += span
@@ -393,21 +431,64 @@ def deck_to_pptx(content: str, shapes: dict | None, title: str = "") -> bytes:
 
 # ------------------------------------------------------------------ PDF to WordPerfect
 
+def _hex(nc, dark_is_black: bool = False) -> str:
+    """A PDF colour (grey, RGB or CMYK as 0..1 numbers) as #rrggbb, or "" when it cannot be read."""
+    try:
+        if isinstance(nc, (int, float)): nc = (nc,)
+        if not isinstance(nc, (tuple, list)): return ""
+        v = [float(x) for x in nc]
+        if len(v) == 1: r = g = b = v[0]
+        elif len(v) == 3: r, g, b = v
+        elif len(v) == 4: c, m, y, k = v; r, g, b = (1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)
+        else: return ""
+        r, g, b = (max(0.0, min(1.0, x)) for x in (r, g, b))
+        return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+    except Exception: return ""
+
+
+_FAMILY = (("liberationserif", "'Times New Roman',Times,serif"), ("liberationsans", "Arial,Helvetica,sans-serif"), ("liberationmono", "'Courier New',monospace"), ("dejavuserif", "Georgia,serif"), ("dejavusans", "Verdana,sans-serif"), ("times", "'Times New Roman',Times,serif"), ("georgia", "Georgia,serif"), ("garamond", "Garamond,serif"), ("palatino", "'Palatino Linotype',serif"), ("cambria", "Cambria,serif"),
+           ("courier", "'Courier New',monospace"), ("consolas", "Consolas,monospace"), ("mono", "'Courier New',monospace"), ("calibri", "Calibri,Arial,sans-serif"),
+           ("helvetica", "Arial,Helvetica,sans-serif"), ("arial", "Arial,Helvetica,sans-serif"), ("verdana", "Verdana,sans-serif"), ("tahoma", "Tahoma,sans-serif"),
+           ("segoe", "'Segoe UI',sans-serif"), ("trebuchet", "'Trebuchet MS',sans-serif"), ("roboto", "Roboto,Arial,sans-serif"), ("open", "'Open Sans',Arial,sans-serif"))
+
+def _bg_behind(page_img, el) -> str:
+    """The fill colour behind a block of text, read from the rendered page just outside the text (so a coloured bar or shaded cell keeps its colour)."""
+    if not page_img: return ""
+    img, ph, k = page_img
+    pts = []
+    w, h = el.x1 - el.x0, el.y1 - el.y0
+    for x, y in ((el.x0 - 1.2, el.y0 + h * 0.5), (el.x1 + 1.2, el.y0 + h * 0.5), (el.x0 + w * 0.25, el.y1 + 1.2), (el.x0 + w * 0.75, el.y1 + 1.2), (el.x0 + w * 0.25, el.y0 - 1.2), (el.x0 + w * 0.75, el.y0 - 1.2)):
+        px, py = int(x * k), int((ph - y) * k)
+        if 0 <= px < img.width and 0 <= py < img.height: pts.append(img.getpixel((px, py))[:3])
+    if len(pts) < 3: return ""
+    best = Counter(pts).most_common(1)[0]
+    if best[1] < 3: return ""
+    r, g, b = best[0]
+    return "" if min(r, g, b) >= 248 else "#%02x%02x%02x" % (r, g, b)
+
+
+def _family(fontname: str) -> str:
+    f = re.sub(r"[\s\-_]", "", re.sub(r"^[A-Z]{6}\+", "", fontname or "")).lower()
+    for k, v in _FAMILY:
+        if k in f: return v
+    return "Arial,Helvetica,sans-serif" if f else ""
+
+
 def pdf_to_wp(data: bytes) -> dict:
     """Rebuild a PDF as an editable WordPerfect document: headings (by type size), paragraphs, bold / italic, text colour, bullet lists, centred lines and the
     pictures inside the PDF. A PDF is a fixed page, so the page breaks and exact positions are not kept, and tables become plain paragraphs. A page with no
     selectable text (a scan) is placed as a picture so nothing is lost."""
     import pypdfium2 as pdfium
     from pdfminer.high_level import extract_pages
-    from pdfminer.layout import LAParams, LTChar, LTImage, LTTextContainer, LTFigure, LTTextLine
+    from pdfminer.layout import LAParams, LTChar, LTImage, LTTextContainer, LTFigure, LTTextLine, LTRect, LTCurve
     if not data[:5] == b"%PDF-": raise ConvertError("That file is not a PDF.")
     try: pdf = pdfium.PdfDocument(data)
     except Exception: raise ConvertError("The PDF could not be opened. It may be damaged or password protected.")
     n_pages = len(pdf)
     pages = []
     sizes = Counter()
-    for pi, layout in enumerate(extract_pages(io.BytesIO(data), laparams=LAParams(line_margin=0.3, boxes_flow=0.5))):
-        boxes = []
+    for pi, layout in enumerate(extract_pages(io.BytesIO(data), laparams=LAParams(line_margin=0.3, boxes_flow=0.5, char_margin=1.0))):
+        boxes, fills = [], []
         for el in layout:
             if isinstance(el, LTTextContainer):
                 lines = [l for l in el if isinstance(l, LTTextLine)]
@@ -416,39 +497,66 @@ def pdf_to_wp(data: bytes) -> dict:
                 for ln in lines:
                     for ch in ln:
                         if isinstance(ch, LTChar) and ch.get_text().strip(): sizes[round(ch.size)] += 1
-        pages.append((layout.width, layout.height, boxes))
+        pages.append((layout.width, layout.height, boxes, fills))
     body = (sizes.most_common(1)[0][0] if sizes else 11) or 11
     out, warn, scans = [], [], 0
 
-    def runs_html(lines, headline=False) -> str:
+    def runs_html(lines, headline=False, base=None) -> str:
+        """The text of some lines with its real look: bold, italic, colour, size and font (a span only where it differs from the block's own)."""
+        bsize, bfam = base or (None, "")
         spans = []
         for li, ln in enumerate(lines):
             for ch in ln:
                 if not isinstance(ch, LTChar): continue
                 t = ch.get_text(); fn = (ch.fontname or "").lower()
-                col = ""
-                nc = getattr(ch.graphicstate, "ncolor", None)
-                try:
-                    if isinstance(nc, (tuple, list)) and len(nc) == 3 and max(float(x) for x in nc) > 0.3: col = "#%02x%02x%02x" % tuple(int(max(0, min(1, float(x))) * 255) for x in nc)
-                    elif isinstance(nc, (tuple, list)) and len(nc) == 1 and 0.3 < float(nc[0]) < 0.92: v = int(float(nc[0]) * 255); col = "#%02x%02x%02x" % (v, v, v)
-                except Exception: pass
-                key = ("bold" in fn or "black" in fn or "heavy" in fn, "italic" in fn or "oblique" in fn, col)
+                col = _hex(getattr(ch.graphicstate, "ncolor", None))
+                if col and max(int(col[i:i + 2], 16) for i in (1, 3, 5)) <= 40: col = ""                  # black text is the default
+                key = ("bold" in fn or "black" in fn or "heavy" in fn or "semibold" in fn, "italic" in fn or "oblique" in fn, col, round(ch.size * 2) / 2, _family(ch.fontname))
                 if t in ("\n",): t = " "
                 if spans and spans[-1][0] == key: spans[-1][1].append(t)
                 else: spans.append((key, [t]))
             if spans and not spans[-1][1][-1].endswith((" ", "-")): spans[-1][1].append(" ")
             elif spans and spans[-1][1][-1] == "-" and li < len(lines) - 1: spans[-1][1].pop()      # a word split across two lines
         html = ""
-        for (b, i, c), chars in spans:
+        for (b, i, c, sz, fam), chars in spans:
             t = esc("".join(chars))
             if not t.strip(): html += t; continue
-            if c: t = f'<span style="color:{c}">{t}</span>'
-            if b and not headline: t = f"<b>{t}</b>"
+            st = []
+            if c: st.append(f"color:{c}")
+            if bsize is not None and abs(sz - bsize) >= 0.75: st.append(f"font-size:{sz:g}pt")
+            if fam and fam != bfam: st.append(f"font-family:{fam}")
+            if st: t = f'<span style="{";".join(st)}">{t}</span>'
+            if b: t = f"<b>{t}</b>"
             if i: t = f"<i>{t}</i>"
             html += t
         return html.strip()
 
-    for pi, (pw, ph, boxes) in enumerate(pages):
+    def block_base(lines):
+        sz, fm = Counter(), Counter()
+        for ln in lines:
+            for ch in ln:
+                if isinstance(ch, LTChar) and ch.get_text().strip(): sz[round(ch.size * 2) / 2] += 1; fm[_family(ch.fontname)] += 1
+        return (sz.most_common(1)[0][0] if sz else body, fm.most_common(1)[0][0] if fm else "")
+
+    def box_style(el, lines, pw, fills, centred=False, tag="p", left0=0):
+        size, fam = block_base(lines)
+        st = [f"font-size:{size:g}pt"] + ([f"font-family:{fam}"] if fam else [])
+        if centred: st.append("text-align:center")
+        elif el.x1 > pw * 0.9 and el.x0 > pw * 0.55: st.append("text-align:right")
+        elif el.x0 - left0 > 14 and tag == "p": st.append(f"margin-left:{int(el.x0 - left0)}pt")
+        bg = _bg_behind(fills, el)
+        if bg: st.append(f"background-color:{bg}")
+        return ";".join(st), (size, fam)
+
+    for pi, (pw, ph, boxes, fills) in enumerate(pages):
+        pstart = len(out)
+        left0 = min([el.x0 for el, _l in boxes] or [0])
+        pagebg, fills = "", None
+        try:
+            pil_ = pdf[pi].render(scale=1.0).to_pil().convert("RGB"); fills = (pil_, ph, pil_.width / pw)
+            cx_ = pil_.getpixel((min(pil_.width - 1, 4), min(pil_.height - 1, 4)))
+            if min(cx_) < 248 and pil_.getpixel((pil_.width - 5, pil_.height - 5)) == cx_: pagebg = "#%02x%02x%02x" % cx_
+        except Exception: pass
         items = []
         for el, lines in boxes:
             sz = Counter(round(ch.size) for ln in lines for ch in ln if isinstance(ch, LTChar) and ch.get_text().strip())
@@ -492,7 +600,7 @@ def pdf_to_wp(data: bytes) -> dict:
         def flush_table():
             nonlocal table
             if table:
-                out.append('<table border="1"><tbody>' + "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in table) + "</tbody></table><p><br></p>"); table = []
+                out.append('<table style="border-collapse:collapse;width:100%"><tbody>' + "".join("<tr>" + "".join(f'<td style="{c[1]}">{c[0]}</td>' if c[1] else f"<td>{c[0]}</td>" for c in r) + "</tr>" for r in table) + "</tbody></table><p><br></p>"); table = []
         list_kind = None
         def close_list():
             nonlocal list_kind
@@ -505,24 +613,258 @@ def pdf_to_wp(data: bytes) -> dict:
                 kind_ = "ul" if BUL.match(cells[0][3] + " ") else "ol"
                 flush_table()
                 if list_kind != kind_: close_list(); out.append(f"<{kind_}>"); list_kind = kind_
-                out.append("<li>" + " ".join(runs_html(c[1]) for c in cells[1:]) + "</li>"); continue
+                bs = box_style(cells[1][0], cells[1][1], pw, fills, left0=left0, tag="li")
+                out.append(f'<li style="{bs[0]}">' + " ".join(runs_html(c[1], base=bs[1]) for c in cells[1:]) + "</li>"); continue
             if len(cells) >= 2:                                                   # several boxes on one line: a table row
-                close_list(); table.append([runs_html(c[1]) for c in cells]); continue
+                close_list(); row_ = []
+                for c in cells:
+                    bs = box_style(c[0], c[1], pw, fills, tag="td"); bg = re.search(r"background-color:[^;]+", bs[0])
+                    row_.append((runs_html(c[1], base=bs[1]), bg.group(0) if bg else ""))
+                table.append(row_); continue
             flush_table()
             el, lines, size, txt = cells[0]
             if BUL.match(txt):
                 if list_kind != "ul": close_list(); out.append("<ul>"); list_kind = "ul"
-                out.append("<li>" + re.sub(r"^[•●▪◦‣\-–·]\s*", "", runs_html(lines)) + "</li>"); continue
+                bs = box_style(el, lines, pw, fills, left0=left0, tag="li")
+                out.append(f'<li style="{bs[0]}">' + re.sub(r"^[•●▪◦‣\-–·]\s*", "", runs_html(lines, base=bs[1])) + "</li>"); continue
             close_list()
             tag = "h1" if size >= body * 1.7 else "h2" if size >= body * 1.4 else "h3" if size >= body * 1.18 and len(txt) < 140 else "p"
             cx = (el.x0 + el.x1) / 2
             centred = abs(cx - pw / 2) < pw * 0.03 and el.x0 > pw * 0.12 and (el.x1 - el.x0) < pw * 0.7
-            style = ' style="text-align:center"' if centred else ""
-            out.append(f"<{tag}{style}>{runs_html(lines, headline=tag != 'p')}</{tag}>")
+            stl, bs = box_style(el, lines, pw, fills, centred=centred, tag=tag, left0=left0)
+            if tag != "p" and not any(isinstance(ch, LTChar) and ch.get_text().strip() and any(w in (ch.fontname or "").lower() for w in ("bold", "black", "heavy")) for ln in lines for ch in ln): stl += ";font-weight:normal"
+            out.append(f'<{tag} style="{stl}">{runs_html(lines, base=bs)}</{tag}>')
         flush_table(); close_list()
-        in_list = False
-        if in_list: out.append("</ul>")
+        if pagebg: out.insert(pstart, f'<div style="background-color:{pagebg}">'); out.append("</div>")
         if pi < n_pages - 1: out.append("<hr>")
     html = "".join(out) or "<p><br></p>"
     if not sizes: warn.append("This PDF has no selectable text, so its pages were placed as pictures. Scanned pages cannot be turned into editable text here.")
     return {"html": html, "pages": n_pages, "notes": warn}
+
+
+# ------------------------------------------------------------------ Microsoft files into iSift (Word, Excel, PowerPoint)
+
+def _w_hex(v) -> str:
+    return "#" + str(v).lower() if v and re.match(r"^[0-9A-Fa-f]{6}$", str(v)) else ""
+
+
+def docx_to_wp(data: bytes) -> dict:
+    """A Word file as an editable WordPerfect document: headings, bold / italic / underline / strike, text colour, highlight, font and size, alignment, indents,
+    bullet and numbered lists, links, tables (with shaded cells and merged cells) and pictures."""
+    from docx import Document
+    from docx.oxml.ns import qn
+    try: doc = Document(io.BytesIO(data))
+    except Exception: raise ConvertError("That file could not be opened as a Word document. It may be damaged, password protected or an old .doc file (save it as .docx first).")
+    notes = []
+    W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+    numfmt: dict = {}
+    try:
+        numpart = doc.part.numbering_part.element
+        absf = {}
+        for an in numpart.findall(qn("w:abstractNum")):
+            lv = an.find(qn("w:lvl")); f = lv.find(qn("w:numFmt")) if lv is not None else None
+            absf[an.get(qn("w:abstractNumId"))] = f.get(qn("w:val")) if f is not None else "bullet"
+        for n in numpart.findall(qn("w:num")):
+            ab = n.find(qn("w:abstractNumId")); numfmt[n.get(qn("w:numId"))] = absf.get(ab.get(qn("w:val")) if ab is not None else "", "bullet")
+    except Exception: pass
+    pics = 0
+
+    def run_style(r) -> str:
+        st = []
+        f = r.font
+        try:
+            if f.color is not None and f.color.type is not None and f.color.rgb is not None and str(f.color.rgb).upper() not in ("000000",): st.append(f"color:#{str(f.color.rgb).lower()}")
+        except Exception: pass
+        if f.size: st.append(f"font-size:{f.size.pt:g}pt")
+        if f.name: st.append(f"font-family:'{re.sub(chr(39), '', f.name)}'")
+        rpr = r._r.rPr
+        if rpr is not None:
+            sh = rpr.find(qn("w:shd")); hl = rpr.find(qn("w:highlight"))
+            if sh is not None and _w_hex(sh.get(qn("w:fill"))): st.append(f"background-color:{_w_hex(sh.get(qn('w:fill')))}")
+            elif hl is not None:
+                hv = {"yellow": "#ffff00", "green": "#00ff00", "cyan": "#00ffff", "magenta": "#ff00ff", "blue": "#0000ff", "red": "#ff0000", "lightGray": "#d3d3d3", "darkYellow": "#808000"}.get(hl.get(qn("w:val")))
+                if hv: st.append(f"background-color:{hv}")
+        return ";".join(st)
+
+    def run_html(r) -> str:
+        nonlocal pics
+        out = ""
+        for ch in r._r:
+            tag = ch.tag
+            if tag == W + "t": out += esc(ch.text or "")
+            elif tag == W + "tab": out += "&emsp;"
+            elif tag in (W + "br", W + "cr"): out += "<br>"
+            elif tag == W + "drawing":
+                for blip in ch.iter(A + "blip"):
+                    rid = blip.get(R + "embed")
+                    try:
+                        part = r.part.related_parts[rid]; mime = part.content_type
+                        if mime not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+                            from PIL import Image
+                            bio = io.BytesIO(); Image.open(io.BytesIO(part.blob)).convert("RGBA").save(bio, "PNG"); blob, mime = bio.getvalue(), "image/png"
+                        else: blob = part.blob
+                        ext = ch.find(".//" + "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}extent")
+                        wpx = int(int(ext.get("cx")) / 9525) if ext is not None else 0
+                        out += f'<img src="data:{mime};base64,{base64.b64encode(blob).decode()}"' + (f' width="{min(wpx, 1000)}"' if wpx else "") + ' alt="Picture">'; pics += 1
+                    except Exception: notes.append("A picture could not be brought in.")
+        if not out: return ""
+        f = r
+        st = run_style(r)
+        if st: out = f'<span style="{st}">{out}</span>'
+        if r.bold: out = f"<b>{out}</b>"
+        if r.italic: out = f"<i>{out}</i>"
+        if r.underline: out = f"<u>{out}</u>"
+        if r.font.strike: out = f"<s>{out}</s>"
+        if r.font.superscript: out = f"<sup>{out}</sup>"
+        elif r.font.subscript: out = f"<sub>{out}</sub>"
+        return out
+
+    def para_inner(p) -> str:
+        from docx.text.run import Run
+        html = ""
+        for ch in p._p:
+            if ch.tag == W + "r": html += run_html(Run(ch, p))
+            elif ch.tag == W + "hyperlink":
+                inner = "".join(run_html(Run(x, p)) for x in ch.findall(W + "r"))
+                rid = ch.get(R + "id")
+                try: url = p.part.rels[rid].target_ref if rid else ""
+                except Exception: url = ""
+                html += f'<a href="{esc(url)}">{inner}</a>' if re.match(r"^(https?://|mailto:)", url or "", re.I) else inner
+        return html
+
+    def para_css(p) -> str:
+        st = []
+        pf = p.paragraph_format
+        al = {0: "left", 1: "center", 2: "right", 3: "justify"}.get(p.alignment if p.alignment is None else int(p.alignment))
+        if al and al != "left": st.append(f"text-align:{al}")
+        if pf.left_indent: st.append(f"margin-left:{pf.left_indent.pt:g}pt")
+        if pf.first_line_indent and pf.first_line_indent.pt > 0: st.append(f"text-indent:{pf.first_line_indent.pt:g}pt")
+        if pf.space_after is not None: st.append(f"margin-bottom:{pf.space_after.pt:g}pt")
+        if pf.space_before: st.append(f"margin-top:{pf.space_before.pt:g}pt")
+        ppr = p._p.pPr
+        if ppr is not None:
+            sh = ppr.find(qn("w:shd"))
+            if sh is not None and _w_hex(sh.get(qn("w:fill"))): st.append(f"background-color:{_w_hex(sh.get(qn('w:fill')))}")
+        return ";".join(st)
+
+    def list_kind(p):
+        ppr = p._p.pPr
+        if ppr is not None and ppr.numPr is not None and ppr.numPr.numId is not None:
+            f = numfmt.get(str(ppr.numPr.numId.val), "bullet")
+            return "ol" if f not in ("bullet", "none") else "ul"
+        sn = (p.style.name if p.style is not None else "") or ""
+        if sn.lower().startswith("list number"): return "ol"
+        if sn.lower().startswith("list"): return "ul"
+        return None
+
+    out, cur = [], None
+    def close():
+        nonlocal cur
+        if cur: out.append(f"</{cur}>"); cur = None
+
+    def table_html(t) -> str:
+        rows = []
+        for r in t.rows:
+            seen, cells = set(), []
+            for c in r.cells:
+                if id(c._tc) in seen: continue
+                seen.add(id(c._tc))
+                tcpr = c._tc.tcPr; span = 1; bg = ""; vm = None
+                if tcpr is not None:
+                    gs = tcpr.find(qn("w:gridSpan")); span = int(gs.get(qn("w:val"))) if gs is not None else 1
+                    sh = tcpr.find(qn("w:shd")); bg = _w_hex(sh.get(qn("w:fill"))) if sh is not None else ""
+                    vme = tcpr.find(qn("w:vMerge")); vm = (vme.get(qn("w:val")) or "continue") if vme is not None else None
+                if vm == "continue": continue
+                inner = "".join(f"<p style=\"{para_css(p)}\">{para_inner(p) or '<br>'}</p>" for p in c.paragraphs)
+                cells.append(f'<td{f" colspan={span}" if span > 1 else ""} style="border:1px solid #888888;padding:4px 8px' + (f";background-color:{bg}" if bg else "") + f'">{inner}</td>')
+            rows.append("<tr>" + "".join(cells) + "</tr>")
+        return '<table style="border-collapse:collapse;width:100%"><tbody>' + "".join(rows) + "</tbody></table><p><br></p>"
+
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    for el in doc.element.body.iterchildren():
+        if el.tag == W + "p":
+            p = Paragraph(el, doc); inner = para_inner(p)
+            lk = list_kind(p)
+            if lk:
+                if cur != lk: close(); out.append(f"<{lk}>"); cur = lk
+                out.append(f'<li style="{para_css(p)}">{inner}</li>'); continue
+            close()
+            sn = ((p.style.name if p.style is not None else "") or "").lower()
+            m = re.match(r"^heading (\d)", sn); tag = f"h{min(int(m.group(1)), 3)}" if m else "h1" if sn == "title" else "h2" if sn == "subtitle" else "p"
+            if not inner.strip(): out.append("<p><br></p>"); continue
+            out.append(f'<{tag} style="{para_css(p)}">{inner}</{tag}>')
+        elif el.tag == W + "tbl":
+            close(); out.append(table_html(Table(el, doc)))
+    close()
+    if not any(s.header.is_linked_to_previous is False for s in doc.sections[:1]) : pass
+    return {"html": "".join(out) or "<p><br></p>", "notes": list(dict.fromkeys(notes)), "pictures": pics}
+
+
+def xlsx_to_book(data: bytes) -> dict:
+    """An Excel file as a SpreadTable workbook: every sheet, values and live formulas (up to 1000 rows by 52 columns per sheet)."""
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    try: wb = load_workbook(io.BytesIO(data), data_only=False)
+    except Exception: raise ConvertError("That file could not be opened as an Excel workbook. It may be damaged, password protected or an old .xls file (save it as .xlsx first).")
+    try: wbv = load_workbook(io.BytesIO(data), data_only=True)
+    except Exception: wbv = None
+    sheets, notes = [], []
+    for ws in wb.worksheets[:50]:
+        cells, mr, mc = {}, 0, 0
+        wv = wbv[ws.title] if wbv is not None and ws.title in wbv.sheetnames else None
+        for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, 1000), max_col=min(ws.max_column, 52)):
+            for c in row:
+                v = c.value
+                if v is None or v == "": continue
+                if isinstance(v, str) and v.startswith("="): txt = v
+                elif isinstance(v, bool): txt = "TRUE" if v else "FALSE"
+                elif isinstance(v, (int, float)): txt = repr(v) if isinstance(v, float) and not float(v).is_integer() else str(int(v)) if float(v).is_integer() else str(v)
+                elif hasattr(v, "isoformat"): txt = v.isoformat(sep=" ") if hasattr(v, "hour") else v.isoformat()
+                else: txt = str(v)
+                cells[f"{get_column_letter(c.column)}{c.row}"] = txt; mr = max(mr, c.row); mc = max(mc, c.column)
+        if ws.max_row > 1000 or ws.max_column > 52: notes.append(f"Sheet “{ws.title}” is larger than 1000 rows by 52 columns; the rest was not brought in.")
+        sheets.append({"name": ws.title[:40], "cells": cells, "rows": min(1000, max(20, mr + 10)), "cols": min(52, max(6, mc + 2))})
+    if any(any(isinstance(c.value, str) and c.value.startswith("=") for c in row) for ws in wb.worksheets for row in ws.iter_rows(max_row=200)):
+        notes.append("Formulas are kept and recalculated in iSift. Cell colours, fonts and charts are not part of SpreadTable, so they are not brought in.")
+    else: notes.append("Cell colours, fonts and charts are not part of SpreadTable, so they are not brought in.")
+    return {"content": json.dumps({"v": 1, "sheets": sheets or [{"name": "Sheet1", "cells": {}, "rows": 100, "cols": 26}]}), "notes": notes}
+
+
+def pptx_to_deck(data: bytes) -> dict:
+    """A PowerPoint file as a PowerPresentation deck: each slide's title, bullet text, background colour and speaker notes."""
+    from pptx import Presentation
+    try: prs = Presentation(io.BytesIO(data))
+    except Exception: raise ConvertError("That file could not be opened as a PowerPoint presentation. It may be damaged, password protected or an old .ppt file (save it as .pptx first).")
+    slides, pic_slides = [], 0
+    for sl in list(prs.slides)[:300]:
+        title, bodies, picture = "", [], False
+        shapes = sorted(sl.shapes, key=lambda x: (x.top or 0, x.left or 0))
+        for sh in shapes:
+            if sh.shape_type == 13: picture = True; continue
+            if not getattr(sh, "has_text_frame", False) or not sh.text_frame.text.strip(): continue
+            lines = [p.text.strip() for p in sh.text_frame.paragraphs if p.text.strip()]
+            is_title = False
+            try: is_title = sh.is_placeholder and sh.placeholder_format.type in (1, 3)           # TITLE, CENTER_TITLE
+            except Exception: pass
+            if is_title and not title: title = " ".join(lines)
+            else: bodies.append(lines)
+        if not title and bodies: title = bodies[0][0]; bodies[0] = bodies[0][1:]; bodies = [b for b in bodies if b]
+        bg = None
+        try:
+            f = sl.background.fill
+            if f.type == 1: bg = "#" + str(f.fore_color.rgb).lower()
+        except Exception: pass
+        try: notes = sl.notes_slide.notes_text_frame.text if sl.has_notes_slide else ""
+        except Exception: notes = ""
+        layout = "title" if not slides and title and len(bodies) <= 1 and sum(len(b) for b in bodies) <= 1 else "two" if len(bodies) == 2 else "content"
+        if layout == "content" and len(bodies) > 2: bodies = [[x for b in bodies for x in b]]
+        s = {"layout": layout, "title": title, "body": bodies[0] if bodies else [], "notes": notes}
+        if layout == "two": s["body2"] = bodies[1]
+        if bg: s["bg"] = bg
+        slides.append(s); pic_slides += 1 if picture else 0
+    n = ["Slide text, bullets, background colours and speaker notes are brought in. PowerPresentation does not hold pictures, charts or custom layouts from PowerPoint, so those are not brought in."]
+    if pic_slides: n[0] += f" {pic_slides} slide(s) had pictures."
+    return {"content": json.dumps({"v": 1, "theme": "light", "slides": slides or [{"layout": "content", "title": "", "body": [], "notes": ""}]}), "notes": n}

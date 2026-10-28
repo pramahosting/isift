@@ -1,5 +1,5 @@
 """Doc Converter: turn WordPerfect, SpreadTable and PowerPresentation files into PDF, Word, Excel or PowerPoint, and a PDF into a WordPerfect document."""
-import asyncio, base64, logging
+import asyncio, base64, logging, re
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import principal
 from app.models import User
@@ -54,3 +54,21 @@ async def pdf_to_wp(payload: dict, user: User = Depends(principal)):
         log.exception("PDF to WordPerfect failed")
         raise HTTPException(500, "The PDF could not be converted. It may be damaged or protected.")
     return res
+
+
+@router.post("/import")
+async def import_office(payload: dict, user: User = Depends(principal)):
+    """{name, data (base64 .docx / .xlsx / .pptx)} -> {kind, title, content, notes}: a Microsoft file as an editable WordPerfect, SpreadTable or PowerPresentation file."""
+    name = str(payload.get("name") or "")
+    try: raw = base64.b64decode(str(payload.get("data") or "").split(",", 1)[-1], validate=False)
+    except Exception: raise HTTPException(422, "The file could not be read.")
+    if not raw: raise HTTPException(422, "The file is empty.")
+    ext = name.lower().rsplit(".", 1)[-1] if "." in name else ""
+    if ext not in ("docx", "xlsx", "pptx"): raise HTTPException(422, "Choose a Word (.docx), Excel (.xlsx) or PowerPoint (.pptx) file.")
+    if raw[:2] != b"PK": raise HTTPException(422, f"That is not a real .{ext} file. Older .doc, .xls and .ppt files must be saved in the newer format first.")
+    title = re.sub(r"\.[A-Za-z0-9]+$", "", name)[:200] or "Imported"
+    try:
+        if ext == "docx": r = await asyncio.to_thread(dc.docx_to_wp, raw); return {"kind": "wp", "title": title, "content": r["html"], "notes": r["notes"]}
+        if ext == "xlsx": r = await asyncio.to_thread(dc.xlsx_to_book, raw); return {"kind": "sheet", "title": title, "content": r["content"], "notes": r["notes"]}
+        r = await asyncio.to_thread(dc.pptx_to_deck, raw); return {"kind": "deck", "title": title, "content": r["content"], "notes": r["notes"]}
+    except dc.ConvertError as e: raise HTTPException(422, str(e))

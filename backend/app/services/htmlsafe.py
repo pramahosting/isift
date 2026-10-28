@@ -5,9 +5,36 @@ from html.parser import HTMLParser
 
 OK = {"p", "br", "h1", "h2", "h3", "ul", "ol", "li", "b", "strong", "i", "em", "u", "s", "strike", "a", "blockquote", "table", "thead", "tbody", "tr", "td", "th", "div", "span", "hr", "code", "pre", "sub", "sup", "img"}
 VOID = {"br", "hr", "img"}
-PNG_SRC = re.compile(r"^data:image/png;base64,[A-Za-z0-9+/=]{16,400000}$")   # shapes from the shape library are the only pictures kept: small PNGs stored in the file itself
+PNG_SRC = re.compile(r"^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]{16,40000000}$")   # pictures stored inside the file itself (shapes, and pictures from Word or PDF files); never a web address
 DROP_WITH_CONTENT = {"script", "style", "iframe", "object", "embed", "svg", "math", "template", "noscript", "textarea", "select", "form"}
 ALIGN = re.compile(r"text-align\s*:\s*(left|right|center|justify)", re.I)
+
+# Formatting that is kept: colours, fonts, sizes, spacing, borders and shading. Anything that could load a file or run code is dropped.
+_COLOR = r"(#[0-9a-fA-F]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*[\d.]+\s*)?\)|[a-zA-Z]{3,20}|transparent)"
+_LEN = r"-?\d{1,4}(\.\d{1,3})?(px|pt|em|rem|%|cm|mm|in)?"
+_CSS = {
+    "color": re.compile(r"^" + _COLOR + r"$"), "background-color": re.compile(r"^" + _COLOR + r"$"), "background": re.compile(r"^" + _COLOR + r"$"),
+    "font-family": re.compile(r"^[A-Za-z0-9 ,'\"\-]{1,120}$"), "font-size": re.compile(r"^\d{1,3}(\.\d{1,2})?(px|pt|em|rem|%)$"),
+    "font-weight": re.compile(r"^(normal|bold|bolder|lighter|[1-9]00)$"), "font-style": re.compile(r"^(normal|italic|oblique)$"),
+    "text-decoration": re.compile(r"^(none|underline|line-through|overline)( (underline|line-through|overline))*$"),
+    "text-align": re.compile(r"^(left|right|center|justify)$"), "text-indent": re.compile(r"^" + _LEN + r"$"), "line-height": re.compile(r"^(normal|\d{1,3}(\.\d{1,2})?(px|pt|em|%)?)$"),
+    "letter-spacing": re.compile(r"^" + _LEN + r"$"), "vertical-align": re.compile(r"^(baseline|sub|super|top|middle|bottom)$"), "text-transform": re.compile(r"^(none|uppercase|lowercase|capitalize)$"),
+    "width": re.compile(r"^" + _LEN + r"$"), "height": re.compile(r"^" + _LEN + r"$"), "border-collapse": re.compile(r"^(collapse|separate)$"),
+    "list-style-type": re.compile(r"^(disc|circle|square|decimal|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$"),
+}
+for _k in ("margin", "margin-top", "margin-bottom", "margin-left", "margin-right", "padding", "padding-top", "padding-bottom", "padding-left", "padding-right"):
+    _CSS[_k] = re.compile(r"^(" + _LEN + r")( " + _LEN + r"){0,3}$")
+for _k in ("border", "border-top", "border-bottom", "border-left", "border-right"):
+    _CSS[_k] = re.compile(r"^(none|\d{1,2}(\.\d)?(px|pt)? (solid|dashed|dotted|double) " + _COLOR + r")$")
+
+def safe_style(style: str) -> str:
+    out = []
+    for part in (style or "").split(";"):
+        if ":" not in part: continue
+        k, v = part.split(":", 1); k = k.strip().lower(); v = re.sub(r"\s+", " ", v.strip())
+        rx = _CSS.get(k)
+        if rx and rx.match(v) and not re.search(r"url|expression|javascript|@|\\|<|>", v, re.I): out.append(f"{k}:{v}")
+    return ";".join(out[:20])
 
 class _S(HTMLParser):
     def __init__(self): super().__init__(convert_charrefs=True); self.out: list[str] = []; self.skip = 0; self.open: list[str] = []
@@ -19,12 +46,13 @@ class _S(HTMLParser):
         if tag == "a":
             h = (d.get("href") or "").strip()
             if re.match(r"^(https?://|mailto:)", h, re.I): a = f' href="{escape(h, quote=True)}" target="_blank" rel="noopener noreferrer"'
-        m = ALIGN.search(d.get("style") or "")
-        if m and tag in ("p", "div", "h1", "h2", "h3", "li", "td", "th", "blockquote"): a += f' style="text-align:{m.group(1).lower()}"'
+        st = safe_style(d.get("style") or "")
+        if st and tag != "img": a += f' style="{escape(st, quote=True)}"'
         if tag == "img":
             src = (d.get("src") or "").strip()
             if not PNG_SRC.match(src): return
             a = f' src="{src}"'
+            if st: a += f' style="{escape(st, quote=True)}"'
             for k in ("width", "height"):
                 if (d.get(k) or "").isdigit() and 0 < int(d[k]) <= 2000: a += f' {k}="{int(d[k])}"'
             a += f' alt="{escape((d.get("alt") or "Shape")[:80], quote=True)}"'
