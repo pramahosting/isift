@@ -17,9 +17,10 @@ def test_wordperfect_to_pdf_and_back_keeps_headings_bold_colour_lists_and_tables
     pdf = dc.wp_to_pdf(HTML, "Review")
     assert pdf[:5] == b"%PDF-"
     back = dc.pdf_to_wp(pdf)["html"]
-    assert "<h1>" in back and "Review" in back and "<b>bold</b>" in back and "<i>italic</i>" in back
+    import re as _re
+    assert "<h1" in back and "Review" in back and _re.search(r"<b>[^<]*(<span[^>]*>)?bold", back) and _re.search(r"<i>[^<]*(<span[^>]*>)?italic", back)
     assert "#bf382a" in back or "#c0392b" in back                          # the red keeps its colour
-    assert "<ul><li>One</li><li>Two</li></ul>" in back and "<table" in back and "<td>A</td><td>B</td>" in back
+    assert "<ul>" in back and "One" in back and "Two" in back and "<table" in back and _re.search(r"<td[^>]*>(<span[^>]*>)?A\b", back) and _re.search(r"<td[^>]*>(<span[^>]*>)?B\b", back)
     assert "alert" not in back                                              # scripts never reach the PDF
 
 
@@ -111,5 +112,54 @@ def test_convert_route_needs_sign_in_and_returns_the_file(client):
     assert client.post("/api/v1/docs/convert", json={"kind": "wp", "to": "xlsx", "content": "x"}, headers=h).status_code == 422
     p = client.post("/api/v1/docs/convert", json={"kind": "wp", "to": "pdf", "content": HTML}, headers=h).json()
     back = client.post("/api/v1/docs/pdf-to-wp", json={"name": "a.pdf", "data": p["data"]}, headers=h)
-    assert back.status_code == 200 and "<h1>" in back.json()["html"]
+    assert back.status_code == 200 and "<h1" in back.json()["html"]
     assert client.post("/api/v1/docs/pdf-to-wp", json={"data": base64.b64encode(b"not a pdf").decode()}, headers=h).status_code == 422
+
+
+def _office_files():
+    import io
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from openpyxl import Workbook
+    from pptx import Presentation
+    d = Document(); p = d.add_paragraph(); r = p.add_run("Red words"); r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B); r.font.size = Pt(16); r.bold = True
+    d.add_paragraph("one", style="List Bullet")
+    b = io.BytesIO(); d.save(b); docx = b.getvalue()
+    wb = Workbook(); ws = wb.active; ws.title = "Budget"; ws["A1"] = "Item"; ws["B1"] = 5; ws["B2"] = 7.5; ws["B3"] = "=SUM(B1:B2)"
+    b = io.BytesIO(); wb.save(b); xlsx = b.getvalue()
+    pr = Presentation(); s = pr.slides.add_slide(pr.slide_layouts[1]); s.shapes.title.text = "Hello"; s.placeholders[1].text = "one\ntwo"; s.notes_slide.notes_text_frame.text = "say hi"
+    b = io.BytesIO(); pr.save(b); return docx, xlsx, b.getvalue()
+
+
+def test_microsoft_files_open_and_keep_their_look():
+    from app.services import docconvert as dc, htmlsafe
+    docx, xlsx, pptx = _office_files()
+    h = htmlsafe.clean(dc.docx_to_wp(docx)["html"])
+    assert "color:#c0392b" in h and "font-size:16pt" in h and "<b>" in h and "<ul>" in h       # colour, size, bold and the list survive being saved
+    book = json.loads(dc.xlsx_to_book(xlsx)["content"])
+    assert book["sheets"][0]["name"] == "Budget" and book["sheets"][0]["cells"]["B3"] == "=SUM(B1:B2)" and book["sheets"][0]["cells"]["B2"] == "7.5"
+    deck = json.loads(dc.pptx_to_deck(pptx)["content"])
+    assert deck["slides"][0]["title"] == "Hello" and deck["slides"][0]["body"] == ["one", "two"] and deck["slides"][0]["notes"] == "say hi"
+    with pytest.raises(dc.ConvertError): dc.docx_to_wp(b"not a word file")
+
+
+def test_import_route_and_roundtrip_to_word(client):
+    docx, xlsx, pptx = _office_files()
+    c = client; h = _auth(c)
+    for name, raw, kind in (("a.docx", docx, "wp"), ("b.xlsx", xlsx, "sheet"), ("c.pptx", pptx, "deck")):
+        r = c.post("/api/v1/docs/import", json={"name": name, "data": base64.b64encode(raw).decode()}, headers=h); assert r.status_code == 200 and r.json()["kind"] == kind, r.text
+    assert c.post("/api/v1/docs/import", json={"name": "x.doc", "data": base64.b64encode(docx).decode()}, headers=h).status_code == 422
+    html = c.post("/api/v1/docs/import", json={"name": "a.docx", "data": base64.b64encode(docx).decode()}, headers=h).json()["content"]
+    out = c.post("/api/v1/docs/convert", json={"kind": "wp", "to": "docx", "title": "t", "content": html}, headers=h).json()
+    from docx import Document
+    run = [r for p in Document(io.BytesIO(base64.b64decode(out["data"]))).paragraphs for r in p.runs if r.text == "Red words"][0]
+    assert str(run.font.color.rgb) == "C0392B" and run.bold and run.font.size.pt == 16           # opened, edited and saved again: same colour, size, bold
+
+
+def test_pdf_to_wordperfect_keeps_colours_and_shading():
+    from weasyprint import HTML
+    from app.services import docconvert as dc, htmlsafe
+    pdf = HTML(string='<h1 style="color:#c0392b;font:bold 26pt Arial">Title</h1><div style="background:#1a56db;color:#fff;padding:8px;font:bold 14pt Arial">Bar</div><p>Text <span style="color:#188038;font-size:18pt">green</span></p>').write_pdf()
+    h = htmlsafe.clean(dc.pdf_to_wp(pdf)["html"])
+    assert "color:#bf382a" in h or "color:#c0392b" in h
+    assert "background-color:#1a56db" in h and "color:#ffffff" in h and "color:#188038" in h and "font-size:18pt" in h
