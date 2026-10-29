@@ -2224,3 +2224,6 @@ html,body{max-width:100%;overflow-x:hidden}
 /* Download and Print: always at the top right of a document */
 .doc-actions{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
 .panelhead .doc-actions:empty{display:none}
+
+.mconv-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:6px 0 10px}.mconv-row label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;min-width:170px}.mconv-arrow{margin-bottom:12px;color:#64748b}
+.mconv-h{margin:16px 0 6px;font-size:14px}
