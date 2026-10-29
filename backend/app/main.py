@@ -68,6 +68,10 @@ app.include_router(support_router)
 app.include_router(rsvp_router)
 from app.api.routes_marketing import router as marketing_router
 app.include_router(marketing_router)
+from app.api.routes_push import router as push_router
+app.include_router(push_router)
+from app.api.routes_media import router as media_router
+app.include_router(media_router)
 
 @app.on_event("startup")
 async def load_saved_settings():
@@ -89,6 +93,13 @@ async def start_embedded_worker():
     if os.environ.get("RUN_WORKER","").lower()=="true":
         from app.workers import runner
         app.state.worker=asyncio.create_task(runner.main())
+
+@app.on_event("startup")
+async def start_push_loop():
+    """Meeting, invitation and new-mail notifications to devices that turned them on (web push)."""
+    if os.environ.get("PUSH_LOOP","true").lower()!="false":
+        from app.services import push
+        app.state.push=asyncio.create_task(push.loop())
 
 _web=os.environ.get("WEB_DIR","")
 if _web and (Path(_web)/"index.html").is_file():
