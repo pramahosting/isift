@@ -59,3 +59,15 @@ def module_required(module_id: str):
         from fastapi import HTTPException
         if module_id in await disabled(db): raise HTTPException(403, "An administrator has switched this off in Admin Console, Modules.")
     return guard
+
+
+@router.get("/plan-matrix")
+async def plan_matrix(db: AsyncSession = Depends(get_db)):
+    """Public. What each plan includes right now (limits and modules, after the administrator's changes), so the landing page, price list and comparison always match Admin Console."""
+    from app.services import entitlements as ent
+    off = await disabled(db); cfg = await ent.plan_config(db)
+    plans = {}
+    for pid in ent.PLAN_IDS:
+        lim = {**ent.plan_defaults(pid), **{k: v for k, v in ((cfg.get(pid) or {}).get("limits") or {}).items() if k in ent.FIELDS}}
+        plans[pid] = {"limits": lim, "modules_off": sorted(set((cfg.get(pid) or {}).get("modules_off") or []))}
+    return {"plans": plans, "modules": [{"id": i, "label": l, "enabled": i not in off} for i, l, _d in MODULES]}
