@@ -33,7 +33,7 @@ export function MediaConverter({request,requestRaw}:{request:any;requestRaw:(pat
     if(kind==='image'){const r=await requestRaw(`/media/image?filename=${encodeURIComponent(f.name)}&to=${to}`,f,p=>patch(key,{pct:p}),'blob');patch(key,{state:'done',blob:r.blob,out:r.filename||f.name.replace(/\.[^.]+$/,'')+'.'+to,msg:size(r.blob.size)});save(r.blob,r.filename||f.name.replace(/\.[^.]+$/,'')+'.'+to);return}
     const r=await requestRaw(`/media/video?filename=${encodeURIComponent(f.name)}&to=${to}&quality=${q}`,f,p=>patch(key,{pct:p}),'json');
     patch(key,{state:'run',pct:0,job:r.id});
-    for(;;){await wait(2000);const d=await request('/media/jobs');const j=(d.items||[]).find((x:any)=>x.id===r.id);if(!j){patch(key,{state:'err',msg:'The conversion was lost. Please try again.'});return}
+    let fails=0;for(;;){await wait(3000);let d:any;try{d=await request('/media/jobs');fails=0}catch{fails++;patch(key,{msg:'Waiting for the server…'});if(fails>40){patch(key,{state:'err',msg:'The server stopped answering. The conversion may have been interrupted. Check “Your converted videos” below, or try again.'});loadPast();return}continue}const j=(d.items||[]).find((x:any)=>x.id===r.id);if(!j){patch(key,{state:'err',msg:'The server restarted during the conversion, so it was lost. Please try again.'});return}
       if(j.state==='error'){patch(key,{state:'err',msg:j.error||'The conversion failed.'});return}
       if(j.state==='done'){patch(key,{state:'done',job:r.id,out:j.out_name,msg:size(j.out_size||0)});loadPast();return}
       patch(key,{pct:j.progress||0,msg:j.state==='saving'?'Saving…':''})}};

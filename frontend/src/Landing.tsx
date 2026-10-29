@@ -1,5 +1,5 @@
 import React from 'react';
-import {PenLine,Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle} from 'lucide-react';
+import {PenLine,Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle,FileDown,Film,BellRing} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 
 /** Landing page sections: what happens after a meeting, why iSift, an honest comparison, and how data is handled. */
@@ -59,6 +59,8 @@ const ROWS:{label:string;cells:Cell[]}[]=[
  {label:'Presentations (PowerPresentation)',cells:['Yes, built in, present in the meeting','No','Zoho Show, separate','No','No','PowerPoint, separate','Google Slides, separate']},
  {label:'PDF and Word editor: edit text, delete or replace pictures',cells:['Yes, built in (PDFs of up to 5 pages free)','Separate app','Separate app','Separate app','Separate app','Separate app','Separate app']},
  {label:'Sign PDFs: drawn signature or certified digital signature',cells:['Yes, built in, in the same app','Separate app','Zoho Sign, separate','Separate app','Separate app','Separate app','Separate app']},
+ {label:'Convert Word, PDF, Presentation and Sheet files, many at once',cells:['Yes, built in, in the same app',null,null,null,null,null,null]},
+ {label:'Convert pictures and videos, and compress video (H.265, AV1)',cells:['Yes, built in, in the same app',null,null,null,null,null,null]},
  {label:'Reactions, raise hand and live captions',cells:[Y,Y,null,Y,null,Y,Y]},
  {label:'Several people sharing at once, with pointer and pen',cells:['Yes, built in (paid plans)','Yes (host option)',null,null,null,null,null]},
  {label:'Watch a YouTube video together, in sync',cells:['Yes, built in (paid plans)',null,null,null,null,null,null]},
@@ -114,6 +116,9 @@ export function NewSection(){
    {i:Hand,t:'Give control of a file',d:'Share a PDF or photo and let one person page and scroll it for everyone. Take it back any time.',m:'meetings-and-sharing'},
    {i:PenLine,t:'Edit together, live',d:'Share a note, document, spreadsheet, presentation or whiteboard and let one person edit it live. You decide who.',m:'meetings-and-sharing'},
    {i:Mail,t:'Your own email address',d:'An iSift address in minutes, or your own domain with team mailboxes.',m:'mail-calendar-contacts'},
+   {i:FileDown,t:'Document converter',d:'Word to PDF, PDF to Word, Presentation to PDF and Sheet to PDF. Upload many files at once and each converts in parallel.',m:'documents-and-whiteboard'},
+   {i:Film,t:'Picture and video converter',d:'JPG, PNG, GIF and WebP pictures; MP4, MOV, WebM and more for video. Compress video with H.265 or AV1 for much smaller files.',m:'documents-and-whiteboard'},
+   {i:BellRing,t:'Alerts like Zoom',d:'Meetings starting, invitations and new email reach your computer or phone, even when iSift is closed. Switch it on or off any time.',m:'meetings-and-sharing'},
    {i:Users,t:'Simple host controls',d:'Mute people, turn off video or invite someone to speak, all from one small menu beside each person.',m:'meetings-and-sharing'},
   ];
   return <section className="landing-section" id="whats-new"><p className="eyebrow">WHAT’S EXTRA</p><h2>Inbuilt in iSift.</h2>
