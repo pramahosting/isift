@@ -77,3 +77,19 @@ def test_compress_to_hevc_and_av1(client, monkeypatch, tmp_path):
         assert j["state"] == "done", j
         assert j["out_name"] == "c-compressed.mp4"
         out = next(v for k, v in blobs.items() if k.endswith("-compressed.mp4")); assert out[4:8] == b"ftyp" and name.encode() in out
+
+
+def test_modules_switch_off_converters(client):
+    c = client; h = login(c)
+    ids = [m["id"] for m in c.get("/api/v1/modules").json()["modules"]]
+    assert {"docconverter", "mediaconverter", "signpdf"} <= set(ids)
+    from PIL import Image
+    buf = io.BytesIO(); Image.new("RGB", (8, 8)).save(buf, "PNG")
+    assert c.post("/api/v1/media/image?filename=a.png&to=jpg", content=buf.getvalue(), headers=h).status_code == 200
+    on = {i: True for i in ids}; on["mediaconverter"] = False; on["signpdf"] = False; on["docconverter"] = False
+    assert c.put("/api/v1/admin/modules", json={"enabled": on}, headers=h).status_code == 200
+    assert c.post("/api/v1/media/image?filename=a.png&to=jpg", content=buf.getvalue(), headers=h).status_code == 403
+    assert c.post("/api/v1/docs/file-to-pdf", json={"name": "a.docx", "data": ""}, headers=h).status_code == 403
+    assert c.post("/api/v1/docedit/inspect", json={}, headers=h).status_code == 403
+    on = {i: True for i in ids}; c.put("/api/v1/admin/modules", json={"enabled": on}, headers=h)
+    assert c.post("/api/v1/media/image?filename=a.png&to=jpg", content=buf.getvalue(), headers=h).status_code == 200
