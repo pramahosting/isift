@@ -6,7 +6,9 @@ from app.models import User
 from app.services import docconvert as dc
 
 log = logging.getLogger("isift.docconvert")
+from app.api.routes_modules import module_required
 router = APIRouter(prefix="/api/v1/docs", tags=["doc-converter"])
+_conv = Depends(module_required("docconverter"))
 
 MIME = {"pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
@@ -82,7 +84,7 @@ async def _pdf_wp(raw: bytes, exact: bool) -> dict:
     return {"html": "".join(p["html"] for p in parts), "pages": n, "notes": notes}
 
 
-@router.post("/pdf-to-wp")
+@router.post("/pdf-to-wp", dependencies=[_conv])
 async def pdf_to_wp(payload: dict, user: User = Depends(principal)):
     """{name, data (base64 PDF)} -> {html, pages, notes}: the PDF rebuilt as a WordPerfect document."""
     try: raw = base64.b64decode(str(payload.get("data") or ""), validate=False)
@@ -113,7 +115,7 @@ async def import_office(payload: dict, user: User = Depends(principal)):
     except dc.ConvertError as e: raise HTTPException(422, str(e))
 
 
-@router.post("/file-to-pdf")
+@router.post("/file-to-pdf", dependencies=[_conv])
 async def file_to_pdf(payload: dict, user: User = Depends(principal)):
     """{name, data (base64 .docx / .pptx / .xlsx / .html / .txt)} -> {filename, mime, data}: a file from the person's computer as a PDF. Nothing is saved in iSift."""
     name = str(payload.get("name") or "")
@@ -135,7 +137,7 @@ async def file_to_pdf(payload: dict, user: User = Depends(principal)):
     return {"filename": f"{base}.pdf", "mime": "application/pdf", "data": base64.b64encode(pdf).decode()}
 
 
-@router.post("/pdf-to-docx")
+@router.post("/pdf-to-docx", dependencies=[_conv])
 async def pdf_to_docx(payload: dict, user: User = Depends(principal)):
     """{name, data (base64 PDF), mode?} -> {filename, mime, data}: a PDF as a Word file, straight away. mode "flow" gives reflowing text instead of exact pages."""
     name = str(payload.get("name") or "")

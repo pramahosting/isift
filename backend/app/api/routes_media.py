@@ -10,13 +10,14 @@ from app.core.db import get_db
 from app.services import media, store, storage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-router = APIRouter(prefix="/api/v1/media", tags=["media"])
+from app.api.routes_modules import module_required
+router = APIRouter(prefix="/api/v1/media", tags=["media"], dependencies=[Depends(module_required("mediaconverter"))])
 log = logging.getLogger("isift")
 IMAGE_LIMIT = 200 * 1024 * 1024
 VIDEO_LIMIT = 4 * 1024 * 1024 * 1024
 KEEP_SECONDS = 3 * 86400
 JOBS: dict[str, dict] = {}                  # running / just-finished conversions (the finished list itself is kept in the person's record)
-_slots = asyncio.Semaphore(2)
+_slots = asyncio.Semaphore(1)                # one conversion at a time per server: video encoding is heavy
 
 def _key(email): return store.hkey("media", email)
 

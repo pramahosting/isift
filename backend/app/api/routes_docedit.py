@@ -9,7 +9,8 @@ from app.core.security import principal
 from app.models import User, SavedSignature
 from app.services import docedit as de
 
-router = APIRouter(prefix="/api/v1/docedit", tags=["docedit"])
+from app.api.routes_modules import module_required
+router = APIRouter(prefix="/api/v1/docedit", tags=["docedit"], dependencies=[Depends(module_required("signpdf"))])
 
 async def _run(fn, *a):
     try: return await asyncio.to_thread(fn, *a)

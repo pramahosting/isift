@@ -21,6 +21,9 @@ MODULES = [
     ("contacts", "Commbox: Contacts", "People and groups."),
     ("chat", "Chat", "Messages with people and groups."),
     ("docs", "Notes, WordPerfect, SpreadTable and PowerPresentation", "Notes, agendas and drafts."),
+    ("docconverter", "Doc Converter", "Docs > Doc Converter: Word, PDF, Presentation and Sheet conversions (needs Notes, WordPerfect, SpreadTable and PowerPresentation on)."),
+    ("mediaconverter", "Media Converter", "Docs > Media Converter: convert pictures and videos, and compress video with H.265 or AV1. Videos are kept only in blob storage."),
+    ("signpdf", "Sign & Edit PDF", "Docs > Sign & Edit PDF: edit text, whiteout, add shapes and signatures, and digitally sign PDF and Word files."),
     ("whiteboard", "Whiteboard", "Boards for sketching ideas."),
     ("collab", "Work together", "Edit a shared note, document, spreadsheet, presentation or whiteboard live in a meeting, one person at a time (Meeting > More > Work together)."),
     ("connections", "Connections", "Link calendars, Zoom and recordings."),
@@ -48,3 +51,11 @@ async def set_modules(payload: dict, user: User = Depends(require_admin), db: As
     else: db.add(IntegrationSetting(key=KEY, value={"disabled": off}))
     db.add(AuditLog(actor=user.email, action="modules.set", resource_type="settings", safe_metadata={"disabled": off})); await db.commit()
     return {"modules": _view(off)}
+
+
+def module_required(module_id: str):
+    """A route dependency: the feature answers 403 once an administrator has switched its module off."""
+    async def guard(db: AsyncSession = Depends(get_db)):
+        from fastapi import HTTPException
+        if module_id in await disabled(db): raise HTTPException(403, "An administrator has switched this off in Admin Console, Modules.")
+    return guard

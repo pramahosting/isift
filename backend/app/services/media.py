@@ -1,5 +1,5 @@
 """Image and video conversion. Images are converted in memory and returned. Videos are kept only in blob storage (Cloudflare R2): the upload, the converted file and nothing in the database."""
-import io, json, re, shutil, subprocess
+import io, json, os, re, shutil, subprocess
 from pathlib import Path
 
 IMAGE_IN = {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "ico", "heic", "avif"}
@@ -54,20 +54,20 @@ def _encoders() -> str:
     try: return subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=30).stdout
     except Exception: return ""
 
-def _compress_args(to: str, q: str) -> list[str]:
+def _compress_args(to: str, q: str, threads: int = 2) -> list[str]:
     lvl = QUALITY.get(q, 1); enc = _encoders()
     if to == "hevc":
         if "libx265" not in enc: raise MediaError("H.265 is not available on this server.")
-        return ["-c:v", "libx265", "-preset", ("medium", "fast", "fast")[lvl], "-crf", str((30, 26, 23)[lvl]), "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac", "-b:a", ("96k", "128k", "160k")[lvl], "-movflags", "+faststart"]
+        return ["-c:v", "libx265", "-preset", ("medium", "fast", "fast")[lvl], "-crf", str((30, 26, 23)[lvl]), "-x265-params", f"pools={threads}:frame-threads=2", "-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-c:a", "aac", "-b:a", ("96k", "128k", "160k")[lvl], "-movflags", "+faststart"]
     if "libsvtav1" in enc:
-        v = ["-c:v", "libsvtav1", "-preset", "8", "-crf", str((40, 35, 30)[lvl]), "-pix_fmt", "yuv420p"]
+        v = ["-c:v", "libsvtav1", "-preset", "9", "-crf", str((40, 35, 30)[lvl]), "-svtav1-params", f"lp={threads}", "-pix_fmt", "yuv420p"]
     elif "libaom-av1" in enc:
         v = ["-c:v", "libaom-av1", "-crf", str((38, 33, 28)[lvl]), "-b:v", "0", "-cpu-used", "6", "-row-mt", "1", "-pix_fmt", "yuv420p"]
     else: raise MediaError("AV1 is not available on this server.")
     return [*v, "-c:a", "aac", "-b:a", ("96k", "128k", "160k")[lvl], "-movflags", "+faststart"]
 
-def _args(to: str, q: str = "balanced") -> list[str]:
-    if to in COMPRESS: return _compress_args(to, q)
+def _args(to: str, q: str = "balanced", threads: int = 2) -> list[str]:
+    if to in COMPRESS: return _compress_args(to, q, threads)
     return {
         "mp4": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"],
         "mov": ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart"],
@@ -81,8 +81,9 @@ def convert_video(src: Path, dst: Path, to: str, on_progress=None, timeout: int 
     """Runs ffmpeg; on_progress gets a 0..1 fraction. Raises MediaError with a plain reason."""
     if not shutil.which("ffmpeg"): raise MediaError("Video conversion is not available on this server (ffmpeg is missing).")
     total = probe_seconds(src)
-    cmd = ["ffmpeg", "-y", "-nostdin", "-i", str(src), *_args(to, quality), "-progress", "pipe:1", "-nostats", str(dst)]
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    threads = max(1, min(int(os.environ.get("MEDIA_THREADS", "2")), os.cpu_count() or 1))      # leave the rest of the server to everyone else: a big encode must never starve the website
+    cmd = ["ffmpeg", "-y", "-nostdin", "-threads", str(threads), "-i", str(src), *_args(to, quality, threads), "-progress", "pipe:1", "-nostats", str(dst)]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, preexec_fn=lambda: os.nice(15))
     import threading, time
     t0 = time.time(); err = []
     threading.Thread(target=lambda: err.append(p.stderr.read()), daemon=True).start()
