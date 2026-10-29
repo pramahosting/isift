@@ -29,7 +29,6 @@ export function Reminders({request}:{request:any}){
   if(!due.length)return null;
   return <div className="notifalerts" role="region" aria-label="Meeting reminders">{due.slice(0,3).map(m=>{const mins=Math.max(0,Math.round((new Date(m.start_at).getTime()-Date.now())/60000));
     return <div key={m.id} className="notifcard" role="alert"><Video size={20}/><div><b>iSift: {m.title}</b><p>{when(m)}</p>
-      <div className="notifact">{m.join_url&&<button type="button" className="primary" onClick={()=>join(m)}>Join</button>}<button type="button" className="secondary" onClick={()=>snooze(m)}>Snooze</button><button type="button" className="secondary" onClick={()=>done(m)}>Dismiss</button></div>
-      {perm==='default'&&<button type="button" className="textbtn" onClick={allow}><BellRing size={13}/> Also show reminders as desktop notifications</button>}</div>
+      <div className="notifact">{m.join_url&&<button type="button" className="primary" onClick={()=>join(m)}>Join</button>}<button type="button" className="secondary" onClick={()=>snooze(m)}>Snooze</button><button type="button" className="secondary" onClick={()=>done(m)}>Dismiss</button></div></div>
       <button type="button" className="iconbtn" aria-label="Dismiss" onClick={()=>done(m)}><X size={15}/></button></div>})}</div>;
 }

@@ -11,15 +11,16 @@ export function Notifications({request}:{request:any}){
   const [d,setD]=useState<{items:Item[];unread:number}>({items:[],unread:0});const [open,setOpen]=useState(false);const [hidden,setHidden]=useState<string[]>([]);
   const box=useRef<HTMLSpanElement>(null);
   const [on,setOn]=useState(false),[perm,setPerm]=useState(permission()),[pmsg,setPmsg]=useState(''),[pbusy,setPbusy]=useState(false);
-  const [skip,setSkip]=useState(()=>{try{return Date.now()-Number(localStorage.getItem('isift.pushskip')||0)<6048e5}catch{return false}});
   useEffect(()=>{refreshPush(request).then(()=>deviceOn().then(setOn));
     const m=(e:MessageEvent)=>{if(e.data?.type==='isift-open'){try{const u=new URL(e.data.url);if(u.hash)location.hash=u.hash}catch{}}};
     try{navigator.serviceWorker?.addEventListener('message',m)}catch{}return()=>{try{navigator.serviceWorker?.removeEventListener('message',m)}catch{}}},[]);
+  // Turn alerts on without a pop-up card: on the person's first click in iSift on this device (browsers only allow the permission question after a click), ask the browser once. Already-allowed devices are registered silently above.
+  useEffect(()=>{if(!pushSupported()||permission()!=='default')return;let ask=0;try{ask=Number(localStorage.getItem('isift.pushask')||0)}catch{}if(Date.now()-ask<2592e6)return;
+    const go=()=>{try{localStorage.setItem('isift.pushask',String(Date.now()))}catch{}enablePush(request).then(()=>{setPerm(permission());deviceOn().then(setOn)}).catch(()=>{})};
+    window.addEventListener('pointerdown',go,{once:true});return()=>window.removeEventListener('pointerdown',go)},[]);
   const turnOn=async()=>{setPbusy(true);setPmsg('');try{const w=await enablePush(request);setPmsg(w);setPerm(permission());setOn(await deviceOn())}catch(e:any){setPmsg(e?.message||'Notifications could not be turned on.')}setPbusy(false)};
   const turnOff=async()=>{setPbusy(true);await disablePush(request);setOn(false);setPmsg('Notifications are off on this device.');setPbusy(false)};
   const test=async()=>{setPmsg('');try{await request('/push/test',{method:'POST'});setPmsg('Test sent. It should appear in a few seconds.')}catch(e:any){setPmsg(e.message)}};
-  const later=()=>{try{localStorage.setItem('isift.pushskip',String(Date.now()))}catch{}setSkip(true)};
-  const canAsk=!on&&perm!=='denied'&&(pushSupported()||needsHomeScreen());
   const poll=()=>request('/notifications').then((r:any)=>setD(r)).catch(()=>{});
   useEffect(()=>{poll();const t=setInterval(poll,10000);const f=()=>poll();window.addEventListener('focus',f);return()=>{clearInterval(t);window.removeEventListener('focus',f)}},[]);
   useEffect(()=>{if(!open)return;const h=(e:MouseEvent)=>{if(box.current&&!box.current.contains(e.target as Node))setOpen(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[open]);
@@ -34,8 +35,6 @@ export function Notifications({request}:{request:any}){
           :perm==='denied'?<span className="muted small">Notifications are blocked for this site. Allow them in your browser settings to get alerts.</span>
           :<button type="button" className="textbtn" onClick={turnOn} disabled={pbusy}><BellRing size={14}/> Turn on notifications (meetings, invitations, email)</button>}{pmsg&&<small className="muted" role="status">{pmsg}</small>}</div></div>}
     </span>
-    {canAsk&&!skip&&!open&&<div className="notifalerts pushask" role="region" aria-label="Turn on notifications"><div className="notifcard"><BellRing size={20}/><div><b>Get alerts like Zoom</b><p>{needsHomeScreen()&&!pushSupported()?'On iPhone or iPad, add iSift to your Home Screen first (Share, then Add to Home Screen), then turn notifications on from the bell.':'Meetings starting, invitations and new email, even when iSift is closed.'}</p>
-      <div className="notifact">{pushSupported()&&<button type="button" className="primary" onClick={turnOn} disabled={pbusy}>Turn on notifications</button>}<button type="button" className="secondary" onClick={later}>Not now</button></div>{pmsg&&<small className="muted" role="status">{pmsg}</small>}</div><button type="button" className="iconbtn" aria-label="Not now" onClick={later}><X size={15}/></button></div></div>}
     {alerts.length>0&&<div className="notifalerts" role="region" aria-label="Meeting invitations">{alerts.map(i=><div key={i.id} className="notifcard" role="alert"><Video size={20}/><div><b>{i.title}</b><p>{i.text}</p><div className="notifact"><button type="button" className="primary" onClick={()=>open1(i)}>Join now</button><button type="button" className="secondary" onClick={()=>{setHidden(h=>[...h,i.id]);read([i.id])}}>Dismiss</button></div></div><button type="button" className="iconbtn" aria-label="Dismiss" onClick={()=>{setHidden(h=>[...h,i.id]);read([i.id])}}><X size={15}/></button></div>)}</div>}
   </>;
 }

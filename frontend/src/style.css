@@ -2216,3 +2216,8 @@ html,body{max-width:100%;overflow-x:hidden}
 .notifpush{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid #e2e8f0;font-size:13px}
 .notifpush span{display:inline-flex;align-items:center;gap:6px;flex:1 1 100%}
 .notifalerts.pushask{top:auto;bottom:16px}
+
+/* Doc Converter: one tab per conversion */
+.dconv-modes{display:flex!important;flex-wrap:wrap;gap:6px!important;border-bottom:1px solid var(--line,#d9dee8)}
+.dconv-mode{flex-direction:row!important;align-items:center!important;gap:7px!important;border:0!important;border-bottom:3px solid transparent!important;border-radius:8px 8px 0 0!important;background:transparent!important;box-shadow:none!important;padding:10px 14px!important;font-size:14px;font-weight:600;color:#475569}
+.dconv-mode.on{color:var(--cobalt,#2b62f0);border-bottom-color:var(--cobalt,#2b62f0)!important;background:#f4f7ff!important}
