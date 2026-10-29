@@ -93,3 +93,14 @@ def test_modules_switch_off_converters(client):
     assert c.post("/api/v1/docedit/inspect", json={}, headers=h).status_code == 403
     on = {i: True for i in ids}; c.put("/api/v1/admin/modules", json={"enabled": on}, headers=h)
     assert c.post("/api/v1/media/image?filename=a.png&to=jpg", content=buf.getvalue(), headers=h).status_code == 200
+
+
+def test_plan_matrix_follows_admin_changes(client):
+    c = client; h = login(c)
+    m = c.get("/api/v1/plan-matrix").json()
+    assert set(m["plans"]) == {"basic", "individual", "business"} and m["plans"]["basic"]["limits"]["max_participants"] == 25 and m["plans"]["individual"]["limits"]["webinars"] is True
+    assert any(x["id"] == "mediaconverter" and x["enabled"] for x in m["modules"])
+    r = c.put("/api/v1/admin/plan-config", json={"plan": "individual", "limits": {"webinars": False, "docs_per_day": 9}, "modules_off": ["mediaconverter"]}, headers=h); assert r.status_code == 200, r.text
+    m = c.get("/api/v1/plan-matrix").json()["plans"]["individual"]
+    assert m["limits"]["webinars"] is False and m["limits"]["docs_per_day"] == 9 and m["modules_off"] == ["mediaconverter"]
+    c.put("/api/v1/admin/plan-config", json={"plan": "individual", "limits": {"webinars": None, "docs_per_day": None}, "modules_off": []}, headers=h)
