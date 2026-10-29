@@ -23,6 +23,7 @@ import {HostDialog,TestAV,PmiCard,ChatPage,ContactsPage,NotesPage} from './Works
 import {SignEdit} from './SignEdit';
 import {AccountPage} from './Account';
 import {PricingPage,PLAN_LABEL,HomePricing} from './Pricing';
+import {usePlanMatrix,plansWith,namesOf} from './planMatrix';
 import {BillingPage,RefundsPanel} from './Billing';
 import {Notifications} from './Notifications';
 import {Reminders} from './Reminders';
@@ -116,14 +117,17 @@ export default function App({initialToken,msal}){
   (async()=>{try{const r=await request('/shared/open',{method:'POST',body:JSON.stringify({token:m[1]})});clear();setFocusFile({id:r.id,kind:r.kind});setPage(({doc:'Notes',board:'Whiteboard',wp:'WordPerfect',sheet:'SpreadTable',deck:'PowerPresentation'} as any)[r.kind]||'Notes')}catch(e:any){clear();setNotice(e.message||'This link could not be opened.')}})()},[hash,token]);
  const closeLogin=()=>{if(loginBusy)return;setShowLogin(false);setLoginFor('');resetAuth()};
  const switchMode=(m:'login'|'signup',prefill?:string)=>{resetAuth();setSuStage('form');setAuthMode(m);if(m==='signup'&&prefill)setEmail(prefill)};
- const [off,setOff]=useState<string[]>([]);
+ const [off,setOff]=useState<string[]>([]);const pm=usePlanMatrix();
  const loadModules=useCallback(()=>{fetch(`${API}/modules`).then(r=>r.json()).then(d=>setOff((d.modules||[]).filter((m:any)=>!m.enabled).map((m:any)=>m.id))).catch(()=>{})},[]);
  useEffect(()=>{loadModules()},[loadModules,token]);
  const modOn=(...ids:string[])=>!ids.length||ids.some(i=>!off.includes(i)&&!(lim?.modules_off||[]).includes(i));
  const meetTabs=MEET_TABS.filter(t=>modOn(TAB_MOD[t]));
  const commTabs=['Mail','Calendar','Contacts'].filter(t=>modOn(COMM_MOD[t])&&commOk);
- const capsOn=CAPS.filter((c:any)=>!c.mods||modOn(...c.mods));
- const stepsOn=STEPS.filter((x:any)=>modOn(...x.mods));
+ // before sign-in there is no plan yet, so a feature shows when at least one plan includes it; the text names which plans
+ const planAny=(mods?:string[])=>token||!mods||!pm||plansWith(pm,{module:mods}).length>0;
+ const commIds=plansWith(pm,{module:['mail','calendar','contacts']});
+ const capsOn=CAPS.filter((c:any)=>!c.mods||(modOn(...c.mods)&&planAny(c.mods))).map((c:any)=>c.title==='Commbox'&&pm?{...c,text:c.text.replace(/Included in the Standard and Business plans\./,'')+`Included in ${namesOf(commIds)}.`}:c);
+ const stepsOn=STEPS.filter((x:any)=>modOn(...x.mods)&&planAny(x.mods));
  const capI=Math.min(cap,capsOn.length-1),stepI=Math.min(step,stepsOn.length-1);
  useEffect(()=>{if(import.meta.env.VITE_DEMO_MODE!=='true')return;fetch(`${API}/auth/options`).then(r=>r.json()).then(d=>setCanSignup(!!d.signup)).catch(()=>{})},[]);
  useEffect(()=>{if(!showLogin)return;const closeOnEscape=event=>{if(event.key==='Escape'&&!loginBusy){setShowLogin(false);setLoginFor('');resetAuth()}};window.addEventListener('keydown',closeOnEscape);const prev=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{window.removeEventListener('keydown',closeOnEscape);document.body.style.overflow=prev}},[showLogin,loginBusy]);
