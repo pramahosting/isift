@@ -184,6 +184,18 @@ class RoomRecording(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class RoomRecordingConsent(Base):
+    """Who was asked to consent to being recorded, and what they chose (Zoom's "Recording Consent" report)."""
+    __tablename__ = "room_recording_consents"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    room_id: Mapped[str] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decision: Mapped[str] = mapped_column(String(10))                      # accepted | declined
+    when_asked: Mapped[str] = mapped_column(String(10), default="start")   # start (recording began while they were in) | join (they joined a recording in progress)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class Contact(Base):
     """A person in someone's contact list. `user_id` is filled when the address belongs to an iSift user (so chat works)."""
     __tablename__ = "contacts"

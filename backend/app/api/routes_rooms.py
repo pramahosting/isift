@@ -21,7 +21,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.core.security import principal
 from app.core import runtime_settings as rs
-from app.models import User, Meeting, Room, RoomRecording, Job, AuditLog, IntegrationSetting
+from app.models import User, Meeting, Room, RoomRecording, RoomRecordingConsent, Job, AuditLog, IntegrationSetting
 
 log = logging.getLogger("isift")
 from app.services import webinar_live as _WLIVE, webinars as _WBS
@@ -229,6 +229,13 @@ async def _host_code(db: AsyncSession, code: str, create: bool = False) -> str |
 async def room_host_view(code: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     room = await _host_room_any(db, code, user)
     return {"host_code": await _host_code(db, code, True), "access": room.access, "passcode": room.passcode, "waiting_room": room.waiting_room, "url": (await db.get(Meeting, room.meeting_id)).join_url if room.meeting_id else None}
+
+@router.get("/rooms/{code}/recording-consent")
+async def recording_consent_report(code: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Who accepted or declined to be recorded in this meeting (host only), newest first."""
+    room = await _host_room_any(db, code, user)
+    rows = (await db.execute(select(RoomRecordingConsent).where(RoomRecordingConsent.room_id == room.id).order_by(RoomRecordingConsent.created_at.desc()).limit(1000))).scalars().all()
+    return [{"name": r.name, "email": r.email, "decision": r.decision, "when_asked": r.when_asked, "at": (r.created_at.replace(tzinfo=timezone.utc) if r.created_at.tzinfo is None else r.created_at).isoformat()} for r in rows]
 
 @router.patch("/rooms/{code}")
 async def room_change(code: str, payload: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
@@ -559,7 +566,7 @@ async def _admit(code: str, state: dict, pid: str, ws: WebSocket, name: str, is_
     if switching:
         if state.get("groups"): await _close_groups(state, "closed")
         state["sfu"] = True                      # from now on this meeting uses the Cloudflare video server
-    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "can_record": state.get("rec_ok", True), "cloud_rec": state.get("cloud_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
+    await _send(ws, {"type": "welcome", "id": pid, "host": is_host or cohost, "cohost": cohost, "policy": state["policy"], "peers": peers_before, "recording": state["recording"], "recorder": state.get("recorder") == pid, "recorder_name": (state["peers"].get(state.get("recorder")) or {}).get("name"), "consents": ({i: v["decision"] for i, v in (state.get("consent") or {}).items()} if (is_host or cohost) else None), "can_record": state.get("rec_ok", True), "cloud_rec": state.get("cloud_ok", True), "ends_in": max(0, int(state["started"] + state["limit"] * 60 - time.time())) if state.get("limit") else None, "options": {**{k: v for k, v in (room_options or {}).items() if k != "invitees"}, "virtual_room": bool(state.get("vroom_allowed", True) and state.get("vroom", True))}, "vroom_allowed": bool(state.get("vroom_allowed", True)), "shape": state.get("shape", "rect"),
                      "waiting": [{"id": i, "name": w["name"]} for i, w in state["waiting"].items()] if (is_host or cohost) else [],
                      "groups_open": bool(state.get("groups")), "roster": _roster_msg(state) if (state.get("groups") and (is_host or cohost)) else None,
                      "sfu": bool(state.get("sfu")), "stage": state.get("stage") or [], "total": len(state["peers"]),
@@ -858,7 +865,20 @@ async def room_socket(ws: WebSocket, code: str):
             elif _rank(state["peers"][pid]) == 2 and t == "record" and msg.get("on") and not state.get("rec_ok", True):
                 await _send(ws, {"type": "notice", "kind": "record", "message": "Recording is not allowed for this account. Ask an administrator to allow recording for you."})
             elif _rank(state["peers"][pid]) == 2 and t == "record":
-                state["recording"] = bool(msg.get("on")); await _broadcast(code, {"type": "recording", "on": state["recording"]})
+                state["recording"] = bool(msg.get("on")); state["consent"] = {}; state["recorder"] = pid if state["recording"] else None       # a new recording asks everyone afresh
+                await _broadcast(code, {"type": "recording", "on": state["recording"], "by": state["peers"][pid]["name"]})
+            elif t == "consent" and state.get("recording") and pid != state.get("recorder"):      # Zoom's recording disclaimer: Continue (stay) or Leave Meeting
+                me = state["peers"][pid]; decision = "accepted" if msg.get("accept") else "declined"
+                state.setdefault("consent", {})[pid] = {"name": me["name"], "decision": decision}
+                try:
+                    async with SessionLocal() as _cdb:
+                        _room = (await _cdb.execute(select(Room).where(Room.code == code))).scalar_one_or_none()
+                        if _room:
+                            _cdb.add(RoomRecordingConsent(room_id=_room.id, name=me["name"][:120], email=(me.get("email") or None), decision=decision, when_asked="join" if msg.get("joined") else "start"))
+                            await _cdb.commit()
+                except Exception: log.exception("Could not log recording consent")
+                for _p in list(state["peers"].values()):
+                    if _rank(_p) >= 1: await _send(_p["ws"], {"type": "consent", "id": pid, "name": me["name"], "decision": decision})
             elif _rank(state["peers"][pid]) >= 1 and t in ("kick", "force", "ask", "mute_all", "policy", "role", "vroom", "tshape", "lock", "hidepics", "multishare"):
                 me = state["peers"][pid]; target = state["peers"].get(msg.get("id"))
                 if t == "kick":
