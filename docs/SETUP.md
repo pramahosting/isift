@@ -340,3 +340,8 @@ When a host keeps a recording **in the cloud**, iSift emails them a download lin
 ## isiftmail (optional free email addresses)
 
 Email addresses for anyone (free name@your-domain), or on a person's own domain with mailboxes for their team, inside Commbox > Mail. It needs your own mail server (Stalwart) and is hidden until set up. Full steps, DNS records and costs: [ISIFTMAIL.md](ISIFTMAIL.md). Switch it on or off under Admin Console > Customers > Modules.
+
+
+## Recording consent (Zoom-style disclaimer)
+When the host starts recording (including automatic recording), every other person in the room, webinar panelists and attendees included, gets a **"This meeting is being recorded"** window with **Continue** and **Leave Meeting**. People who join a recording already in progress get it before they take part. Their microphone and camera are switched off until they choose to turn them on. The recording continues either way; choosing Leave Meeting takes the person out of the meeting. The host never sees the window for their own recording.
+Each answer is stored (table `room_recording_consents`: name, email if known, accepted or declined, whether asked at start or on joining). The host sees a **Consented / Declined / Awaiting consent** badge beside each person in *Participants* while recording, and can fetch the full report from `GET /api/v1/rooms/{code}/recording-consent`.
