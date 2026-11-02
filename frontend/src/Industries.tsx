@@ -90,6 +90,27 @@ const BLOCKS:Record<string,[string,string,string][]>={
  'professional-services':[['Clients','Meet without friction.','Clients join from a link, with no account to create.'],['Actions','Follow-through, not just a recap.','Minutes and action items with owners, drafted for approval.'],['Signing','From call to signed engagement.','Engagement letters and NDAs signed in the meeting.'],['Documents','Edit together.','Co-edit documents and slides while you talk.']],
  'construction':[['Site','Join from any phone.','Owners and subcontractors join from a link, with no app.'],['Variations','Sign off before work starts.','Quotes and variations signed as PDFs, in the meeting.'],['Booking','Book quotes and site visits.','A booking page keeps the diary organised.'],['Actions','Who does what, by when.','Action items drafted for you to approve.']],
 };
+
+/** Original product mock-ups (no stock photos): each draws a small iSift screen in HTML and SVG. */
+type Kind='meeting'|'booking'|'sign'|'minutes'|'mail'|'webinar'|'collab';
+const KIND_WORDS:[Kind,RegExp][]=[['webinar',/webinar|event/i],['booking',/booking|calendar/i],['sign',/sign|form|terms|approval|variation/i],['mail',/\bmail\b/i],['minutes',/\bnotes?\b|minute|action|record|board|\bAI\b/i],['collab',/together|document|sharing|teams|control/i],['meeting',/.*/]];
+const kindOf=(label:string):Kind=>KIND_WORDS.find(([,r])=>r.test(label))![0];
+function Avatar({c,s=44}:{c:string;s?:number}){return <svg width={s} height={s} viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill={c} opacity=".18"/><circle cx="22" cy="17" r="7" fill={c}/><path d="M8 40c1-9 7-13 14-13s13 4 14 13z" fill={c}/></svg>}
+export function MockArt({kind,accent='#1a8f6a'}:{kind:Kind;accent?:string}){
+  const bar=<div className="ma-bar"><i/><i/><i/></div>;
+  if(kind==='meeting')return <div className="ma ma-meeting">{bar}<div className="ma-grid">{['#2a6fd6','#1a8f6a','#8a5bd6','#e08a2e'].map((c,i)=><div key={i} className="ma-tile"><Avatar c={c}/><span>{['Host','Guest','Guest','Guest'][i]}</span></div>)}</div>
+    <div className="ma-tools"><b style={{background:accent}}/><b/><b/><b/><b className="end"/></div></div>;
+  if(kind==='booking')return <div className="ma ma-booking">{bar}<div className="ma-body"><h4>Pick a time</h4><div className="ma-cal">{Array.from({length:28},(_,i)=><span key={i} className={i===16?'on':i%7>4?'off':''} style={i===16?{background:accent}:undefined}>{i+1}</span>)}</div>
+    <div className="ma-slots"><span>9:00</span><span className="on" style={{borderColor:accent,color:accent}}>10:30</span><span>2:00</span></div><div className="ma-btn" style={{background:accent}}>Confirm booking</div></div></div>;
+  if(kind==='sign')return <div className="ma ma-sign">{bar}<div className="ma-body"><div className="ma-doc"><i style={{width:'60%'}}/><i/><i/><i style={{width:'80%'}}/><i/><i style={{width:'45%'}}/></div>
+    <div className="ma-sigbox"><svg viewBox="0 0 160 46" width="150" height="44" aria-hidden="true"><path d="M6 32c10-26 16-26 14-8s6 14 14-2 8-6 14 2 14-10 22-8 12 12 24 4 22-10 30-6" fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round"/></svg><small>Sign here</small></div><div className="ma-ok" style={{color:accent}}>&#10003; Signed and saved</div></div></div>;
+  if(kind==='minutes')return <div className="ma ma-minutes">{bar}<div className="ma-body"><div className="ma-tag" style={{background:accent}}>AI draft</div><h4>Minutes</h4><div className="ma-doc"><i/><i style={{width:'85%'}}/><i style={{width:'70%'}}/></div>
+    <h5>Action items</h5>{[['Send contract','Alex'],['Book follow-up','Sam']].map(([a,b])=><div key={a} className="ma-act"><span style={{borderColor:accent}}/><em>{a}</em><small>{b}</small></div>)}<div className="ma-btn" style={{background:accent}}>Approve and send</div></div></div>;
+  if(kind==='mail')return <div className="ma ma-mail">{bar}<div className="ma-body">{[0,1,2,3].map(i=><div key={i} className={`ma-row${i===1?' on':''}`}><Avatar c={['#2a6fd6','#1a8f6a','#8a5bd6','#e08a2e'][i]} s={34}/><div><i style={{width:['55%','70%','45%','60%'][i]}}/><i className="l"/></div>{i===1&&<span className="ma-dot" style={{background:accent}}/>}</div>)}</div></div>;
+  if(kind==='webinar')return <div className="ma ma-webinar">{bar}<div className="ma-stage"><Avatar c="#fff" s={70}/><span className="ma-live">LIVE</span></div><div className="ma-body row"><div className="ma-poll">{[70,45,20].map((w,i)=><div key={i}><u style={{width:w+'%',background:accent,opacity:1-i*.25}}/></div>)}</div><div className="ma-qa"><b>Q&amp;A</b><i/><i style={{width:'70%'}}/></div></div></div>;
+  return <div className="ma ma-collab">{bar}<div className="ma-body row"><div className="ma-board"><span className="n1"/><span className="n2"/><span className="n3"/></div><div className="ma-sheet">{Array.from({length:12},(_,i)=><u key={i} className={i<3?'h':''}/>)}</div></div></div>;
+}
+
 const ICONS=[Video,CalendarClock,FileSignature,Sparkles,Mail,PenLine,Presentation,Users];
 const FAQ:[string,string][]=[
  ['Do my clients need an account?','No. Anyone joins from a link in the browser, free. No app to install and no account to create.'],
@@ -110,7 +131,7 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
     <section className="ind-hero2"><div className="ind-hero2-in"><div className="ind-hero2-copy"><nav className="ind-crumb" aria-label="Breadcrumb"><a href="#/website">iSift</a> &rsaquo; <span>Industries</span> &rsaquo; <b>{x.name}</b></nav><span className="ind-kicker"><x.icon size={15}/> iSift for {x.name}</span>
       <h1>{x.line}</h1><p>{x.intro}</p>
       <div className="ind-cta"><a className="primary" href="#/website" onClick={start}>Get started free <ArrowRight size={16}/></a><a className="secondary" href="#/pricing">See pricing</a></div><small>No card needed. Guests always join free.</small></div>
-      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-bar"><i/><i/><i/></div><div className="ind-win-body"><div className="ind-tile"><x.icon size={34}/></div><div className="ind-tile s"><Users size={22}/></div><div className="ind-tile s"><Video size={22}/></div><div className="ind-tile s"><FileSignature size={22}/></div></div></div>
+      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-body"><MockArt kind="meeting"/></div></div>
         <span className="ind-float f1"><Check size={13}/> Guest joined from a link</span><span className="ind-float f2"><Sparkles size={13}/> Minutes ready to approve</span></div></div></section>
     <section className="ind-stats"><div><b>90 min</b><span>free group meetings</span></div><div><b>Free</b><span>for guests, no account</span></div><div><b>From A$2</b><span>per host a month</span></div><div><b>1 account</b><span>meetings, mail, documents, signing</span></div></section>
     <section className="ind-trust"><h2>Trusted from the first call</h2><div className="ind-trust-grid">
@@ -120,9 +141,9 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
       <p className="ind-trust-links"><a href="#/trust">Trust Center</a><a href="#/privacy">Privacy</a><a href="#/legal-compliance">Legal and compliance</a></p></section>
     <main className="ind-main">
       <section className="ind-pains"><h2>What gets in the way</h2><div className="ind-pain-grid">{x.pains.map(p=><div key={p}>{p}</div>)}</div></section>
-      {blocks.map((b,k)=>{const I=ICONS[k%ICONS.length];return <section key={b[1]} className={`ind-block${k%2?' flip':''}`}>
+      {blocks.map((b,k)=>{return <section key={b[1]} className={`ind-block${k%2?' flip':''}`}>
         <div className="ind-block-copy"><span className="ind-label">{b[0]}</span><h2>{b[1]}</h2><p>{b[2]}</p></div>
-        <div className={`ind-block-art a${k%4}`} aria-hidden="true"><I size={54}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
+        <div className={`ind-block-art a${k%4}`} aria-hidden="true"><MockArt kind={kindOf(b[0]+' '+b[1])} accent={['#1a8f6a','#2a6fd6','#8a5bd6','#d9822b'][k%4]}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
       <section><h2>How iSift fits {x.name.toLowerCase()}</h2><ul className="ind-fits">{x.fits.map(p=><li key={p}><Check size={15}/> {p}</li>)}</ul></section>
       <section className="ind-solutions"><h2>Solutions for {x.name.toLowerCase()} teams</h2>{[
         [Users,'Engage the people you serve','Bring clients, families or the public together from a link.',['Meetings','Webinars','Booking pages']],
