@@ -56,6 +56,10 @@ iSift/
 
 Your data (SQLite database with all accounts, audio) is kept **outside the app folder**, in `%LOCALAPPDATA%\iSift\data` (or the folder in the `ISIFT_DATA_DIR` environment variable), so a new version never removes it; on first start of a new version any database in the old `docs/data`, or in a sibling iSift folder, is copied there. Runtime folders `docs/data/` (process list only) and `docs/logs/` (log files), plus `.venv/`, are created on first launch. Older `data/` and `logs/` folders are moved into `docs/` automatically.
 
+## Industry solutions
+
+Sector packs (real estate, healthcare, education, financial services, government, manufacturing, nonprofit, retail, professional services, construction) are in [docs/industry-solutions](docs/industry-solutions/README.md). They are planning and marketing material; items under "Gaps to build" are not yet implemented.
+
 ## Included phases
 
 - Phase 0 decision packet and tenant validation checklist.
