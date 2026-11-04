@@ -5,8 +5,10 @@
  *  as VP9 (VP8 where VP9 is missing) at a bit rate that suits the resolution.
  *  Coverage: besides the mixed master, every microphone also gets its own separate track, so each voice can be edited on its own. */
 
+import {BgProcessor} from './vbg';
+import type {BgMode} from './vbg';
 export type Mic={id:string;label:string};
-export type StudioOpts={mics:Mic[];cam:string;res:'best'|'1080'|'720';audio:'opus'|'wav';clean:boolean};
+export type StudioOpts={mics:Mic[];cam:string;res:'best'|'1080'|'720';audio:'opus'|'wav';clean:boolean;bg?:BgMode};
 export type Track={label:string;blob:Blob;ext:'webm'|'wav'};
 export type Take={master:Blob;ext:'webm'|'wav';hasVideo:boolean;width:number;height:number;seconds:number;audioKbps:number;audioLabel:string;tracks:Track[]};
 export type Session={stream:MediaStream|null;start():void;pause():void;resume():void;stop():Promise<Take>;cancel():void;seconds():number;info:{width:number;height:number;fps:number;sampleRate:number;videoMime:string}};
@@ -60,13 +62,21 @@ export async function openSession(o:StudioOpts,onLevel:(peaks:number[])=>void):P
     const micStreams:MediaStream[]=[];
     for(const m of o.mics){const s=await navigator.mediaDevices.getUserMedia({audio:micConstraints(m.id,o.clean)});opened.push(s);micStreams.push(s)}
     let vstream:MediaStream|null=null;
-    if(o.cam&&o.cam!=='none'){vstream=await navigator.mediaDevices.getUserMedia({video:videoConstraints(o.res,o.cam)});opened.push(vstream)}
+    let proc:BgProcessor|null=null;
+    if(o.cam&&o.cam!=='none'){vstream=await navigator.mediaDevices.getUserMedia({video:videoConstraints(o.bg&&o.bg.kind!=='none'&&o.res==='best'?'1080':o.res,o.cam)});opened.push(vstream)}
+    // a studio background of the host's choice: the person is cut out and put in front of it (picture or blur), at up to 1080p
+    const rawTrack=vstream?.getVideoTracks()[0];
+    if(rawTrack&&o.bg&&o.bg.kind!=='none'){
+      const p=new BgProcessor(rawTrack);p.setMode(o.bg);
+      const ok=await new Promise<boolean>(res=>{p.onready=()=>res(true);p.onfail=()=>res(false);setTimeout(()=>res(false),8000)});
+      if(ok)proc=p;else p.stop();
+    }
     const dest=ctx.createMediaStreamDestination();dest.channelCount=2;const mix=ctx.createGain();mix.connect(dest);
     const srcs=micStreams.map(s=>ctx.createMediaStreamSource(s));
     const peaks=o.mics.map(()=>0);const analysers=srcs.map((s,i)=>{const a=ctx.createAnalyser();a.fftSize=1024;s.connect(a);s.connect(mix);return a});
     const buf=new Float32Array(1024);
     const meter=setInterval(()=>{analysers.forEach((a,i)=>{a.getFloatTimeDomainData(buf);let p=0;for(let k=0;k<buf.length;k++)p=Math.max(p,Math.abs(buf[k]));peaks[i]=p});onLevel([...peaks])},100);
-    const vt=vstream?.getVideoTracks()[0];const st=vt?.getSettings()||{};const width=Math.round(st.width||0),height=Math.round(st.height||0);
+    const vt=proc?proc.track:rawTrack;const st=rawTrack?.getSettings()||{};const width=Math.round(st.width||0),height=Math.round(st.height||0);
     const hasVideo=!!vt&&width>0;const vmime=pickVideoMime();
     const recs:{label:string;mr?:MediaRecorder;wav?:WavRec;chunks:Blob[];ext:'webm'|'wav'}[]=[];
     const makeMr=(stream:MediaStream,mime:string,opts:MediaRecorderOptions,label:string)=>{const r={label,chunks:[] as Blob[],ext:'webm' as const,mr:new MediaRecorder(stream,{mimeType:mime,...opts})};r.mr.ondataavailable=e=>{if(e.data.size)r.chunks.push(e.data)};return r};
@@ -83,9 +93,9 @@ export async function openSession(o:StudioOpts,onLevel:(peaks:number[])=>void):P
     recs.forEach(r=>r.wav?.pause());                        // until Start is pressed the microphones only feed the level meters
     const begin=()=>{recs.forEach(r=>{r.mr?.start(1000);r.wav?.resume()});started=performance.now()};
     const stopMr=(r:typeof recs[number])=>new Promise<void>(res=>{if(!r.mr||r.mr.state==='inactive'){res();return}r.mr.onstop=()=>res();try{r.mr.stop()}catch{res()}});
-    const shutdown=()=>{if(done)return;done=true;clearInterval(meter);closeAll();ctx.close().catch(()=>{})};
+    const shutdown=()=>{if(done)return;done=true;clearInterval(meter);try{proc?.stop()}catch{}closeAll();ctx.close().catch(()=>{})};
     return {
-      stream:vstream,info:{width,height,fps:Math.round(st.frameRate||0),sampleRate:ctx.sampleRate,videoMime:hasVideo?vmime:''},seconds:secs,
+      stream:proc?new MediaStream([proc.track]):vstream,info:{width,height,fps:Math.round(st.frameRate||0),sampleRate:ctx.sampleRate,videoMime:hasVideo?vmime:''},seconds:secs,
       start(){if(!started)begin()},
       pause(){if(pausedAt)return;recs.forEach(r=>{r.mr?.state==='recording'&&r.mr.pause();r.wav?.pause()});pausedAt=performance.now()},
       resume(){if(!pausedAt)return;paused+=performance.now()-pausedAt;pausedAt=0;recs.forEach(r=>{r.mr?.state==='paused'&&r.mr.resume();r.wav?.resume()})},

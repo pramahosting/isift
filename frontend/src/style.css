@@ -2334,3 +2334,8 @@ html,body{max-width:100%;overflow-x:hidden}
 .ind-win-body .shot{border-radius:0}
 .ind-block-art{padding:18px;min-height:0;align-content:center}
 .ind-block-art .shot{border-radius:14px;box-shadow:0 18px 44px rgba(10,30,45,.32);border:1px solid rgba(255,255,255,.5)}
+
+/* Studio sessions (podcast with guests) */
+.pod-studio .pod-head{margin-bottom:12px}.pod-studio .small{margin:10px 0 0}
+.pod-room-save{max-width:560px;width:calc(100% - 32px);max-height:90vh;overflow:auto;background:#fff;color:#193348;padding:22px;border-radius:18px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%)}
+.pod-room-save h3{margin:0 0 10px}.pod-save .pod-dest{display:flex}

@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight,Pin,Check,Mail,MessageSquare,Link2,ScrollText,ListChecks,Sparkles,Contact} from 'lucide-react';
+import {Podcast,Video,Plus,CalendarPlus,CalendarDays,Phone,FileText,Table2,Presentation,PenLine,FileSignature,Play,Send,RefreshCw,Download,Share2,X,Settings as Gear,Sun,MoreHorizontal,Lock,Headphones,Mic,Accessibility,UserCircle,LifeBuoy,Circle,Users,LogOut,ChevronRight,Pin,Check,Mail,MessageSquare,Link2,ScrollText,ListChecks,Sparkles,Contact} from 'lucide-react';
 import {getPrefs,setPref} from './prefs';
 import {help} from './notify';
 import {JoinDialog} from './Connections';
@@ -94,6 +94,7 @@ export function HomeWorkspace({name,request,modOn,go,onHost,onSchedule,onShareLi
       {k:'rec',label:'Recordings',note:'Your recorded meetings',icon:Play,c:'cobalt',run:()=>go('Recordings'),mod:'meetings'},
       {k:'collab',label:'Work together',note:'Edit a shared file live in a meeting',icon:Users,c:'cobalt',run:onHost,mod:'collab'},
       {k:'webinar',label:'Webinars',note:'Registration, Q&A, polls',icon:Presentation,c:'cobalt',run:()=>go('Webinars'),mod:'webinars'},
+      {k:'podcast',label:'Podcast Studio',note:'HD audio and video, a track per mic',icon:Podcast,c:'cobalt',run:()=>go('Podcast Studio'),mod:'podcast'},
       {k:'share',label:'Share booking link',note:'Email it to someone',icon:Send,c:'cobalt',run:onShareLink,mod:'scheduling'},
       {k:'sync',label:'Sync calendar',note:'Pull in today’s events',icon:RefreshCw,c:'cobalt',run:onSync,mod:'calendar'}]},
     {group:'Meeting records',items:[

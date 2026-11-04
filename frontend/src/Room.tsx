@@ -8,11 +8,14 @@ import type {BgMode} from './vbg';
 import {SfuClient} from './sfu';
 import {WebinarPanel,LiveBanner} from './WebinarRoom';
 import {FileShare,CanvasShare} from './shareFile';
+import {StudioRecorder,type StudioInfo,type StudioWho} from './studioRec';
+import {TakeSaver} from './PodcastSave';
+import type {Take} from './podcast';
 import {Board} from './Whiteboard';
 import {CollabPanel,type CollabState} from './Collab';
 import {SharePen,type Stroke,type Pointer} from './SharePen';
 import {WatchTogether,type WatchState} from './WatchTogether';
-import {PenLine,ZoomIn,ZoomOut,HelpCircle,Pencil,Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer,Smile,Hand,Captions,Ellipsis,NotebookPen,EyeOff} from 'lucide-react';
+import {Podcast,PenLine,ZoomIn,ZoomOut,HelpCircle,Pencil,Image as ImageIcon,Maximize,Minimize,ChevronDown,ChevronUp,SlidersHorizontal,Armchair,Mic,MicOff,Video,VideoOff,MonitorUp,MessageSquare,Circle,Square,PhoneOff,Link2,Users,Send,X,UserX,ShieldCheck,Check,Plus,LockKeyhole,Table2,LayoutGrid,RectangleHorizontal,Group,Megaphone,HandHelping,Timer,Smile,Hand,Captions,Ellipsis,NotebookPen,EyeOff} from 'lucide-react';
 import {Tool,ToolButton,MoreMenu,ReactMenu,FloatingReactions,CaptionsBar,HostMenu,loadPins,savePins,Floater,CapLine} from './MeetingTools';
 let HIDE_PICS=false;   // set while the meeting screen draws: tiles without video then show no letter or picture
 
@@ -167,6 +170,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
   const sfuRef=useRef<SfuClient|null>(null);const sfuOnRef=useRef(false);const [sfuOn,setSfuOn]=useState(false);const [stage,setStage]=useState<string[]>([]);const stageRef=useRef<string[]>([]);const sfuInfo=useRef<Record<string,any>>({});const resubT=useRef<any>(null);
   const [cloud,setCloud]=useState(false);const cloudRec=useRef(true);const pendRec=useRef<null|{blob:Blob;name:string}>(null);const [pend,setPend]=useState<null|{blob:Blob;name:string}>(null);const [pendSaved,setPendSaved]=useState(false);const [recPlan,setRecPlan]=useState('');
   const rec=useRef<any>(null);const wasRecording=useRef(false);
+  const bgRef=useRef<BgMode>({kind:'none'});const studioRef=useRef<StudioRecorder|null>(null);const [studioOn,setStudioOn]=useState(false);const [studioTake,setStudioTake]=useState<Take|null>(null);const [studioCfg,setStudioCfg]=useState<any>(null);const [studioSecs,setStudioSecs]=useState(0);const studioSaved=useRef(true);const vidShare=useRef<HTMLVideoElement|null>(null);const [vidPlaying,setVidPlaying]=useState(false);const sharedMs=useRef<{id:string;ms:MediaStream}|null>(null);
   // discussion groups, boardroom table and active speaker
   const [group,setGroup]=useState<{id:string;name:string}|null>(null);const [groupEnds,setGroupEnds]=useState<string|null>(null);const [roster,setRoster]=useState<any>(null);const [groupsOpen,setGroupsOpen]=useState(false);const [banner,setBanner]=useState<{name:string;text:string}|null>(null);
   const groupRef=useRef<{id:string;name:string}|null>(null);groupRef.current=group;
@@ -395,7 +399,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
       else if(m.type==='video'){if(m.stopped){setWatch(null);setWatchOpen(false);setNotice((m.by||'Someone')+' stopped the video.')}else{setWatch({kind:m.kind==='web'?'web':'yt',vid:m.vid||'',url:m.url,label:m.label,by:m.by,by_id:m.by_id,playing:!!m.playing,t:Number(m.t)||0,at:Date.now()});setWatchOpen(true)}}
       else if(m.type==='state')upsert(m.id,{mic:m.mic,cam:m.cam,screen:m.screen});
       else if(m.type==='chat'){const ids:string[]=m.to?Array.from(new Set<string>([m.from,...m.to])).sort():[];const key=m.to?ids.join(','):'all';const names:Record<string,string>={[m.from]:m.name};(m.to||[]).forEach((x:string,k:number)=>{names[x]=m.to_names?.[k]||'Someone'});const me=m.from===myId.current;setChat(c=>[...c,{name:m.name,text:m.text,at:m.at,me,key,names,g:groupRef.current?.id||'main'}]);if(!me&&(!chatOpenRef.current||chatKeyRef.current!==key)){setUnread(u=>({...u,[key]:(u[key]||0)+1}));if(!chatOpenRef.current)setNotice(`${m.to?'(private) ':''}${m.name}: ${m.text.slice(0,60)}`)}}else if(m.type==='chat-error'){setNotice(m.message)}
-      else if(m.type==='recording'){setRecording(m.on);setNotice(m.on?'This meeting is now being recorded.':'Recording stopped.');if(m.on){setConsents({});if(!rec.current)askConsent('start',m.by||'The host')}else{setConsentAsk(null);setConsents({})}}
+      else if(m.type==='recording'){setRecording(m.on);setNotice(m.on?'This meeting is now being recorded.':'Recording stopped.');if(m.on){setConsents({});if(!rec.current&&!studioRef.current)askConsent('start',m.by||'The host')}else{setConsentAsk(null);setConsents({})}}
       else if(m.type==='consent'){setConsents(c=>({...c,[m.id]:m.decision}))}
       else if(m.type==='role'){if(m.id===myId.current){setIsHost(!!m.host);setCohost(!!m.cohost);if(m.self){setNotice(m.transferred?(m.host?'You are now the host.':'You are no longer the host.'):m.host?'You are now a co-host.':'You are no longer a co-host.');if(m.host&&!m.cohost)loadHostInfo()}}else setPeers(p=>p[m.id]?{...p,[m.id]:{...p[m.id],host:!!m.host,cohost:!!m.cohost}}:p)}
       else if(m.type==='role-error'){setNotice(m.message)}
@@ -445,7 +449,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
   const rejoinNow=()=>{const old=ws.current;if(old){old.onclose=null;old.onmessage=null}leaveLocal();setPeers({});setWbInfo(null);setWbOpen(false);setPhase('lobby')};
   useEffect(()=>{if(wbAgain&&phase==='room')rejoinNow()},[wbAgain]);
   const finishOut=()=>{leaveLocal();if(pendRec.current||recMsg.current)setPhase('ended');else onLeave()};
-  const leave=async()=>{if(getPrefs().confirmLeave&&!window.confirm('Leave the meeting?'))return;if(rec.current)await stopRecording(false);finishOut()};
+  const leave=async()=>{if(studioRef.current){if(!window.confirm('The studio recording is still running. Stop it now? You will then be asked where to save it, and can leave afterwards.'))return;await stopStudio();return}if(studioTake&&!studioSaved.current&&!window.confirm('Your studio recording has not been saved. Leave and lose it?'))return;if(getPrefs().confirmLeave&&!window.confirm('Leave the meeting?'))return;if(rec.current)await stopRecording(false);finishOut()};
   const endAll=async()=>{if(rec.current)await stopRecording(true);send({type:'end'});finishOut()};
 
   // ---- controls ----
@@ -469,7 +473,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
     await sfuRef.current?.replaceVideo(track||null,!!track&&track!==local.current.cam).catch(()=>{});
     tuneSenders();
   };
-  const [bg,setBg]=useState<BgMode>(loadSaved);const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const [bgSel,setBgSel]=useState<BgMode>(()=>loadSaved());const openBg=()=>{setBgSel(bg);setBgOpen(true)};const bgInit=useRef(false);
+  const [bg,setBg]=useState<BgMode>(loadSaved);bgRef.current=bg;const [bgOpen,setBgOpen]=useState(false);const [bgBusy,setBgBusy]=useState(false);const [bgSel,setBgSel]=useState<BgMode>(()=>loadSaved());const openBg=()=>{setBgSel(bg);setBgOpen(true)};const bgInit=useRef(false);
   // Sound of a shared browser tab (a video, a recording): mixed with the microphone and sent on the same audio line, so there is nothing extra to connect. Muting the microphone still leaves the tab's sound on.
   const tabAud=useRef<{ctx:AudioContext;track:MediaStreamTrack}|null>(null);
   const replaceAudio=async(track:MediaStreamTrack|null)=>{for(const pc of Object.values(pcs.current)){const tx=pc.getTransceivers().find(x=>x.receiver.track.kind==='audio');if(tx)try{await tx.sender.replaceTrack(track)}catch{}}await sfuRef.current?.replaceAudio(track).catch(()=>{})};
@@ -515,7 +519,19 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
     <div className="rm-bgact"><button type="button" className="secondary" onClick={()=>setBgOpen(false)}>Cancel</button><button type="button" className="primary" onClick={()=>{applyBg(bgSel);setBgOpen(false)}}>Apply</button></div>
   </div></div>;
   const startFileShare=async(f:File)=>{
-    if(!FileShare.accepts(f)){setNotice('Choose a photo or a PDF.');return}
+    if(/^video\//.test(f.type)||/\.(mp4|webm|mov|m4v)$/i.test(f.name)){
+      if(blockedShare())return;setNotice('Opening '+f.name+'…');
+      try{
+        const v=document.createElement('video');v.src=URL.createObjectURL(f);v.playsInline=true;v.preload='auto';await new Promise<void>((ok,no)=>{v.onloadedmetadata=()=>ok();v.onerror=()=>no(new Error('x'));setTimeout(()=>no(new Error('x')),8000)});
+        const ms:MediaStream=(v as any).captureStream?(v as any).captureStream():(v as any).mozCaptureStream();await v.play().catch(()=>{});
+        const vt=ms.getVideoTracks()[0],at=ms.getAudioTracks()[0];if(!vt)throw new Error('x');
+        vidShare.current=v;setVidPlaying(true);v.onpause=()=>setVidPlaying(false);v.onplay=()=>setVidPlaying(true);
+        fileShare.current={stop:()=>{try{v.pause()}catch{};try{URL.revokeObjectURL(v.src)}catch{};vidShare.current=null;setVidPlaying(false)}};
+        local.current.video=vt;setScreenStream(new MediaStream([vt]));await replaceVideo(vt);setScreen(true);if(at)await startTabAudio(at);
+        send({type:'state',mic:!!local.current.audio?.enabled,cam:!!local.current.cam?.enabled,screen:true});setNotice('Sharing your video. Use the play button to pause it.');
+      }catch{fileShare.current?.stop();fileShare.current=null;setNotice('That video could not be opened. Try an MP4 or WebM file.')}
+      return}
+    if(!FileShare.accepts(f)){setNotice('Choose a photo, a PDF or a video.');return}
     if(blockedShare())return;
     setNotice('Opening '+f.name+'…');
     try{
@@ -649,6 +665,27 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
       else{if(toCloud)keepLocal();setNotice((j.detail||'The recording could not be saved.')+(toCloud?' Your copy can be saved to this computer when the meeting ends.':''))}
     }catch{{setNotice('The recording could not be uploaded. You can save it to this computer when the meeting ends.')}}finally{setRecBusy(false)}
   };
+  // ---- studio recording: HD picture, mixed sound and a separate sound track for every person ----
+  const studioInfo=():StudioInfo=>{const I=infoRef.current;
+    const all:StudioWho[]=[{key:'__me',name:I.name||'Host',stream:I.local,cam:!!I.cam&&!I.screen,mic:!!I.mic,screen:!!I.screen,self:true},...I.peers.map((p:any)=>({key:p.id,name:p.name||'Guest',stream:p.stream||null,cam:!!p.cam&&!p.screen,mic:!!p.mic,screen:!!p.screen}))];
+    const sh=all.find(x=>x.screen);let shared:MediaStream|null=null;
+    if(sh){if(sh.self){if(I.vtrack){if(!sharedMs.current||sharedMs.current.id!==I.vtrack.id)sharedMs.current={id:I.vtrack.id,ms:new MediaStream([I.vtrack])};shared=sharedMs.current.ms}}else shared=sh.stream}
+    return {all,shared,sharer:sh?.key||'',speaking:I.speaking||'',backdrop:bgRef.current.kind==='image'?bgRef.current.url:''}};
+  useEffect(()=>{if(!isHost||!token)return;fetch(`${api}/podcasts/config`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).then(j=>j&&setStudioCfg(j)).catch(()=>{})},[isHost,token]);
+  const startStudio=async()=>{
+    if(!isHost||studioRef.current)return;
+    if(rec.current){setNotice('Stop the normal meeting recording first, then start the studio recording.');return}
+    if(!window.confirm('Start the studio recording? Everyone in the meeting is told it is being recorded. It records an HD picture of everyone and anything shared, with a separate sound track for each person. Keep this tab open while recording.'))return;
+    try{const s=new StudioRecorder(studioInfo,()=>{});await s.start();studioRef.current=s;studioSaved.current=false;setStudioSecs(0);setStudioOn(true);send({type:'record',on:true});setRecording(true)}
+    catch(e:any){setNotice(e?.message||'The studio recording could not start in this browser.')}
+  };
+  const stopStudio=async()=>{
+    const s=studioRef.current;if(!s)return;studioRef.current=null;setStudioOn(false);setRecording(false);send({type:'record',on:false});
+    try{const t=await s.stop();setStudioTake(t)}catch{setNotice('The studio recording could not be finished.')}
+  };
+  useEffect(()=>{if(!studioOn)return;const i=setInterval(()=>setStudioSecs(studioRef.current?.seconds()||0),500);return()=>clearInterval(i)},[studioOn]);
+  useEffect(()=>()=>{studioRef.current?.cancel()},[]);
+  useEffect(()=>{if(phase==='room'&&isHost){try{if(sessionStorage.getItem('isift.studio')==='1'){sessionStorage.removeItem('isift.studio');setNotice('Studio session. Share the invite link with your guests, then choose Studio recording in the menu.')}}catch{}}},[phase,isHost]);
   useEffect(()=>{if(!isHost||!token)return;fetch(`${api}/billing/me`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():null).then(j=>j&&setRecPlan(j.plan||'')).catch(()=>{})},[isHost,token]);
   useEffect(()=>{if(notice){const t=setTimeout(()=>setNotice(''),6000);return()=>clearTimeout(t)}},[notice]);
 
@@ -756,8 +793,9 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
     {id:'bg',group:'Meeting',label:'Background',hint:'Background and effects',icon:<ImageIcon size={18}/>,on:bg.kind!=='none',run:openBg},
     {id:'invite',group:'Meeting',label:'Invite',hint:'Invite people by email or copy the link',icon:<Link2 size={18}/>,on:inviteOpen,run:()=>inviteOpen?setInviteOpen(false):openInvite()},
     ...(canRec&&(primary||(isHost&&!!info?.options?.open_room))?[{id:'record',group:'Meeting' as const,label:recording?(recBusy?'Saving…':'Stop rec'):'Record',hint:recording?'Stop recording':'Start recording',icon:recording?<Square size={18}/>:<Circle size={18}/>,on:recording,run:()=>{if(recBusy)return;if(recording)stopRecording();else startRecording()}}]:[]),
+    ...(isHost&&!!token&&studioCfg?.allowed?[{id:'studio',group:'Meeting' as const,label:studioOn?'Stop studio':'Studio recording',hint:studioOn?'Stop the studio recording':'HD studio recording: everyone and whatever is shared, with a separate sound track for each person',icon:studioOn?<Square size={18}/>:<Podcast size={18}/>,on:studioOn,run:()=>{if(studioOn)stopStudio();else startStudio()}}]:[]),
     {id:'video',group:'Share and work',label:'Share a link',hint:'Watch a YouTube video in sync, or show a Google Doc, Sheet, Slides or Microsoft 365 document to everyone',icon:<Video size={18}/>,on:!!watch,run:()=>setWatchOpen(o=>!o)},
-    {id:'sharefile',group:'Share and work' as const,label:'Share a file',hint:'Share a PDF or photo and let someone else page through it',icon:<MonitorUp size={18}/>,on:!!filePg,run:()=>{if(screen){setNotice('Stop your current sharing first, then share the file.');return}filePick.current?.click()}},
+    {id:'sharefile',group:'Share and work' as const,label:'Share a file',hint:'Share a PDF (a document or slides), a photo or a video, and let someone else page through it',icon:<MonitorUp size={18}/>,on:!!filePg,run:()=>{if(screen){setNotice('Stop your current sharing first, then share the file.');return}filePick.current?.click()}},
     ...(!wbAtt&&collabOk?[{id:'collab',group:'Share and work' as const,label:'Work together',hint:'Share a note, document, spreadsheet, presentation or whiteboard and let someone edit it with you',icon:<Users size={18}/>,on:!!collab,run:()=>{setCollabOpen(true);setWbOpen(false);setPeopleOpen(false);setChatOpen(false);setWbqOpen(false)}}]:[]),
     {id:'whiteboard',group:'Share and work',label:'Whiteboard',hint:'Draw on a whiteboard without leaving the meeting',icon:<PenLine size={18}/>,on:wbOpen&&wbTab==='board',run:()=>{if(wbOpen&&wbTab==='board')setWbOpen(false);else{setWbTab('board');setWbOpen(true)}}},
     ...(token?[{id:'notes',group:'Share and work' as const,label:'iSift apps',hint:'Open any iSift function (Meetings, Mail, Calendar, Contacts, Notes, Docs…) without leaving the meeting',icon:<NotebookPen size={18}/>,on:wbOpen&&wbTab==='apps',run:()=>{if(wbOpen&&wbTab==='apps')setWbOpen(false);else{setWbTab('apps');setAppsLoaded(true);setWbqOpen(false);setWbOpen(true)}}}]:[]),
@@ -773,7 +811,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
   const pinTool=(id:string)=>{const has=pins.includes(id);const next=has?pins.filter(x=>x!==id):[...pins,id];setPins(next);savePins(next);setShown(s=>has?s.filter(x=>x!==id):(s.includes(id)?s:[...s,id]))};
   const hideTool=(id:string)=>setShown(s=>s.filter(x=>x!==id));
   return <div className={`rm-shell${focus?' focusmode':''}${barOn?'':' nobar'}${peopleOpen||chatOpen||wbOpen||wbqOpen?' sideopen':''}`} style={{['--sidew' as any]:`${(peopleOpen?sideW.people?.w:chatOpen?sideW.chat?.w:0)||213}px`}}>
-    <header className="rm-top">{renaming?<form className="rm-rename" onSubmit={e=>{e.preventDefault();renameTo(nameDraft)}}><input autoFocus value={nameDraft} maxLength={200} aria-label="Meeting name" onChange={e=>setNameDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')setRenaming(false)}}/><button type="submit" className="primary">Save</button><button type="button" className="secondary" onClick={()=>setRenaming(false)}>Cancel</button></form>:<b className="rm-title">{info.title}{isHost&&!!token&&<button type="button" className="rm-editname" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{setNameDraft(info.title);setRenaming(true)}}><Pencil size={15}/></button>}</b>}{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> Recording</span>}{group&&<span className="rm-group"><Group size={13}/> {group.name}</span>}{clock&&<span className="rm-clock" title="Time left in the discussion groups"><Timer size={13}/> {clock}</span>}<span className="muted"><Users size={14}/> {total}</span>{endWarn&&<div className="rm-endwarn" role="alert"><b>Meeting ending soon.</b> {endWarn.msg} <span className="rm-endleft">{(()=>{const s=Math.max(0,Math.round((endWarn.at-(endNow||Date.now()))/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} left`})()}</span><button aria-label="Dismiss" onClick={()=>setEndWarn(null)}>×</button></div>}
+    <header className="rm-top">{renaming?<form className="rm-rename" onSubmit={e=>{e.preventDefault();renameTo(nameDraft)}}><input autoFocus value={nameDraft} maxLength={200} aria-label="Meeting name" onChange={e=>setNameDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Escape')setRenaming(false)}}/><button type="submit" className="primary">Save</button><button type="button" className="secondary" onClick={()=>setRenaming(false)}>Cancel</button></form>:<b className="rm-title">{info.title}{isHost&&!!token&&<button type="button" className="rm-editname" title="Rename this meeting" aria-label="Rename this meeting" onClick={()=>{setNameDraft(info.title);setRenaming(true)}}><Pencil size={15}/></button>}</b>}{hostName&&<span className="muted rm-hostname">Host: {hostName}</span>}{recording&&<span className="rm-rec"><Circle size={10} fill="currentColor"/> {studioOn?`Studio recording ${Math.floor(studioSecs/60)}:${String(studioSecs%60).padStart(2,'0')}`:'Recording'}</span>}{group&&<span className="rm-group"><Group size={13}/> {group.name}</span>}{clock&&<span className="rm-clock" title="Time left in the discussion groups"><Timer size={13}/> {clock}</span>}<span className="muted"><Users size={14}/> {total}</span>{endWarn&&<div className="rm-endwarn" role="alert"><b>Meeting ending soon.</b> {endWarn.msg} <span className="rm-endleft">{(()=>{const s=Math.max(0,Math.round((endWarn.at-(endNow||Date.now()))/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')} left`})()}</span><button aria-label="Dismiss" onClick={()=>setEndWarn(null)}>×</button></div>}
 {notice&&<span className="rm-notice" role="status">{notice}</span>}</header>
     {consentAsk&&<div className="rm-consent-back" role="presentation"><div className="rm-consent" role="alertdialog" aria-modal="true" aria-labelledby="rmc-t" aria-describedby="rmc-d"><h2 id="rmc-t"><Circle size={14} fill="#d33" color="#d33"/> This meeting is being recorded</h2><p id="rmc-d"><b>{consentAsk.by}</b> {consentAsk.kind==='join'?'is recording this meeting.':'has started recording this meeting.'} The host, and others, can share the recording. By staying in this meeting, you consent to being recorded. Your microphone and camera are off until you choose to turn them on.</p><div className="rm-consent-btns"><button type="button" className="primary" autoFocus onClick={()=>answerConsent(true)}>Continue</button><button type="button" className="secondary" onClick={()=>answerConsent(false)}>Leave Meeting</button></div><p className="muted small">Choosing Leave Meeting takes you out of the meeting. <a href="#/privacy" target="_blank" rel="noreferrer">Privacy policy</a></p></div></div>}
     {ask&&<div className="rm-ask" role="alert"><span>{ask.by} asks you to turn on your {ask.what==='cam'?'camera':'microphone'}.</span><button className="primary" onClick={()=>{if(ask.what==='cam')toggleCam();else toggleMic();const t=ask.what==='cam'?local.current.cam:local.current.audio;if(t&&!t.enabled){}setAsk(null)}}>Turn on</button><button className="secondary" onClick={()=>setAsk(null)}>Not now</button></div>}
@@ -878,6 +916,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
         <label className="check"><input type="checkbox" checked={policy.audio} onChange={e=>{setPolicy(p=>({...p,audio:e.target.checked}));send(e.target.checked?{type:'policy',audio:true}:{type:'policy',audio:false,mute_now:true})}}/> Participants can unmute themselves</label>
         <label className="check"><input type="checkbox" checked={policy.video} onChange={e=>{setPolicy(p=>({...p,video:e.target.checked}));send({type:'policy',video:e.target.checked})}}/> Participants can start their video</label></div>}
     </aside>}
+    {studioTake&&<div className="modal-backdrop"><section className="ws-pop pod-room-save" role="dialog" aria-modal="true" aria-label="Save the studio recording"><h3>Your studio recording is ready</h3><TakeSaver take={studioTake} title={info?.title||'Studio session'} token={token||''} cfg={studioCfg||{cloud_allowed:false,cloud_note:''}} onSaved={s=>{studioSaved.current=s}} onDiscard={()=>{setStudioTake(null);studioSaved.current=true}}/></section></div>}
     {collabOpen&&!wbAtt&&<CollabPanel c={collab} ended={collabEnd} myId={myId.current||''} isHost={isHost} token={token||''} api={api} send={send} onEdit={collabEdit} onClose={()=>setCollabOpen(false)}
       people={[{id:myId.current||'',name:'Me'},...Object.values(peers).filter((p:any)=>!p.attendee).map((p:any)=>({id:p.id,name:p.name}))]} asks={collabAsks} onDismissAsk={id=>setCollabAsks(a=>a.filter(x=>x.id!==id))} onDismissEnded={()=>setCollabEnd(null)}/>}
     <div className={`rm-wb${wbOpen?' open':''}`} role="dialog" aria-label="Whiteboard" aria-hidden={!wbOpen}>
@@ -901,7 +940,7 @@ export function RoomPage({code,api,token,defaultName,onLeave,onSignIn,onActive,i
     {barOn&&<footer className="rm-bar">
       <button className={`rm-btn${!mic?' off':''}`} style={wbAtt?{display:'none'}:undefined} onClick={toggleMic} aria-label={mic?'Mute microphone':'Unmute microphone'}>{mic?<Mic size={18}/>:<MicOff size={18}/>}<span>{mic?'Mute':'Unmute'}</span></button>
       <button className={`rm-btn${!cam?' off':''}`} style={wbAtt?{display:'none'}:undefined} onClick={toggleCam} aria-label={cam?'Turn camera off':'Turn camera on'}>{cam?<Video size={18}/>:<VideoOff size={18}/>}<span>{cam?'Camera':'Camera off'}</span></button>
-      <button className={`rm-btn${screen?' on':''}`} style={wbAtt?{display:'none'}:undefined} onClick={toggleScreen} aria-label="Share screen" title={(navigator.mediaDevices as any)?.getDisplayMedia?'Share your screen':'Share a photo or PDF from this phone'}><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button><input ref={filePick} type="file" accept="image/*,application/pdf" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)startFileShare(f)}}/>{filePg&&<span className="rm-pgbar"><button type="button" aria-label="Previous page" disabled={filePg.n<=1} onClick={()=>filePage(-1)}>‹</button><b>{filePg.n} / {filePg.of}</b><button type="button" aria-label="Next page" disabled={filePg.n>=filePg.of} onClick={()=>filePage(1)}>›</button></span>}
+      <button className={`rm-btn${screen?' on':''}`} style={wbAtt?{display:'none'}:undefined} onClick={toggleScreen} aria-label="Share screen" title={(navigator.mediaDevices as any)?.getDisplayMedia?'Share your screen':'Share a photo or PDF from this phone'}><MonitorUp size={18}/><span>{screen?'Stop sharing':'Share'}</span></button><input ref={filePick} type="file" accept="image/*,application/pdf,video/*" hidden onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(f)startFileShare(f)}}/>{vidShare.current&&screen&&<span className="rm-pgbar"><button type="button" aria-label={vidPlaying?'Pause video':'Play video'} onClick={()=>{const v=vidShare.current;if(!v)return;v.paused?v.play().catch(()=>{}):v.pause()}}>{vidPlaying?'❚❚':'▶'}</button></span>}{filePg&&<span className="rm-pgbar"><button type="button" aria-label="Previous page" disabled={filePg.n<=1} onClick={()=>filePage(-1)}>‹</button><b>{filePg.n} / {filePg.of}</b><button type="button" aria-label="Next page" disabled={filePg.n>=filePg.of} onClick={()=>filePage(1)}>›</button></span>}
       {wbInfo&&<button className={`rm-btn${wbqOpen?' on':''}`} onClick={()=>{setWbqOpen(o=>!o);setChatOpen(false);setPeopleOpen(false)}} aria-label="Webinar Q&A and polls"><HelpCircle size={18}/><span>Q&amp;A{wbStaff&&wbData.counts?` (${wbData.counts.watching})`:''}</span>{(wbData.polls||[]).some((p:any)=>p.status==='open'&&!(p.mine||[]).length)&&<i className="dot"/>}</button>}
       <button className={`rm-btn${peopleOpen?' on':''}`} onClick={togglePeople} aria-label="Participants"><Users size={18}/><span>People ({total})</span></button>
       <button className={`rm-btn${chatOpen?' on':''}`} onClick={()=>{setChatOpen(o=>!o);setPeopleOpen(false);setWbOpen(false);setWbqOpen(false);if(!chatOpen)setUnread(u=>({...u,[chatKey]:0}))}} aria-label="Chat"><MessageSquare size={18}/><span>Chat</span>{Object.values(unread).reduce((a,b)=>a+b,0)>0&&<i className="rm-dot">{Object.values(unread).reduce((a,b)=>a+b,0)}</i>}</button>
