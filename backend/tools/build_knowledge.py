@@ -44,6 +44,7 @@ def sections(path: Path):
     for p in parts[1:]:
         head, _, body = p.partition("\n"); yield head.strip(), body
 for head, body in sections(ROOT / "docs/WEBINARS.md"): add("Webinars guide", f"Webinars: {head}", body, "admin" if head.startswith("Setup") else "public")
+for head, body in sections(ROOT / "docs/PODCAST.md"): add("Podcast Studio guide", f"Podcast Studio: {head}", body, "admin" if head == "Code" else "public")
 PUBLIC_MAIL = ("Who can have an address", "Own domains", "Outlook, Thunderbird", "Easy setup", "What people get", "Spam control")
 for head, body in sections(ROOT / "docs/ISIFTMAIL.md"):
     add("isiftmail guide", f"isiftmail: {head}", body, "public" if head.startswith(PUBLIC_MAIL) else "admin")
