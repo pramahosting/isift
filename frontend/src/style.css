@@ -2339,3 +2339,14 @@ html,body{max-width:100%;overflow-x:hidden}
 .pod-studio .pod-head{margin-bottom:12px}.pod-studio .small{margin:10px 0 0}
 .pod-room-save{max-width:560px;width:calc(100% - 32px);max-height:90vh;overflow:auto;background:#fff;color:#193348;padding:22px;border-radius:18px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%)}
 .pod-room-save h3{margin:0 0 10px}.pod-save .pod-dest{display:flex}
+
+/* Meetings: main tabs on top, the meeting records as a smaller second row */
+.subtabs.sub2{margin:-8px 0 16px;gap:2px}.subtabs.sub2 button{padding:6px 12px;font-size:13px;font-weight:600;border-bottom-width:2px;color:#6b7891}
+.subtabs.sub2 button.active{color:var(--cobalt)}
+
+/* Podcast Studio: choose how to record */
+.pod-modes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.pod-mode{display:flex;flex-direction:column;align-items:flex-start;gap:8px;border:1.5px solid #dbe6ea;border-radius:16px;padding:20px;background:#fff}
+.pod-mode.on{border-color:#2a6fd6;box-shadow:0 0 0 3px #2a6fd622}.pod-mode h3{margin:4px 0 0;font-size:18px}.pod-mode p{margin:0;flex:1}.pod-mode small{display:block}
+@media(max-width:760px){.pod-modes{grid-template-columns:1fr}}
+.pod-choose{margin:0 0 12px;font-size:1.05rem}

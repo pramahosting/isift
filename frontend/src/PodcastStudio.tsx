@@ -10,14 +10,19 @@ type Cfg={allowed:boolean;cloud_allowed:boolean;cloud_note:string;cloud_storage:
 type Cloud={group_id:string;title:string;created_at:string;tracks:{id:string;label:string;is_master:boolean;has_video:boolean;width:number;height:number;duration_s:number;size_bytes:number;mimetype:string}[]};
 
 
+const KEY='isift.podcast.setup';
+type Saved={mics:{id:string;label:string}[];cam:string;camLabel:string;res:'best'|'1080'|'720';fmt:'opus'|'wav';clean:boolean;bg:BgMode;bgName:string};
+const loadSetup=():Partial<Saved>=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')||{}}catch{return {}}};
 /** Podcast Studio: HD podcast recording in the browser. Saved on this computer (always on Basic) or, on paid plans, in the cloud. */
 export function PodcastStudio({request,token,notify}:{request:(p:string,o?:any)=>Promise<any>;token:string;notify:(m:string)=>void}){
   const [cfg,setCfg]=useState<Cfg|null>(null),[err,setErr]=useState('');
   const [mics,setMics]=useState<MicDev[]>([]),[cams,setCams]=useState<MicDev[]>([]),[ready,setReady]=useState(false);
-  const [pick,setPick]=useState<string[]>([]),[cam,setCam]=useState('none'),[res,setRes]=useState<'best'|'1080'|'720'>('best'),[fmt,setFmt]=useState<'opus'|'wav'>('opus'),[clean,setClean]=useState(false);
+  const [mode,setMode]=useState<''|'solo'>(()=>{try{return localStorage.getItem('isift.podcast.mode')==='solo'?'solo':''}catch{return ''}});
+  const chooseMode=(m:'solo')=>{setMode(m);try{localStorage.setItem('isift.podcast.mode',m)}catch{}};
+  const saved0=useRef<Partial<Saved>>(loadSetup());const [pick,setPick]=useState<string[]>([]),[cam,setCam]=useState('none'),[res,setRes]=useState<'best'|'1080'|'720'>(saved0.current.res||'best'),[fmt,setFmt]=useState<'opus'|'wav'>(saved0.current.fmt||'opus'),[clean,setClean]=useState(!!saved0.current.clean);
   const [title,setTitle]=useState(''),[sess,setSess]=useState<Session|null>(null),[state,setState]=useState<'idle'|'live'|'paused'|'saving'>('idle');
   const [levels,setLevels]=useState<number[]>([]),[secs,setSecs]=useState(0),[take,setTake]=useState<Take|null>(null);
-  const [bg,setBg]=useState<BgMode>({kind:'none'}),[bgName,setBgName]=useState('');const bgFile=useRef<HTMLInputElement>(null);
+  const [bg,setBg]=useState<BgMode>(saved0.current.bg||{kind:'none'}),[bgName,setBgName]=useState(saved0.current.bgName||'');const bgFile=useRef<HTMLInputElement>(null);
   const [mine,setMine]=useState<Cloud[]>([]),[studioBusy,setStudioBusy]=useState(false);const vid=useRef<HTMLVideoElement>(null);const saved=useRef(true);
 
   const loadMine=useCallback(()=>request('/podcasts').then((r:Cloud[])=>setMine(r)).catch(()=>{}),[request]);
@@ -27,6 +32,10 @@ export function PodcastStudio({request,token,notify}:{request:(p:string,o?:any)=
   useEffect(()=>{const h=(e:BeforeUnloadEvent)=>{if(state==='live'||state==='paused'||(take&&!saved.current)){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',h);return()=>window.removeEventListener('beforeunload',h)},[state,take]);
   useEffect(()=>()=>{sess?.cancel()},[]);          // eslint-disable-line
 
+  // remember the setup on this computer and reuse it next time; skip the Allow step when the browser already lets this site use the microphone
+  useEffect(()=>{if(!ready)return;const o:any={mics:mics.filter(m=>pick.includes(m.id)),cam,camLabel:cams.find(c=>c.id===cam)?.label||'',res,fmt,clean,bg,bgName};try{localStorage.setItem(KEY,JSON.stringify(o))}catch{try{localStorage.setItem(KEY,JSON.stringify({...o,bg:{kind:'none'},bgName:''}))}catch{}}},[ready,pick.join(),cam,res,fmt,clean,JSON.stringify(bg),bgName]);   // eslint-disable-line
+  useEffect(()=>{if(mode!=='solo'||ready)return;let live=true;const go=()=>{if(live)void allow()};try{(navigator as any).permissions?.query({name:'microphone'}).then((s:any)=>{if(s.state==='granted')go()}).catch(()=>{if(saved0.current.mics?.length)go()})}catch{if(saved0.current.mics?.length)go()}return()=>{live=false}},[mode]);   // eslint-disable-line
+  const resetSetup=()=>{try{localStorage.removeItem(KEY)}catch{}saved0.current={};setPick(mics.length?[mics[0].id]:[]);setCam('none');setRes('best');setFmt('opus');setClean(false);setBg({kind:'none'});setBgName('')};
   const allow=async()=>{
     setErr('');
     try{
@@ -34,7 +43,13 @@ export function PodcastStudio({request,token,notify}:{request:(p:string,o?:any)=
       s.getTracks().forEach(t=>t.stop());
       const d=await navigator.mediaDevices.enumerateDevices();
       const m=d.filter(x=>x.kind==='audioinput'&&x.deviceId!=='communications').map((x,i)=>({id:x.deviceId,label:x.label||`Microphone ${i+1}`}));
-      setMics(m);setCams(d.filter(x=>x.kind==='videoinput').map((x,i)=>({id:x.deviceId,label:x.label||`Camera ${i+1}`})));setPick(m.length?[m[0].id]:[]);setReady(true);
+      const cs=d.filter(x=>x.kind==='videoinput').map((x,i)=>({id:x.deviceId,label:x.label||`Camera ${i+1}`}));
+      setMics(m);setCams(cs);
+      // reuse the equipment chosen last time (matched by id, or by name if the browser changed the ids)
+      const sv=saved0.current;const want=(sv.mics||[]).map(x=>m.find(y=>y.id===x.id)||m.find(y=>y.label===x.label)).filter(Boolean) as {id:string}[];
+      setPick(want.length?[...new Set(want.map(x=>x.id))].slice(0,8):m.length?[m[0].id]:[]);
+      const c=sv.cam&&sv.cam!=='none'?(cs.find(y=>y.id===sv.cam)||cs.find(y=>y.label===sv.camLabel)):null;setCam(c?c.id:'none');
+      setReady(true);
     }catch(e:any){setErr(e?.name==='NotAllowedError'?'The browser was not allowed to use the microphone. Allow it in the address bar, then try again.':(e?.message||'Could not open the microphone.'))}
   };
   const setupPreview=async()=>{
@@ -55,13 +70,15 @@ export function PodcastStudio({request,token,notify}:{request:(p:string,o?:any)=
   const cloudOk=cfg.cloud_allowed;const live=state==='live'||state==='paused';
   const estMBh=(()=>{const h=sess?.info.height||0;const v=h?videoMbps(h):0;return Math.round(((v+AUDIO_KBPS/1000)/8)*3600)})();
   return <div className="pod">
-    <section className="panel pod-top"><div className="pod-head"><span className="pod-ic"><Podcast size={22}/></span><div><h2>HD podcast recording</h2><p className="muted">Studio-quality sound and up to 4K video, recorded in your browser. Every microphone also gets its own separate track.</p></div></div>
-      <div className="pod-badges"><span>48 kHz stereo audio</span><span>Opus 256 kbps or lossless WAV</span><span>Up to 4K video, 30 fps</span><span>Separate track per microphone</span></div></section>
-    <section className="panel pod-step pod-studio"><div className="pod-head"><span className="pod-ic"><Users size={22}/></span><div><h3>Interview or record with guests</h3><p className="muted">Open a studio session: guests join from a link, each person gets their own sound track, and you can share a screen, slides, a document, photos or a video while you record. The recording shows everyone and whatever is shared, in 1080p HD.</p></div></div><div className="pod-ctl"><button className="primary" onClick={studio} disabled={studioBusy}><Users size={16}/> {studioBusy?'Opening…':'Start a studio session'}</button></div><p className="muted small">Inside the session, choose <b>Studio recording</b> in the menu. Slides and documents: share them as a PDF with <b>Share a file</b>, or share the window or tab where they are open.</p></section>
+    <section className="panel pod-top"><h3 className="pod-choose">How do you want to record?</h3>
+      <div className="pod-modes">
+        <div className={`pod-mode${mode==='solo'?' on':''}`}><span className="pod-ic"><Mic size={20}/></span><h3>Record on this computer</h3><p className="muted">For you, or for you and people in the same room. Uses your microphones and camera: studio sound at 48 kHz, video up to 4K, and a separate track for each microphone.</p><button className="primary" onClick={()=>chooseMode('solo')}>{mode==='solo'?'Set up below':'Set up and record'}</button></div>
+        <div className="pod-mode"><span className="pod-ic"><Users size={20}/></span><h3>Interview guests online</h3><p className="muted">Guests join from a link, on any device. Everyone is recorded in 1080p HD with a separate sound track for each person. Share a screen, slides, documents, photos or a video while you record.</p><button className="primary" onClick={studio} disabled={studioBusy}>{studioBusy?'Opening…':'Start a studio session'}</button><small className="muted">In the session, choose Studio recording in the menu. For slides or a document, use Share a file with a PDF, or share the window.</small></div>
+      </div></section>
     {err&&<p className="error pod-err" role="alert">{err}</p>}
-    {!ready&&<section className="panel pod-step"><h3>1. Choose your equipment</h3><p className="muted">Allow the microphone (and camera, if you want video). Nothing is recorded until you press Record.</p><button className="primary" onClick={allow}><Mic size={16}/> Allow microphone and camera</button></section>}
-    {ready&&!take&&<section className="panel pod-step"><div className="pod-grid">
-      <div className="pod-col"><h3>Podcast</h3><label>Title<input value={title} maxLength={120} onChange={e=>setTitle(e.target.value)} placeholder="Episode 1" disabled={live}/></label>
+    {mode==='solo'&&!ready&&<section className="panel pod-step"><h3>Allow your microphone and camera</h3><p className="muted">The browser asks once. Nothing is recorded until you press Record, and your choices are remembered next time.</p><button className="primary" onClick={allow}><Mic size={16}/> Allow microphone and camera</button></section>}
+    {mode==='solo'&&ready&&!take&&<section className="panel pod-step"><div className="pod-grid">
+      <div className="pod-col"><h3>Podcast</h3><p className="muted small pod-remember">Your equipment and studio background are remembered on this computer. Change them any time. <button type="button" className="textbtn" onClick={resetSetup} disabled={live}>Reset</button></p><label>Title<input value={title} maxLength={120} onChange={e=>setTitle(e.target.value)} placeholder="Episode 1" disabled={live}/></label>
         <fieldset disabled={live}><legend>Microphones (one track each)</legend>{mics.map(m=><label key={m.id} className="pod-check"><input type="checkbox" checked={pick.includes(m.id)} onChange={e=>setPick(p=>e.target.checked?[...p,m.id].slice(0,cfg.max_tracks):p.filter(x=>x!==m.id))}/> {m.label}</label>)}</fieldset>
         <label>Camera<select value={cam} onChange={e=>setCam(e.target.value)} disabled={live}><option value="none">No camera (audio only)</option>{cams.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
         <label>Studio background<select value={bg.kind==='none'?'none':bg.kind==='blur'?'blur':bg.kind==='image'?bg.id:'none'} disabled={live||cam==='none'} onChange={e=>{const v=e.target.value;if(v==='upload'){bgFile.current?.click();return}if(v==='none')setBg({kind:'none'});else if(v==='blur')setBg({kind:'blur',level:12});else{const p=PRESETS.find(x=>x.id===v);if(p)setBg({kind:'image',id:p.id,url:p.url})}}}><option value="none">My real room (no change)</option><option value="blur">Blur my room</option>{PRESETS.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}{bg.kind==='image'&&bg.id==='custom'&&<option value="custom">{bgName||'My picture'}</option>}<option value="upload">Upload my own studio picture…</option></select></label>

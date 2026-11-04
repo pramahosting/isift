@@ -105,14 +105,16 @@ const BLOCKS:Record<string,[string,string,string][]>={
  'construction':[['Site','Join from any phone.','Owners and subcontractors join from a link, with no app.'],['Variations','Sign off before work starts.','Quotes and variations signed as PDFs, in the meeting.'],['Booking','Book quotes and site visits.','A booking page keeps the diary organised.'],['Actions','Who does what, by when.','Action items drafted for you to approve.']],
 };
 
-/** Each kind is a real screenshot of the iSift app. */
-type Kind='meeting'|'booking'|'sign'|'minutes'|'mail'|'webinar'|'collab'|'podcast';
-const KIND_WORDS:[Kind,RegExp][]=[['podcast',/podcast|episode|studio|tracks|microphone/i],['meeting',/investors/i],['webinar',/webinar|event/i],['booking',/booking|calendar/i],['sign',/sign|form|terms|approval|variation/i],['mail',/\bmail\b/i],['minutes',/\bnotes?\b|minute|action|record|board|\bAI\b/i],['collab',/together|document|sharing|teams|control/i],['meeting',/.*/]];
-const kindOf=(label:string):Kind=>KIND_WORDS.find(([,r])=>r.test(label))![0];
-const ALT:Record<Kind,string>={meeting:'A video meeting in iSift with four people and the call controls',webinar:'The iSift webinar page with a scheduled webinar',booking:'An iSift booking page where a guest picks a day',sign:'Signing a PDF agreement in iSift',mail:'The iSift meetings list with transcript and minutes status',minutes:'The iSift meeting minutes page with AI drafts',collab:'Writing a shared document in iSift',podcast:'The iSift Podcast Studio with microphone tracks and quality settings'};
-/** Real screenshots of the running app, saved in public/industries. */
-export function Shot({kind,decorative=false}:{kind:Kind;decorative?:boolean}){
-  return <img className="shot" src={`${import.meta.env.BASE_URL}industries/${kind}.webp`} alt={decorative?'':ALT[kind]} aria-hidden={decorative||undefined} loading="lazy" width={1200} height={kind==='booking'?633:750}/>;
+/** Real screenshots of the running iSift app, each filled with that industry's own sample content (public/industries/<name>.webp).
+ *  Letters: R meeting room sharing a document, B booking page, S signing a PDF, N meeting notes, D document, X spreadsheet, P presentation, W webinar page. */
+const SHOTS:Record<string,string[]>={   // hero first, then one picture for each block, in order
+ 'real-estate':['P','R','B','S','N','D'],'healthcare':['W','R','N','S','B','X'],'education':['D','R','P','N','S','W'],'financial-services':['B','R','N','S','X','W'],
+ 'government':['B','R','W','N','S'],'manufacturing':['B','R','D','X','S'],'nonprofit':['S','R','N','B','W'],'retail':['X','B','W','R','S'],
+ 'professional-services':['P','R','N','S','D'],'startups':['R','P','B','S','X'],'construction':['P','R','S','B','N']};
+const PODCAST_SHOTS=['podcasters-recorded','podcasters-studio','podcasters-save','podcasters-set','podcasters-tracks','podcasters-modes','podcasters-B','podcasters-S'];
+const shotName=(slug:string,i:number)=>slug==='podcasters'?PODCAST_SHOTS[i]:`${slug}-${SHOTS[slug]?.[i]}`;
+export function Shot({name,alt,decorative=false}:{name:string;alt:string;decorative?:boolean}){
+  return <img className="shot" src={`${import.meta.env.BASE_URL}industries/${name}.webp`} alt={decorative?'':alt} aria-hidden={decorative||undefined} loading="lazy" width={1200} height={750}/>;
 }
 
 const ICONS=[Video,CalendarClock,FileSignature,Sparkles,Mail,PenLine,Presentation,Users];
@@ -135,7 +137,7 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
     <section className="ind-hero2"><div className="ind-hero2-in"><div className="ind-hero2-copy"><nav className="ind-crumb" aria-label="Breadcrumb"><a href="#/website">iSift</a> &rsaquo; <span>Industries</span> &rsaquo; <b>{x.name}</b></nav><span className="ind-kicker"><x.icon size={15}/> iSift for {x.name}</span>
       <h1>{x.line}</h1><p>{x.intro}</p>
       <div className="ind-cta"><a className="primary" href="#/website" onClick={start}>Get started free <ArrowRight size={16}/></a><a className="secondary" href="#/pricing">See pricing</a></div><small>No card needed. Guests always join free.</small></div>
-      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-body"><Shot kind={slug==='podcasters'?'podcast':'meeting'} decorative/></div></div>
+      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-body"><Shot name={shotName(slug,0)} alt={x.name} decorative/></div></div>
         <span className="ind-float f1"><Check size={13}/> Guest joined from a link</span><span className="ind-float f2"><Sparkles size={13}/> Minutes ready to approve</span></div></div></section>
     <section className="ind-stats"><div><b>90 min</b><span>free group meetings</span></div><div><b>Free</b><span>for guests, no account</span></div><div><b>From A$2</b><span>per host a month</span></div><div><b>1 account</b><span>meetings, mail, documents, signing</span></div></section>
     <section className="ind-trust"><h2>Trusted from the first call</h2><div className="ind-trust-grid">
@@ -147,7 +149,7 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
       <section className="ind-pains"><h2>What gets in the way</h2><div className="ind-pain-grid">{x.pains.map(p=><div key={p}>{p}</div>)}</div></section>
       {blocks.map((b,k)=>{return <section key={b[1]} className={`ind-block${k%2?' flip':''}`}>
         <div className="ind-block-copy"><span className="ind-label">{b[0]}</span><h2>{b[1]}</h2><p>{b[2]}</p></div>
-        <div className={`ind-block-art a${k%4}`}><Shot kind={kindOf(b[0]+' '+b[1])}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
+        <div className={`ind-block-art a${k%4}`}><Shot name={shotName(slug,k+1)} alt={'iSift screen for '+x.name+': '+b[1]}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
       <section><h2>How iSift fits {x.name.toLowerCase()}</h2><ul className="ind-fits">{x.fits.map(p=><li key={p}><Check size={15}/> {p}</li>)}</ul></section>
       <section className="ind-solutions"><h2>Solutions for {x.name.toLowerCase()} teams</h2>{[
         [Users,'Engage the people you serve','Bring clients, families or the public together from a link.',['Meetings','Webinars','Booking pages']],
