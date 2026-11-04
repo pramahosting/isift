@@ -408,7 +408,7 @@ def test_admin_can_delete_users_and_their_records(client):
 
 def test_participant_caps_by_plan(client, monkeypatch):
     ah, _ = login(client); bh = basic_user(client, monkeypatch); tok = bh["Authorization"].split()[1]
-    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 100
+    assert client.get("/api/v1/me/limits", headers=bh).json()["max_participants"] == 25   # Basic allows 25 people; paid plans get what the host chose (100 by default)
     uid = user_id(client, ah, client.email)
     client.patch(f"/api/v1/admin/users/{uid}", json={"limits": {"max_participants": 2}}, headers=ah)     # small cap so the test stays quick
     code = make(client, bh)["code"]

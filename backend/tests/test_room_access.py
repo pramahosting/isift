@@ -13,7 +13,11 @@ def client(tmp_path, monkeypatch):
     from app.models import Base
     import asyncio
     async def mk():
-        async with engine.begin() as c: await c.run_sync(Base.metadata.create_all)
+        async with engine.begin() as c:
+            # every test starts from an empty database, so tests cannot leak state into each other (SQLite only, never a real server)
+            await c.run_sync(Base.metadata.create_all)
+            if engine.dialect.name == "sqlite":
+                for t in reversed(Base.metadata.sorted_tables): await c.execute(t.delete())
     asyncio.run(mk())
     with TestClient(app) as c:
         yield c
