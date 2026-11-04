@@ -17,6 +17,14 @@ What can be shown while recording: a screen, window or browser tab (with its sou
 ## Studio background
 The host can use their own studio picture. In the solo recorder, Studio background in the setup form can blur the room, use a built-in picture or upload your own: the person is cut out and placed in front of it (recording is then limited to 1080p). In a studio session use Background in the room menu; the chosen picture also fills the backdrop of the recording.
 
+## Finding it, and remembered setup
+
+Podcast Studio is a tab under Meetings, next to Booking and Webinars. Recordings, Transcripts, Minutes, Action items and Briefings sit in a second row under Meetings. The page opens with two choices: **Record on this computer** (you and people in the same room) and **Interview guests online** (a studio session with a link). Your microphones, camera, quality and studio background are remembered on this browser and reused next time until you change them. A Reset link clears them.
+
+## Editing the files
+
+Browsers write WebM files without a length in the header, so some editors cannot seek in them. If yours cannot, copy the file once without re-encoding: `ffmpeg -i master.webm -c copy master-fixed.webm`. Nothing is lost. The WAV tracks have no such issue.
+
 ## Limits
 A guest's picture and sound are as good as their connection and equipment allow, and their separate track is recorded on the host's computer from what reaches it. The solo recorder (not a session) records only the devices on the host's own computer. Up to 8 tracks and 2 GB per file. Quality depends on the microphone, camera and browser.
 
