@@ -2350,3 +2350,7 @@ html,body{max-width:100%;overflow-x:hidden}
 .pod-mode.on{border-color:#2a6fd6;box-shadow:0 0 0 3px #2a6fd622}.pod-mode h3{margin:4px 0 0;font-size:18px}.pod-mode p{margin:0;flex:1}.pod-mode small{display:block}
 @media(max-width:760px){.pod-modes{grid-template-columns:1fr}}
 .pod-choose{margin:0 0 12px;font-size:1.05rem}
+.pod-tabs{margin-top:4px}.pod-tabs button{display:inline-flex;align-items:center;gap:7px}
+.pod-top .pod-ic{margin-bottom:8px}.pod-top .primary{margin:6px 0}.pod-top small{display:block}
+.pod-livedot{width:8px;height:8px;border-radius:50%;background:#d33;display:inline-block;animation:podp 1.2s infinite}@keyframes podp{50%{opacity:.3}}
+.pod-wide{max-width:640px}.pod-step .pod-col+.pod-col{margin-top:16px}
