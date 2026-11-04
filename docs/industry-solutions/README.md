@@ -16,6 +16,8 @@ One folder per sector, modelled on how Zoom (Education, Financial Services, Gove
 | retail | Retail and e-commerce | Zoho |
 | professional-services | Legal, consulting, recruitment | Zoho |
 | construction | Builders and trades | Zoho |
+| podcasters | Podcasters and creators (uses Podcast Studio) | Requested |
+| startups | Founders and small teams | Requested |
 
 ## Each sector file follows `_TEMPLATE.md`
 1. Who it is for
