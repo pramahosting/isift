@@ -1,5 +1,5 @@
 import React from 'react';
-import {ArrowLeft,ArrowRight,Check,Building2,Stethoscope,GraduationCap,Landmark,Factory,HeartHandshake,ShoppingBag,Briefcase,HardHat,Scale,Video,PenLine,CalendarClock,Mail,FileSignature,Sparkles,Presentation,Users,ChevronDown,ShieldCheck,Lock,FileText,BookOpen} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Check,Building2,Stethoscope,GraduationCap,Landmark,Factory,HeartHandshake,ShoppingBag,Briefcase,HardHat,Scale,Rocket,Podcast,Video,PenLine,CalendarClock,Mail,FileSignature,Sparkles,Presentation,Users,ChevronDown,ShieldCheck,Lock,FileText,BookOpen} from 'lucide-react';
 import {LegalFooter} from './Legal';
 
 /** Industry pages, in the style of Zoom and Zoho industry solutions. Same product, packaged per sector.
@@ -68,6 +68,18 @@ export const INDUSTRIES:Industry[]=[
   fits:['Join free from a link on any phone.','Sign quotes and variations as PDFs.','Booking pages for quotes and site visits.','Action items drafted for approval.','Mail from your own business address.'],
   checks:['Home building rules require written, signed variations in many states.','Keep records for warranty and defect periods.'],
   uses:['Site meeting','Variation approval','Quote acceptance','Subcontractor onboarding','Handover']},
+ {slug:'podcasters',name:'Podcasters and creators',icon:Podcast,line:'Record in HD. Keep every voice on its own track.',
+  intro:'For podcasters, video shows, interviewers and content teams. Record studio-quality sound and up to 4K video in the browser, and choose where the files are kept.',
+  pains:['Studio software and a separate recording tool for every guest.','Files scattered across drives, with no separate track for each voice.','Guest booking, release forms and sponsor agreements live in different tools.','Show notes are written from memory after the episode.'],
+  fits:['Podcast Studio records 48 kHz stereo audio and up to 4K video in the browser.','A separate track for every microphone, plus the mixed master.','Save on your own computer, or on Standard and Business keep it in the cloud. Basic always saves on your computer.','Booking pages for guests; guests join meetings free from a link.','Sign guest release forms and sponsor agreements as PDFs.','AI minutes and action items drafted for you to approve.'],
+  checks:['Get recorded consent from every guest, and keep the release form with the episode.','Music, clips and guest material need the right permissions.','Cloud files count towards your storage allowance.'],
+  uses:['Interview episode','Co-hosted show','Guest booking page','Live show webinar','Sponsor call']},
+ {slug:'startups',name:'Startups',icon:Rocket,line:'Investors, customers and hires, in one free account.',
+  intro:'For founders and small teams. Run investor calls, customer interviews and demos from a link, sign NDAs and offers in the meeting, and start free.',
+  pains:['A new subscription for every tool as the team grows.','Investors, advisers and candidates all use different calendars.','NDAs and offer letters slow deals down.','Decisions from calls are lost in chat.'],
+  fits:['Free Basic plan: 25 people, 90 minutes. Paid plans start from A$2 a month.','Guests join free from a link, with no app.','Connect Google, Microsoft, Yahoo and iCloud calendars.','Edit decks, notes and spreadsheets together in the meeting.','Sign NDAs and agreements as PDFs.','Webinars for product launches and demo days.'],
+  checks:['Have a lawyer review NDAs, offer letters and investor documents.','Keep records of board and investor decisions.','Protect customer data you collect in interviews.'],
+  uses:['Investor update call','Customer discovery interview','Product demo webinar','Advisory board meeting','Candidate interview']},
 ];
 
 export function IndustriesSection(){
@@ -88,27 +100,19 @@ const BLOCKS:Record<string,[string,string,string][]>={
  'nonprofit':[['Free','Start with a free plan.','25 people for 90 minutes, free for ever. Guests join free.'],['Board','Board minutes, drafted.','AI drafts minutes and actions for the chair to approve.'],['Calendars','Works with the calendars you use.','Connect Google, Microsoft, Yahoo and iCloud once.'],['Events','Fundraising webinars.','Registration pages, questions and polls are built in.']],
  'retail':[['Booking','Book consultations online.','Share a booking page for fittings, designs and custom orders.'],['Webinars','Launch products live.','Run demos and launches as webinars with registration.'],['Suppliers','Negotiate face to face.','Share screens and edit order sheets together.'],['Terms','Wholesale terms signed online.','Edit and sign PDFs in the same account.']],
  'professional-services':[['Clients','Meet without friction.','Clients join from a link, with no account to create.'],['Actions','Follow-through, not just a recap.','Minutes and action items with owners, drafted for approval.'],['Signing','From call to signed engagement.','Engagement letters and NDAs signed in the meeting.'],['Documents','Edit together.','Co-edit documents and slides while you talk.']],
+ 'podcasters':[['Studio','Record in HD from the browser.','Studio-quality sound at 48 kHz and up to 4K video, with live level meters and a camera preview before you press Record.'],['Tracks','A separate track for every voice.','Each microphone gets its own file as well as the mixed master, so you can edit every voice on its own.'],['Storage','Keep the files where you want them.','Save on your own computer, or on Standard and Business keep them in the cloud at original quality. Basic always saves on your computer.'],['Booking','Let guests pick a time.','Share a booking page for interviews. Each booking lands in your calendar with a meeting room attached.'],['Signing','Release forms signed online.','Send guest releases and sponsor agreements as PDFs to sign.']],
+ 'startups':[['Investors','Run the update call from a link.','Investors and advisers join free from a link. Share a deck and edit it together.'],['Customers','Interview customers and book demos.','A booking page for demos and interviews, with minutes and action items drafted for you to approve.'],['Signing','NDAs and offers signed in the meeting.','Edit and sign PDFs in the same app, so deals do not wait on another tool.'],['Cost','Start free, grow when you need to.','Basic is free. Paid plans start from A$2 a month, priced by meeting size.']],
  'construction':[['Site','Join from any phone.','Owners and subcontractors join from a link, with no app.'],['Variations','Sign off before work starts.','Quotes and variations signed as PDFs, in the meeting.'],['Booking','Book quotes and site visits.','A booking page keeps the diary organised.'],['Actions','Who does what, by when.','Action items drafted for you to approve.']],
 };
 
-/** Original product mock-ups (no stock photos): each draws a small iSift screen in HTML and SVG. */
-type Kind='meeting'|'booking'|'sign'|'minutes'|'mail'|'webinar'|'collab';
-const KIND_WORDS:[Kind,RegExp][]=[['webinar',/webinar|event/i],['booking',/booking|calendar/i],['sign',/sign|form|terms|approval|variation/i],['mail',/\bmail\b/i],['minutes',/\bnotes?\b|minute|action|record|board|\bAI\b/i],['collab',/together|document|sharing|teams|control/i],['meeting',/.*/]];
+/** Each kind is a real screenshot of the iSift app. */
+type Kind='meeting'|'booking'|'sign'|'minutes'|'mail'|'webinar'|'collab'|'podcast';
+const KIND_WORDS:[Kind,RegExp][]=[['podcast',/podcast|episode|studio|tracks|microphone/i],['meeting',/investors/i],['webinar',/webinar|event/i],['booking',/booking|calendar/i],['sign',/sign|form|terms|approval|variation/i],['mail',/\bmail\b/i],['minutes',/\bnotes?\b|minute|action|record|board|\bAI\b/i],['collab',/together|document|sharing|teams|control/i],['meeting',/.*/]];
 const kindOf=(label:string):Kind=>KIND_WORDS.find(([,r])=>r.test(label))![0];
-function Avatar({c,s=44}:{c:string;s?:number}){return <svg width={s} height={s} viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="22" fill={c} opacity=".18"/><circle cx="22" cy="17" r="7" fill={c}/><path d="M8 40c1-9 7-13 14-13s13 4 14 13z" fill={c}/></svg>}
-export function MockArt({kind,accent='#1a8f6a'}:{kind:Kind;accent?:string}){
-  const bar=<div className="ma-bar"><i/><i/><i/></div>;
-  if(kind==='meeting')return <div className="ma ma-meeting">{bar}<div className="ma-grid">{['#2a6fd6','#1a8f6a','#8a5bd6','#e08a2e'].map((c,i)=><div key={i} className="ma-tile"><Avatar c={c}/><span>{['Host','Guest','Guest','Guest'][i]}</span></div>)}</div>
-    <div className="ma-tools"><b style={{background:accent}}/><b/><b/><b/><b className="end"/></div></div>;
-  if(kind==='booking')return <div className="ma ma-booking">{bar}<div className="ma-body"><h4>Pick a time</h4><div className="ma-cal">{Array.from({length:28},(_,i)=><span key={i} className={i===16?'on':i%7>4?'off':''} style={i===16?{background:accent}:undefined}>{i+1}</span>)}</div>
-    <div className="ma-slots"><span>9:00</span><span className="on" style={{borderColor:accent,color:accent}}>10:30</span><span>2:00</span></div><div className="ma-btn" style={{background:accent}}>Confirm booking</div></div></div>;
-  if(kind==='sign')return <div className="ma ma-sign">{bar}<div className="ma-body"><div className="ma-doc"><i style={{width:'60%'}}/><i/><i/><i style={{width:'80%'}}/><i/><i style={{width:'45%'}}/></div>
-    <div className="ma-sigbox"><svg viewBox="0 0 160 46" width="150" height="44" aria-hidden="true"><path d="M6 32c10-26 16-26 14-8s6 14 14-2 8-6 14 2 14-10 22-8 12 12 24 4 22-10 30-6" fill="none" stroke={accent} strokeWidth="2.6" strokeLinecap="round"/></svg><small>Sign here</small></div><div className="ma-ok" style={{color:accent}}>&#10003; Signed and saved</div></div></div>;
-  if(kind==='minutes')return <div className="ma ma-minutes">{bar}<div className="ma-body"><div className="ma-tag" style={{background:accent}}>AI draft</div><h4>Minutes</h4><div className="ma-doc"><i/><i style={{width:'85%'}}/><i style={{width:'70%'}}/></div>
-    <h5>Action items</h5>{[['Send contract','Alex'],['Book follow-up','Sam']].map(([a,b])=><div key={a} className="ma-act"><span style={{borderColor:accent}}/><em>{a}</em><small>{b}</small></div>)}<div className="ma-btn" style={{background:accent}}>Approve and send</div></div></div>;
-  if(kind==='mail')return <div className="ma ma-mail">{bar}<div className="ma-body">{[0,1,2,3].map(i=><div key={i} className={`ma-row${i===1?' on':''}`}><Avatar c={['#2a6fd6','#1a8f6a','#8a5bd6','#e08a2e'][i]} s={34}/><div><i style={{width:['55%','70%','45%','60%'][i]}}/><i className="l"/></div>{i===1&&<span className="ma-dot" style={{background:accent}}/>}</div>)}</div></div>;
-  if(kind==='webinar')return <div className="ma ma-webinar">{bar}<div className="ma-stage"><Avatar c="#fff" s={70}/><span className="ma-live">LIVE</span></div><div className="ma-body row"><div className="ma-poll">{[70,45,20].map((w,i)=><div key={i}><u style={{width:w+'%',background:accent,opacity:1-i*.25}}/></div>)}</div><div className="ma-qa"><b>Q&amp;A</b><i/><i style={{width:'70%'}}/></div></div></div>;
-  return <div className="ma ma-collab">{bar}<div className="ma-body row"><div className="ma-board"><span className="n1"/><span className="n2"/><span className="n3"/></div><div className="ma-sheet">{Array.from({length:12},(_,i)=><u key={i} className={i<3?'h':''}/>)}</div></div></div>;
+const ALT:Record<Kind,string>={meeting:'A video meeting in iSift with four people and the call controls',webinar:'The iSift webinar page with a scheduled webinar',booking:'An iSift booking page where a guest picks a day',sign:'Signing a PDF agreement in iSift',mail:'The iSift meetings list with transcript and minutes status',minutes:'The iSift meeting minutes page with AI drafts',collab:'Writing a shared document in iSift',podcast:'The iSift Podcast Studio with microphone tracks and quality settings'};
+/** Real screenshots of the running app, saved in public/industries. */
+export function Shot({kind,decorative=false}:{kind:Kind;decorative?:boolean}){
+  return <img className="shot" src={`${import.meta.env.BASE_URL}industries/${kind}.webp`} alt={decorative?'':ALT[kind]} aria-hidden={decorative||undefined} loading="lazy" width={1200} height={kind==='booking'?633:750}/>;
 }
 
 const ICONS=[Video,CalendarClock,FileSignature,Sparkles,Mail,PenLine,Presentation,Users];
@@ -131,7 +135,7 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
     <section className="ind-hero2"><div className="ind-hero2-in"><div className="ind-hero2-copy"><nav className="ind-crumb" aria-label="Breadcrumb"><a href="#/website">iSift</a> &rsaquo; <span>Industries</span> &rsaquo; <b>{x.name}</b></nav><span className="ind-kicker"><x.icon size={15}/> iSift for {x.name}</span>
       <h1>{x.line}</h1><p>{x.intro}</p>
       <div className="ind-cta"><a className="primary" href="#/website" onClick={start}>Get started free <ArrowRight size={16}/></a><a className="secondary" href="#/pricing">See pricing</a></div><small>No card needed. Guests always join free.</small></div>
-      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-body"><MockArt kind="meeting"/></div></div>
+      <div className="ind-hero2-art" aria-hidden="true"><div className="ind-win"><div className="ind-win-body"><Shot kind={slug==='podcasters'?'podcast':'meeting'} decorative/></div></div>
         <span className="ind-float f1"><Check size={13}/> Guest joined from a link</span><span className="ind-float f2"><Sparkles size={13}/> Minutes ready to approve</span></div></div></section>
     <section className="ind-stats"><div><b>90 min</b><span>free group meetings</span></div><div><b>Free</b><span>for guests, no account</span></div><div><b>From A$2</b><span>per host a month</span></div><div><b>1 account</b><span>meetings, mail, documents, signing</span></div></section>
     <section className="ind-trust"><h2>Trusted from the first call</h2><div className="ind-trust-grid">
@@ -143,7 +147,7 @@ export function IndustryPage({slug,onSignup}:{slug:string;onSignup?:()=>void}){
       <section className="ind-pains"><h2>What gets in the way</h2><div className="ind-pain-grid">{x.pains.map(p=><div key={p}>{p}</div>)}</div></section>
       {blocks.map((b,k)=>{return <section key={b[1]} className={`ind-block${k%2?' flip':''}`}>
         <div className="ind-block-copy"><span className="ind-label">{b[0]}</span><h2>{b[1]}</h2><p>{b[2]}</p></div>
-        <div className={`ind-block-art a${k%4}`} aria-hidden="true"><MockArt kind={kindOf(b[0]+' '+b[1])} accent={['#1a8f6a','#2a6fd6','#8a5bd6','#d9822b'][k%4]}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
+        <div className={`ind-block-art a${k%4}`}><Shot kind={kindOf(b[0]+' '+b[1])}/><span className="ind-chip c1">{b[0]}</span><span className="ind-chip c2"><Check size={12}/> Done</span></div></section>})}
       <section><h2>How iSift fits {x.name.toLowerCase()}</h2><ul className="ind-fits">{x.fits.map(p=><li key={p}><Check size={15}/> {p}</li>)}</ul></section>
       <section className="ind-solutions"><h2>Solutions for {x.name.toLowerCase()} teams</h2>{[
         [Users,'Engage the people you serve','Bring clients, families or the public together from a link.',['Meetings','Webinars','Booking pages']],

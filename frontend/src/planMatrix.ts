@@ -41,5 +41,6 @@ export function limitText(pm:PM|null,plan:string){
     storage:L.storage_mb?mb(L.storage_mb):'Unlimited',
     hours:L.meeting_hours_per_month?`${L.meeting_hours_per_month} hours a month`:'Unlimited',
     recording:!L.recording?'No':L.cloud_recording?'Yes: stored in the cloud, download link emailed to the host':'Yes: saved on the host’s computer at the end of the meeting',
+    podcast:!L.podcast?'No':L.cloud_podcast?'Yes: HD, saved on your computer or in the cloud, your choice':'Yes: HD, always saved on your own computer',
     yes:(k:string)=>L[k]?'Yes':'No'};
 }

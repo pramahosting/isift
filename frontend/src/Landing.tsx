@@ -1,5 +1,5 @@
 import React from 'react';
-import {PenLine,Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle,FileDown,Film,BellRing} from 'lucide-react';
+import {Podcast,PenLine,Check,X,Minus,Layers,ListChecks,ShieldCheck,CalendarClock,FileSignature,Armchair,Lock,Phone,BadgeDollarSign,Presentation,Mail,BookOpen,Download,ArrowLeft,Hand,ArrowRight,Users,LayoutGrid,MonitorUp,PlayCircle,FileDown,Film,BellRing} from 'lucide-react';
 import {useLivePlans,money} from './Pricing';
 import {usePlanMatrix,plansWith,planNote,namesOf,Need,PM} from './planMatrix';
 
@@ -37,6 +37,7 @@ const WHY=[
  {i:PlayCircle,t:'Watch a video together',d:'Paste a YouTube link and everyone watches in sync on their own device, phones included. You play, pause and skip for the whole meeting.',n:{limit:'watch_together'}},
  {i:Armchair,t:'Meeting rooms people enjoy',d:'A virtual boardroom with a wooden table, name plates, windows and your own background, or a simple gallery view. Switch with one button.'},
  {i:Phone,t:'Call a teammate in one click',d:'Ring another iSift user like a phone call. They accept and you are in a private room together.',n:{limit:'calls'}},
+ {i:Podcast,t:'An HD podcast studio, included',d:'Record studio-quality sound and up to 4K video in the browser, with a separate track for every microphone. Keep the files on your own computer, or in the cloud on paid plans. The Basic plan always saves on your computer.',n:{module:'podcast'}},
  {i:Presentation,t:'Webinars you run like Zoom or Webex',d:'Registration pages with your own questions, panelists, a practice session before you go live, and attendees who can only watch. You mute people or turn their video off, and invite one person or a group to speak. Attendee questions come to you privately, with Q&A, upvotes, polls and raise hand. Afterwards get attendance, question and poll reports as CSV, and send follow-up emails.',n:{module:'webinars',limit:'webinars'}},
  {i:Mail,t:'Your own email address, set up in minutes',d:'Get a name@isift address or use your own domain with mailboxes for your team. Phones and Outlook or Thunderbird are set up from one page, with built-in spam and abuse protection, inside the same Commbox as your calendar and contacts.',n:{module:'isiftmail',limit:'commbox'}},
  {i:Lock,t:'You stay in control',d:'Basic hosts save recordings on their own computer when the meeting ends; paid plans store them in the cloud and email a download link. Administrators set what each person may use: call time, recording, documents, Commbox and more.'},
@@ -58,6 +59,7 @@ const ROWS:{label:string;need?:Need;cells:Cell[]}[]=[
  {label:'Free plan: group meeting length',cells:['90 minutes','40 minutes','60 minutes','40 minutes','Trial only','60 minutes','60 minutes']},
  {label:'People in one meeting on paid plans',cells:['10 to 300, the size you choose and pay for','100 (Pro)','10 to 250, by size','150 to 1,000, by plan','150 to 250, by plan','300','100 to 500, by plan']},
  {label:'Meeting recording',need:{limit:'recording'},cells:['Yes, built in. Basic: saved on the host\u2019s computer at the end of the meeting. Paid: stored in the cloud, download link emailed to the host','Paid plans','Included, 5 GB cloud','Local free, cloud on paid plans','Cloud recording on paid plans','Paid plans','Paid plans']},
+ {label:'HD podcast recording: up to 4K, a track per microphone, save locally or in the cloud',need:{module:'podcast'},cells:['Yes, built in. Basic saves on your computer; paid plans can also use the cloud',null,null,null,null,null,null]},
  {label:'AI minutes and action items',need:{module:'minutes'},cells:['Yes, built in, AI drafts and a person reviews','Yes (paid plans)',null,'AI Assistant (paid plans)','Business plan','Needs Copilot add-on','Gemini, paid plans']},
  {label:'Mail, calendar and contacts in the same app',need:{module:['mail','calendar','contacts'],limit:'commbox'},cells:['Yes, built in (paid plans)','Some','Zoho Mail, separate',N,N,'Outlook, separate','Gmail, separate']},
  {label:'Your own email address or domain, set up for you',need:{module:'isiftmail',limit:'commbox'},cells:['Yes, built in, with team mailboxes (paid plans)','No','Zoho Mail, separate','No','No','Outlook, separate','Gmail, separate']},
@@ -94,6 +96,7 @@ export function CompareSection(){
     if(r.label==='Free plan: group meeting length')return bl.meeting_minutes?`${bl.meeting_minutes} minutes`:'No time limit';
     if(r.label==='People in one meeting on paid plans'&&tl.length)return `${tl[0].n} to ${tl[tl.length-1].n}, the size you choose and pay for`;
     if(r.label==='Meeting recording'){const cl=pm.plans.individual?.limits.cloud_recording;return `Yes, built in. Basic: ${bl.cloud_recording?'stored in the cloud':'saved on the host\u2019s computer at the end of the meeting'}. Paid: ${cl?'stored in the cloud, download link emailed to the host':'saved on the host\u2019s computer'}`}
+    if(r.label.startsWith('HD podcast recording')){const cl=pm.plans.individual?.limits.cloud_podcast,bc=pm.plans.basic?.limits.cloud_podcast;return `Yes, built in. Basic: ${bc?'your computer or the cloud':'always saved on your computer'}${cl?'; paid plans: your computer or the cloud':''}`}
     if(!r.need)return c;
     const note=planNote(pm,r.need)||'';
     if(typeof c==='string')c=c.replace(/ \(paid plans\)$/,'');else if(c===true&&note)c='Yes';
@@ -134,6 +137,7 @@ export const MANUALS:{slug:string;t:string;d:string;pages:number}[]=[
 export function NewSection(){
   const pm=usePlanMatrix();
   const all:any[]=[
+ {i:Podcast,t:'HD podcast studio',d:'Record studio-quality audio and up to 4K video in the browser, with a separate track for every microphone. Save on your computer, or in the cloud on paid plans.',n:{module:'podcast'},m:'meetings-and-sharing'},
    {i:Presentation,t:'Webinars',d:'Run webinars with registration, panelists, polls, Q&A and reports. Attendees only watch.',n:{module:'webinars',limit:'webinars'},m:'webinars'},
    {i:Hand,t:'Give control of a file',d:'Share a PDF or photo and let one person page and scroll it for everyone. Take it back any time.',n:{module:'collab'},m:'meetings-and-sharing'},
    {i:PenLine,t:'Edit together, live',d:'Share a note, document, spreadsheet, presentation or whiteboard and let one person edit it live. You decide who.',n:{module:'collab'},m:'meetings-and-sharing'},
@@ -152,6 +156,7 @@ export function BetterSection(){
   const pm=usePlanMatrix();const mins=pm?.plans.basic?.limits.meeting_minutes??90;const wp=plansWith(pm,{module:'webinars',limit:'webinars'});
   const rows0:(string|false)[][]=[
    ['Everything in one place','Zoom, Zoho, Teams, Webex, GoTo and Meet each cover meetings; notes, whiteboard, documents, PDF signing, booking and mail usually mean other apps or add-ons. In iSift they sit beside the meeting.'],
+   anyPlan(pm,{module:'podcast'})&&['Podcast recording is included','HD podcast recording is part of every plan, with up to 4K video, studio-quality sound and a separate track for each microphone. You choose where it is kept: on your computer, or in the cloud on paid plans.'],
    wp.length>0&&['Webinars are included','Webinars are a separate product or an add-on with Zoom, Zoho, GoTo and Teams. In iSift they are part of '+(wp.length===3?'every plan':namesOf(wp))+', with registration, Q&A, polls and reports.'],
    ['You pay for the people you need','Choose how many participants you need from a dropdown. No per-feature add-ons to work out.'],
    (mins===0||mins>60)&&['A free plan with '+(mins?mins+'-minute':'unlimited-length')+' meetings','Group meetings on the free plan '+(mins?'run for '+mins+' minutes':'have no time limit')+', longer than the free plans of Zoom, Webex and Meet.'],

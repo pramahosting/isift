@@ -32,9 +32,9 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
     if(form.is_active!==o.is_active)body.is_active=form.is_active;
     if(form.virtual_room!==(o.virtual_room!==false))body.virtual_room=form.virtual_room;
     const L=form.lim||{},oL=o.limits||{},lim:any={};
-    for(const k of ['calls','commbox','open_room','webinars','recording'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
+    for(const k of ['calls','commbox','open_room','webinars','recording','podcast','cloud_podcast'])if(!!L[k]!==!!oL[k])lim[k]=!!L[k];
     for(const k of ['meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants']){const n=Math.max(0,Math.floor(Number(L[k]??0)));if(n!==Number(oL[k]??0))lim[k]=n}
-    if(form.resetLim){for(const k of ['calls','commbox','open_room','webinars','recording','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants'])lim[k]=null}
+    if(form.resetLim){for(const k of ['calls','commbox','open_room','webinars','recording','podcast','cloud_podcast','meeting_minutes','docs_per_day','pdf_pages','ai_per_month','booking_pages','storage_mb','meeting_hours_per_month','max_participants'])lim[k]=null}
     if(Object.keys(lim).length)body.limits=lim;
     if(form.password){if(form.password.length<8)throw new Error('Password must be at least 8 characters.');body.password=form.password}
     if(!Object.keys(body).length){setForm(null);return}
@@ -61,13 +61,15 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
     <label className="checklabel"><input type="checkbox" checked={form.is_active} disabled={form.builtin} onChange={e=>setForm({...form,is_active:e.target.checked})}/> Account is active (can sign in)</label>
    </div>
    {form.mode==='edit'&&form.role!=='admin'&&form.lim&&<fieldset className="mf-set"><legend>Special permissions for this person. They override the plan's normal permissions ({form.orig?.limits?.plan==='basic'?'Basic plan':form.orig?.limits?.plan||'plan'})</legend>
-    <p className="muted small">Basic accounts start with: 3 AI minutes summaries a month, 1 booking page, no calling, no Commbox, no open room, no recording, 90-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
+    <p className="muted small">Basic accounts start with: 3 AI minutes summaries a month, 1 booking page, no calling, no Commbox, no open room, no cloud recording of meetings, HD podcast recording saved on their own computer only, 90-minute meetings, 5 new Docs files or whiteboards a day and PDFs of up to 5 pages. Change any of these for this person. Use 0 for no limit.</p>
     <div className="lim-box">
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.calls} onChange={e=>setForm({...form,lim:{...form.lim,calls:e.target.checked}})}/> Allow calling other people</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.commbox} onChange={e=>setForm({...form,lim:{...form.lim,commbox:e.target.checked}})}/> Allow Commbox (mail, calendar, contacts)</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.open_room} onChange={e=>setForm({...form,lim:{...form.lim,open_room:e.target.checked}})}/> Allow open room</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.webinars} onChange={e=>setForm({...form,lim:{...form.lim,webinars:e.target.checked}})}/> Allow webinars</label>
      <label className="checklabel"><input type="checkbox" checked={!!form.lim.recording} onChange={e=>setForm({...form,lim:{...form.lim,recording:e.target.checked}})}/> Allow meeting recording</label>
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.podcast} onChange={e=>setForm({...form,lim:{...form.lim,podcast:e.target.checked}})}/> Allow HD podcast recording (Podcast Studio)</label>
+     <label className="checklabel"><input type="checkbox" checked={!!form.lim.cloud_podcast} onChange={e=>setForm({...form,lim:{...form.lim,cloud_podcast:e.target.checked}})}/> Allow keeping podcasts in the cloud (otherwise they are saved on the person’s own computer)</label>
      <label>Meeting length (minutes)<input type="number" min={0} max={100000} value={form.lim.meeting_minutes??0} onChange={e=>setForm({...form,lim:{...form.lim,meeting_minutes:e.target.value}})}/><small>0 = no limit</small></label>
      <label>Docs and whiteboards a day<input type="number" min={0} max={100000} value={form.lim.docs_per_day??0} onChange={e=>setForm({...form,lim:{...form.lim,docs_per_day:e.target.value}})}/><small>0 = no limit. Used today: {form.orig?.limits?.docs_used_today??0}</small></label>
      <label>AI minutes summaries a month<input type="number" min={0} max={100000} value={form.lim.ai_per_month??0} onChange={e=>setForm({...form,lim:{...form.lim,ai_per_month:e.target.value}})}/><small>0 = no limit. Used this month: {form.orig?.limits?.ai_used_month??0}</small></label>
@@ -85,7 +87,7 @@ export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:
   </form>}
   {view==='permissions'&&users&&users.length>0&&<section className="panel plantable-panel"><div className="panelhead"><h2>Plans, payments and permissions</h2><span className="muted small">A special permission overrides the normal permission of the plan.</span></div>
    <div className="plantable-wrap"><table className="plantable"><thead><tr><th>User</th><th>Plan</th><th>Start</th><th>End</th><th>Payment made</th><th>Paid on</th><th>Amount</th><th>Call time</th><th>Recording</th><th>Docs and whiteboard a day</th><th>AI summaries a month</th><th>Booking pages</th><th>Storage</th><th>Meeting hours a month</th><th>Calls</th><th>Commbox</th><th>Special permission</th><th></th></tr></thead><tbody>
-   {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={calls:'Calls',ai_per_month:'AI summaries',booking_pages:'Booking pages',commbox:'Commbox',open_room:'Open room',recording:'Recording',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
+   {users.map(u=>{const p=u.plan_info||{},L=u.limits||{},adm=u.role==='admin',cu=L.custom||{},ks=Object.keys(cu);const day=(d:any)=>d?new Date(String(d).length<=10?d+'T00:00:00':d).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'\u2013';const lab:any={calls:'Calls',ai_per_month:'AI summaries',booking_pages:'Booking pages',commbox:'Commbox',open_room:'Open room',recording:'Recording',podcast:'Podcast',cloud_podcast:'Cloud podcast',meeting_minutes:'Call time',docs_per_day:'Docs a day',pdf_pages:'PDF pages'};
     return <tr key={u.id}><td><b>{u.display_name||u.email}</b><small>{u.email}</small></td>
      <td><span className={`badge ${p.plan&&p.plan!=='basic'?'green':''}`}>{adm?'Administrator':p.plan_name||'Basic'}</span></td>
      <td>{p.plan==='basic'||adm?'\u2013':day(p.start)}</td><td>{p.plan==='basic'||adm?'\u2013':day(p.end)}</td>

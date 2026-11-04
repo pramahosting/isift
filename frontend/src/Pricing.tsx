@@ -65,6 +65,7 @@ function featuresFor(id:PlanId,pm:PM|null,live:ReturnType<typeof useLivePlans>):
     if(L.multi_share)f.push('Several people share their screen or window at once, with a pointer and pen you can hand over');
     if(L.watch_together)f.push('Watch a YouTube video together, in sync on every device, and share a browser tab with its sound');
     if(L.recording)f.push(L.cloud_recording?'Meeting recording, stored in the cloud with a download link emailed to the host':'Meeting recording, saved on the host\u2019s own computer when the meeting ends');
+    if(L.podcast&&has({module:'podcast'}))f.push(L.cloud_podcast?'HD podcast recording: studio-quality sound, up to 4K video and a track for every microphone. Keep it on your computer or in the cloud':'HD podcast recording: studio-quality sound, up to 4K video and a track for every microphone, always saved on your own computer');
     if(L.open_room)f.push('Open room: a meeting link that is always open');
     if(L.calls)f.push('Call other iSift users: ring them, they accept, you are in a private room');else if(id==='basic')f.push('Receive calls from other iSift users');
     if(L.webinars&&has({module:'webinars'}))f.push('Webinars: registration, panelists, private Q&A, polls and reports');
@@ -96,6 +97,8 @@ function compareRows(pm:PM|null,live:ReturnType<typeof useLivePlans>):[string,st
     r('Several people sharing at once, pointer and pen',(_i,L)=>yn(!!L.multi_share)),
     r('Watch a video together',(_i,L)=>yn(!!L.watch_together)),
     r('Recording',(_i,_L,T)=>T.recording),
+    ...mod('HD podcast recording (up to 4K, a track per microphone)','podcast',L=>!!L.podcast),
+    ...(pm.modules.find(y=>y.id==='podcast'&&!y.enabled)?[]:[r('Podcast saved on your computer or in the cloud',(_i,L)=>L.podcast?(L.cloud_podcast?'Your choice':'Your computer only'):'No')]),
     ['Waiting room, lock meeting, co-hosts','Basic','Full','Full'],
     r('Open room',(_i,L)=>yn(!!L.open_room)),
     r('Call other iSift users',(_i,L)=>yn(!!L.calls)),

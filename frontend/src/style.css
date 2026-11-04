@@ -2304,3 +2304,33 @@ html,body{max-width:100%;overflow-x:hidden}
 .ind-float.f1{bottom:-16px;left:-14px}
 
 .ind-float.f2{top:-14px;right:-10px}
+
+/* Podcast Studio */
+.pod{display:flex;flex-direction:column;gap:16px;max-width:1100px}.pod .panel{padding:22px}
+.pod-head{display:flex;gap:14px;align-items:center}.pod-head h2{margin:0 0 2px;font:800 20px Manrope,'Segoe UI',sans-serif}.pod-head p{margin:0}
+.pod-ic{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#1a8f6a,#2a6fd6);color:#fff;flex:none}
+.pod-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.pod-badges span{background:#eef6f3;border:1px solid #cfe3dc;color:#14614a;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:700}
+.pod-err{margin:0}.pod h3{margin:0 0 10px;font:800 17px Manrope,sans-serif}.pod h4{margin:16px 0 8px}
+.pod-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:28px}.pod-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.pod label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#566872}.pod label.pod-check{flex-direction:row;align-items:flex-start;gap:8px;color:#314653}
+.pod label input[type=text],.pod label input:not([type]),.pod select{width:100%}.pod-check input{margin-top:3px;flex:none}
+.pod fieldset{border:1px solid #dfe7ea;border-radius:12px;padding:8px 12px;margin:0;display:flex;flex-direction:column;gap:6px}.pod legend{font-size:13px;color:#566872;padding:0 6px}
+.pod-preview{position:relative;aspect-ratio:16/9;background:#0f2431;border-radius:14px;overflow:hidden;display:grid;place-items:center}.pod-preview video{width:100%;height:100%;object-fit:contain;background:#000}
+.pod-novideo{display:flex;flex-direction:column;align-items:center;gap:6px;color:#8fb2c4}
+.pod-rec{position:absolute;top:10px;left:10px;display:inline-flex;gap:6px;align-items:center;background:rgba(0,0,0,.65);color:#fff;border-radius:999px;padding:4px 10px;font:700 12px system-ui}.pod-rec i{width:9px;height:9px;border-radius:50%;background:#e5484d;animation:podpulse 1.2s infinite}
+@keyframes podpulse{50%{opacity:.35}}
+.pod-meters{display:flex;flex-direction:column;gap:6px}.pod-meters small{color:#566872}.pod-meter{height:8px;background:#e6edf0;border-radius:6px;overflow:hidden}.pod-meter u{display:block;height:100%;background:linear-gradient(90deg,#1a8f6a,#9bd13f);border-radius:6px;transition:width .08s}.pod-meter u.hot{background:#e5484d}
+.pod-ctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}.pod-recbtn{display:inline-flex;gap:8px;align-items:center;background:#d83b3b!important}.pod-recbtn i{width:12px;height:12px;border-radius:50%;background:#fff}
+.pod-dest{flex-direction:row!important;align-items:center;gap:12px!important;border:1.5px solid #dfe7ea;border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer;color:#193348!important}.pod-dest.on{border-color:#1a8f6a;background:#f2faf7}.pod-dest.off{opacity:.6;cursor:not-allowed}
+.pod-dest span{display:flex;flex-direction:column;gap:2px}.pod-dest small{color:#566872;font-size:12.5px}.pod-dest input{flex:none}
+.pod-prog{position:relative;height:24px;background:#e6edf0;border-radius:12px;overflow:hidden;margin:10px 0}.pod-prog u{position:absolute;inset:0 auto 0 0;background:#1a8f6a;opacity:.35}.pod-prog span{position:relative;font-size:12px;line-height:24px;padding-left:10px}
+.pod-ok{display:flex;gap:6px;align-items:center;color:#14614a;font-weight:700}
+.pod-item{border-top:1px solid #eef2f4;padding:12px 0}.pod-item-h{display:flex;gap:12px;align-items:center;margin-bottom:8px}.pod-item-h b{flex:1}.pod-tracks{display:flex;flex-wrap:wrap;gap:8px}.pod-tracks button{display:inline-flex;gap:6px;align-items:center}
+.pod-note{margin:0}
+@media(max-width:800px){.pod-grid{grid-template-columns:1fr}}
+
+/* Real product screenshots on industry pages */
+.shot{display:block;width:100%;height:auto;background:#fff}
+.ind-win-body .shot{border-radius:0}
+.ind-block-art{padding:18px;min-height:0;align-content:center}
+.ind-block-art .shot{border-radius:14px;box-shadow:0 18px 44px rgba(10,30,45,.32);border:1px solid rgba(255,255,255,.5)}
