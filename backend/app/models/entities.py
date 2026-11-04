@@ -184,6 +184,30 @@ class RoomRecording(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class PodcastRecording(Base):
+    """An HD podcast recording kept in the cloud (Standard and Business). Basic recordings never come here: they stay on the person's own computer.
+    One session is a group: the mixed master plus any separate tracks (one per microphone), all sharing `group_id`."""
+    __tablename__ = "podcast_recordings"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    group_id: Mapped[str] = mapped_column(String(36), index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    label: Mapped[str] = mapped_column(String(80), default="Master")
+    is_master: Mapped[bool] = mapped_column(Boolean, default=True)
+    has_video: Mapped[bool] = mapped_column(Boolean, default=False)
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    duration_s: Mapped[int] = mapped_column(Integer, default=0)
+    audio_kbps: Mapped[int] = mapped_column(Integer, default=0)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    path: Mapped[str] = mapped_column(Text, default="")
+    storage: Mapped[str] = mapped_column(String(12), default="file")            # r2 | database | file
+    object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mimetype: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    data: Mapped[bytes | None] = deferred(mapped_column(LargeBinary, nullable=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class RoomRecordingConsent(Base):
     """Who was asked to consent to being recorded, and what they chose (Zoom's "Recording Consent" report)."""
     __tablename__ = "room_recording_consents"

@@ -71,7 +71,9 @@ app.include_router(marketing_router)
 from app.api.routes_push import router as push_router
 app.include_router(push_router)
 from app.api.routes_media import router as media_router
+from app.api.routes_podcast import router as podcast_router
 app.include_router(media_router)
+app.include_router(podcast_router)
 
 @app.on_event("startup")
 async def load_saved_settings():

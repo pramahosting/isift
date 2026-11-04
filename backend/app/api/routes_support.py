@@ -27,6 +27,7 @@ VIDEO MEETINGS: start an instant meeting or join with a link or meeting ID. Gues
 a passcode or signed-in-only access, co-hosts, mute people, switch off video, remove people, and decide whether participants may unmute or start video.
 Screen sharing, group and private chat, and inviting people by email are included. Larger meetings can be split into discussion groups:
 people in a group only see, hear and chat with their group, the host can move people, send announcements and bring everyone back; groups of 10 or fewer can use a boardroom table view.
+PODCAST STUDIO: a separate HD recorder under Meetings > Podcast Studio. It records studio-quality sound (48 kHz stereo, Opus 256 kbps or lossless 24-bit WAV) and video up to 4K at 30 fps in the browser, a mixed master plus a separate track for every microphone. On Basic the files are always saved on the person's own computer and nothing is sent to iSift. On Standard and Business the person chooses, for each recording, to save it on their computer or in the cloud (original quality, counts toward storage). Podcast Studio records the microphones and camera on the host's own computer; remote guests in a meeting are not recorded as separate tracks.
 RECORDING: the host can record. Everyone sees a clear Recording banner. When the meeting ends, a Basic host is offered the recording to save on their own computer (it is not stored by iSift). On paid plans the recording is stored in the cloud and a download link is emailed to the host.
 
 WEBINARS (paid plans): schedule a webinar under Meetings, Webinars. People register on a page (with your own questions, optional approval), panelists speak like the host, attendees are view-only (the server keeps their mic, camera and screen off),
@@ -99,7 +100,7 @@ def feature_answer(facts: dict, text: str):
 # fixed answers, used when Groq is not set up or does not answer
 FAQ = [
     (("price", "pricing", "cost", "how much", "plan", "free", "basic", "individual", "business", "upgrade"),
-     "iSift has three plans: Basic is free for ever (browser meetings with chat, screen sharing and recording saved on the host's computer), Standard adds Commbox, unlimited AI minutes and briefings, booking pages, cloud recording and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows the current plans and prices in your currency, and you can cancel any time."),
+     "iSift has three plans: Basic is free for ever (browser meetings with chat, screen sharing, recording and HD Podcast Studio recording saved on the host's computer), Standard adds Commbox, unlimited AI minutes and briefings, booking pages, cloud recording, the choice to keep podcasts in the cloud and full host controls, and Business adds a company account, single sign-on and audit controls. The Pricing page shows the current plans and prices in your currency, and you can cancel any time."),
     (("record", "recording"),
      "The host can record a meeting and everyone sees a clear Recording banner. On Basic, the recording is saved to the host's own computer when the meeting ends. On paid plans it is stored in the cloud and a download link is emailed to the host."),
     (("group", "breakout", "discussion"),

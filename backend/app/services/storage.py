@@ -51,12 +51,13 @@ def transcode_mp4(src: Path, dst: Path, timeout: int = 600) -> bool:
 def _put(path: Path, key: str, mime: str):
     client().upload_file(str(path), settings.r2_bucket, key, ExtraArgs={"ContentType": mime})
 
-async def store_file(path: Path, owner, rid: str, has_video: bool) -> dict:
+async def store_file(path: Path, owner, rid: str, has_video: bool, keep_original: bool = False, mime_in: str | None = None) -> dict:
     """Move one recording file to its permanent home. Returns fields for RoomRecording."""
     size = path.stat().st_size
     if configured():
         out, mime, ext = path, ("video/webm" if has_video else "audio/webm"), "webm"
-        if has_video:
+        if mime_in: out, mime, ext = path, mime_in, ("wav" if mime_in == "audio/wav" else "webm")
+        if has_video and not keep_original:             # podcast recordings keep their original quality: no re-encode
             mp4 = path.with_suffix(".mp4")
             if await asyncio.to_thread(transcode_mp4, path, mp4): out, mime, ext = mp4, "video/mp4", "mp4"
         key = make_key(owner, rid, ext)
@@ -67,8 +68,8 @@ async def store_file(path: Path, owner, rid: str, has_video: bool) -> dict:
         return {"storage": "r2", "object_key": key, "mimetype": mime, "size_bytes": size, "path": "", "data": None}
     if size <= DB_BLOB_LIMIT:
         data = path.read_bytes(); path.unlink(missing_ok=True)
-        return {"storage": "database", "object_key": None, "mimetype": "video/webm" if has_video else "audio/webm", "size_bytes": size, "path": "", "data": data}
-    return {"storage": "file", "object_key": None, "mimetype": "video/webm" if has_video else "audio/webm", "size_bytes": size, "path": str(path), "data": None}
+        return {"storage": "database", "object_key": None, "mimetype": mime_in or ("video/webm" if has_video else "audio/webm"), "size_bytes": size, "path": "", "data": data}
+    return {"storage": "file", "object_key": None, "mimetype": mime_in or ("video/webm" if has_video else "audio/webm"), "size_bytes": size, "path": str(path), "data": None}
 
 def presigned_url(key: str, filename: str, mime: str, seconds: int = 900) -> str:
     safe = filename.replace('"', "")

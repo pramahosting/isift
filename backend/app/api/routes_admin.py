@@ -224,6 +224,8 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db: As
     rids = [x for (x,) in (await db.execute(select(Room.id).where(Room.host_id == u.id))).all()]
     if rids: await db.execute(delete(RoomRecording).where(RoomRecording.room_id.in_(rids)))
     await db.execute(delete(Room).where(Room.host_id == u.id))
+    from app.models import PodcastRecording
+    await db.execute(delete(PodcastRecording).where(PodcastRecording.owner_id == u.id))
     nids = [x for (x,) in (await db.execute(select(Note.id).where(Note.owner_id == u.id))).all()]
     if nids:
         await db.execute(delete(NoteShare).where(NoteShare.note_id.in_(nids))); await db.execute(delete(NoteComment).where(NoteComment.note_id.in_(nids)))
