@@ -19,7 +19,7 @@ The host can use their own studio picture. In the solo recorder, Studio backgrou
 
 ## Finding it, and remembered setup
 
-Podcast Studio is a tab under Meetings, next to Booking and Webinars. Recordings, Transcripts, Minutes, Action items and Briefings sit in a second row under Meetings. The page opens with two choices: **Record on this computer** (you and people in the same room) and **Interview guests online** (a studio session with a link). Your microphones, camera, quality and studio background are remembered on this browser and reused next time until you change them. A Reset link clears them.
+Podcast Studio is a tab under Meetings, next to Booking and Webinars. Recordings, Transcripts, Minutes, Action items and Briefings sit in a second row under Meetings. Podcast Studio has four tabs: **Record on this computer** (title, preview and the Record button), **Interview guests online** (starts a studio session with a link), **Podcast settings** (microphones, camera, studio background, video quality and audio format) and **My cloud podcasts** (recordings kept in the cloud). Your settings are remembered on this browser and reused next time until you change them; a Reset link clears them. A recording keeps running if you switch tabs, and a red dot shows on the Record tab.
 
 ## Editing the files
 
