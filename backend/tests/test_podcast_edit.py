@@ -227,3 +227,18 @@ def test_check_accepts_what_google_says_for_a_good_client(client, env, google, m
         fake(good); assert asyncio.run(yt.check_client("a.apps.googleusercontent.com", "s"))[0] is True
     fake("invalid_client"); assert asyncio.run(yt.check_client("a", "s"))[0] is False
     fake("weird", "something odd"); ok, msg = asyncio.run(yt.check_client("a", "s")); assert not ok and "something odd" in msg
+
+def test_link_is_emailed_after_posting(client, env, media, google, monkeypatch):
+    from app.services import webinars
+    sent = []
+    async def fake(to, subject, body, ics=None): sent.append((to, subject, body)); return True
+    monkeypatch.setattr(webinars, "send_mail", fake)
+    g = upload(client, env, media / "main.webm", "Episode 7")
+    state = connect(client, env, google); client.get("/api/v1/podcasts/youtube/callback", params={"code": "abc", "state": state})
+    j = wait(client, env, client.post(f"/api/v1/podcasts/{g['group_id']}/youtube", headers=env, json={"privacy": "unlisted"}).json()["job_id"]); assert j["status"] == "done", j
+    assert len(sent) == 1 and "https://www.youtube.com/watch?v=vid123" in sent[0][2] and "Episode 7" in sent[0][1] and "unlisted" in sent[0][2]
+    assert sent[0][0] and "@" in sent[0][0] and j.get("emailed") is True
+    # a mail server that is down must not undo a good post
+    async def boom(*a, **k): raise RuntimeError("smtp down")
+    monkeypatch.setattr(webinars, "send_mail", boom); google.uploaded = 0
+    j2 = wait(client, env, client.post(f"/api/v1/podcasts/{g['group_id']}/youtube", headers=env, json={}).json()["job_id"]); assert j2["status"] == "done" and not j2.get("emailed"), j2
