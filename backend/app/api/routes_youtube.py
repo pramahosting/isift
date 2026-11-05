@@ -70,11 +70,11 @@ async def admin_setup(origin: str = "", admin: User = Depends(require_admin), db
             "api_link": "https://console.cloud.google.com/apis/library/youtube.googleapis.com"}
 
 @router.post("/admin/youtube-setup/check")
-async def admin_check(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+async def admin_check(origin: str = "", admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     await rs.apply_overrides(db)
     cid, sec = yt.platform_client()
     if not (cid and sec): return {"ok": False, "message": "No Google Client ID and secret are saved yet. Save the Google sign-in client (Email and calendar) or a YouTube client here, then check again."}
-    ok, msg = await yt.check_client(cid, sec); return {"ok": ok, "message": msg}
+    ok, msg = await yt.check_client(cid, sec, (_origin(origin) if origin else settings.frontend_origin.rstrip("/")) + "/api/v1/podcasts/youtube/callback"); return {"ok": ok, "message": msg}
 
 @router.put("/youtube/credentials")
 async def save_credentials(body: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

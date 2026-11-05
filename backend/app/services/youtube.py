@@ -37,17 +37,19 @@ def platform_source() -> str:
     if settings.youtube_oauth_client_id and settings.youtube_oauth_client_secret: return "youtube"
     return "google" if settings.google_oauth_client_id and settings.google_oauth_client_secret else "none"
 
-async def check_client(client_id: str, client_secret: str) -> tuple[bool, str]:
+async def check_client(client_id: str, client_secret: str, redirect: str = "https://example.invalid/cb") -> tuple[bool, str]:
     """Is this Client ID and secret accepted by Google? A made-up sign-in code is sent: a good client answers "invalid_grant", a wrong one "invalid_client"."""
     try:
         async with http(20) as c:
-            r = await c.post(TOKEN, data={"grant_type": "authorization_code", "code": "isift-check", "redirect_uri": "https://example.invalid/cb", "client_id": client_id, "client_secret": client_secret})
+            r = await c.post(TOKEN, data={"grant_type": "authorization_code", "code": "isift-check", "redirect_uri": redirect, "client_id": client_id, "client_secret": client_secret})
     except httpx.HTTPError as exc: return False, f"Could not reach Google ({type(exc).__name__})."
-    try: e = (r.json() or {}).get("error", "")
-    except Exception: e = ""
-    if e in ("invalid_grant", "redirect_uri_mismatch"): return True, "Google accepts this Client ID and secret."
+    try: j = r.json() or {}
+    except Exception: j = {}
+    e = j.get("error", ""); why = str(j.get("error_description") or "")[:160]
+    # Google checks the client first, so any answer about the made-up code (or the request itself) means the ID and secret were accepted
+    if e in ("invalid_grant", "redirect_uri_mismatch", "invalid_request"): return True, "Google accepts this Client ID and secret."
     if e == "invalid_client": return False, "Google does not recognise this Client ID and secret. Check them in Google Cloud > APIs & Services > Credentials."
-    return False, f"Google answered unexpectedly ({r.status_code} {e or 'no reason given'})."
+    return False, f"Google answered unexpectedly ({r.status_code} {e or 'no reason given'}{': ' + why if why else ''})."
 
 def pkce_pair() -> tuple[str, str]:
     import base64, secrets
