@@ -59,7 +59,9 @@ export function PodcastStudio({request,token,notify}:{request:(p:string,o?:any)=
       let s:MediaStream;try{s=await navigator.mediaDevices.getUserMedia({audio:true,video:true})}catch{s=await navigator.mediaDevices.getUserMedia({audio:true})}
       s.getTracks().forEach(t=>t.stop());
       const d=await navigator.mediaDevices.enumerateDevices();
-      const m=d.filter(x=>x.kind==='audioinput'&&x.deviceId!=='communications').map((x,i)=>({id:x.deviceId,label:x.label||`Microphone ${i+1}`}));
+      const ai=d.filter(x=>x.kind==='audioinput'&&x.deviceId!=='communications');
+      // Windows and Chrome list the system's default microphone twice ("Default - X" and "X"): show it once, or one recording makes two identical tracks
+      const m=ai.filter(x=>!(x.deviceId==='default'&&ai.some(y=>y!==x&&y.deviceId!=='default'&&(y.groupId&&y.groupId===x.groupId||x.label.replace(/^default\s*-\s*/i,'')===y.label)))).map((x,i)=>({id:x.deviceId,label:x.label||`Microphone ${i+1}`}));
       const cs=d.filter(x=>x.kind==='videoinput').map((x,i)=>({id:x.deviceId,label:x.label||`Camera ${i+1}`}));
       setMics(m);setCams(cs);
       // reuse the equipment chosen last time (matched by id, or by name if the browser changed the ids)
