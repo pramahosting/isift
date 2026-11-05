@@ -8,7 +8,7 @@ export const makeRequest=(token:string):Req=>async(path,options:any={})=>{
   let r:Response;try{r=await fetch(API+path,{...options,headers:{...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),Authorization:`Bearer ${token}`,...(options.headers||{})}})}catch{throw new Error('Cannot reach the iSift server. Check that it is still running, then try again.')}
   let d:any={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||`Request failed (${r.status})`);return d};
 
-export type Job={id:string;status:'working'|'done'|'error';percent:number;message:string;url?:string;group_id?:string;duration?:number};
+export type Job={id:string;status:'working'|'done'|'error';percent:number;message:string;url?:string;emailed?:boolean;group_id?:string;duration?:number};
 /** Follows a long task (an edit or a YouTube upload) until it ends. */
 export async function followJob(request:Req,id:string,on:(j:Job)=>void):Promise<Job>{
   for(;;){const j:Job=await request(`/podcasts/jobs/${id}`);on(j);if(j.status!=='working')return j;await new Promise(r=>setTimeout(r,1200))}
