@@ -75,7 +75,7 @@ export function YouTubeSettings({request,cloudOk}:{request:Req;cloudOk:boolean})
 }
 
 /** The one-click post. Opens a small box with the title, description and privacy already filled in; Post sends it. */
-export function PostToYouTube({request,groupId,title,onClose,openSettings}:{request:Req;groupId:string;title:string;onClose:()=>void;openSettings?:()=>void}){
+export function PostToYouTube({request,groupId,title,onClose,openSettings,localFile,token}:{request:Req;groupId?:string;title:string;onClose:()=>void;openSettings?:()=>void;localFile?:{blob:Blob;name:string;hasVideo:boolean};token?:string}){
   const [st,setSt]=useState<Status|null>(null),[t,setT]=useState(title||'Podcast'),[desc,setDesc]=useState(''),[priv,setPriv]=useState<'private'|'unlisted'|'public'>('private'),[tags,setTags]=useState('');
   const [job,setJob]=useState<Job|null>(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false);const alive=useRef(true);
   useEffect(()=>{alive.current=true;request('/podcasts/youtube').then((s:Status)=>{if(alive.current){setSt(s);setPriv(s.default_privacy)}}).catch((e:any)=>setErr(e.message));return()=>{alive.current=false}},[request]);
@@ -87,7 +87,14 @@ export function PostToYouTube({request,groupId,title,onClose,openSettings}:{requ
         if(!c.ok){setErr(c.message||'Google sign-in did not finish.');return}
         const s2:Status=await request('/podcasts/youtube');if(alive.current)setSt(s2);
       }
-      const r=await request(`/podcasts/${groupId}/youtube`,{method:'POST',body:JSON.stringify({title:t,description:desc,privacy:priv,tags:tags.split(',').map(x=>x.trim()).filter(Boolean)})});
+      let r:{job_id:string};
+      if(localFile){                                           // still on this computer: send it for posting only, nothing is kept on iSift
+        const f=new FormData();f.append('file',localFile.blob,localFile.name);f.append('title',t);f.append('description',desc);f.append('privacy',priv);f.append('tags',tags);f.append('has_video',localFile.hasVideo?'1':'0');
+        setJob({id:'',status:'working',percent:0,message:'Sending to iSift…'});
+        r=await new Promise<{job_id:string}>((ok,no)=>{const x=new XMLHttpRequest();x.open('POST',API+'/podcasts/youtube/from-computer');x.setRequestHeader('Authorization',`Bearer ${token}`);
+          x.upload.onprogress=e=>{if(e.lengthComputable&&alive.current)setJob({id:'',status:'working',percent:Math.round(e.loaded/e.total*100),message:'Sending to iSift…'})};
+          x.onload=()=>{let j:any={};try{j=JSON.parse(x.responseText)}catch{}x.status<300?ok(j):no(new Error(j.detail||`The upload failed (${x.status}).`))};x.onerror=()=>no(new Error('Cannot reach the iSift server.'));x.send(f)});
+      }else r=await request(`/podcasts/${groupId}/youtube`,{method:'POST',body:JSON.stringify({title:t,description:desc,privacy:priv,tags:tags.split(',').map(x=>x.trim()).filter(Boolean)})});
       setJob({id:r.job_id,status:'working',percent:0,message:'Starting…'});
       const j=await followJob(request,r.job_id,x=>alive.current&&setJob(x));if(alive.current)setJob(j);
     }catch(e:any){setErr(e.message)}finally{setBusy(false)}
