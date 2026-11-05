@@ -184,12 +184,25 @@ def _picture_for_sound(src: Path, dst: Path) -> bool:
     except Exception:
         dst.unlink(missing_ok=True); return False
 
+async def _tell_posted(name: str, email: str, meta: dict, url: str) -> bool:
+    """Email the person the link to the video on YouTube. Never raises: a failed email must not undo a good post."""
+    if not email: return False
+    from app.services import webinars
+    sn = meta.get("snippet", {}); title = sn.get("title") or "your podcast"; priv = (meta.get("status") or {}).get("privacyStatus", "private")
+    note = {"private": "It is private for now. To make it public, open YouTube Studio > Content, click the video, and change Visibility.",
+            "unlisted": "It is unlisted: anyone with the link can watch it, but it does not appear in search."}.get(priv, "It is public.")
+    body = (f"Hi {name or 'there'},\n\nYour podcast \"{title}\" has been posted to YouTube.\n\nWatch it here: {url}\n\n{note}\n"
+            "YouTube can take a few minutes to finish processing before the best quality is available.\n\n— iSift")
+    try: return bool(await webinars.send_mail(email, f"Posted to YouTube: {title}"[:150], body))
+    except Exception: return False
+
 async def _run_publish(jid: str, uid: str, rid: str, meta: dict) -> None:
     from app.core.db import SessionLocal
     made = None
     try:
         async with SessionLocal() as db:
             rec = await db.get(PodcastRecording, rid); c = await _conn(db, uid); await rs.apply_overrides(db)
+            owner = await db.get(User, uid); who = ((owner.display_name or "") if owner else "", (owner.email or "") if owner else "")
         cid, sec, _ = _client(c)
         await podwork.job_set(jid, message="Getting the video ready…", percent=1)
         path = await podwork.local_copy(rec); mime = rec.mimetype or "video/webm"
@@ -202,8 +215,11 @@ async def _run_publish(jid: str, uid: str, rid: str, meta: dict) -> None:
         await podwork.job_set(jid, message="Uploading to YouTube…")
         async def prog(p: int): await podwork.job_set(jid, percent=p)                 # awaited, so it can never land after the "done" note
         res = await yt.upload(token, path, meta, mime, on_progress=prog)
-        await podwork.job_set(jid, status="done", percent=100, url=res["url"], video_id=res["id"],
-                              message="Posted to YouTube." + (" It is private until you make it public in YouTube Studio." if meta["status"]["privacyStatus"] == "private" else ""))
+        await podwork.job_set(jid, message="Posted. Emailing you the link…", percent=100, url=res["url"], video_id=res["id"])
+        try: emailed = await asyncio.wait_for(_tell_posted(who[0], who[1], meta, res["url"]), 25)         # never keeps the person waiting long
+        except Exception: emailed = False
+        await podwork.job_set(jid, status="done", percent=100, url=res["url"], video_id=res["id"], emailed=emailed,
+                              message="Posted to YouTube." + (" We emailed you the link." if emailed else "") + (" It is private until you make it public in YouTube Studio." if meta["status"]["privacyStatus"] == "private" else ""))
     except yt.YouTubeError as exc:
         await podwork.job_set(jid, status="error", message=str(exc))
     except Exception as exc:
