@@ -15,7 +15,7 @@ import asyncio, html, json, shutil, subprocess, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -156,6 +156,36 @@ async def disconnect(user: User = Depends(principal), db: AsyncSession = Depends
     db.add(AuditLog(actor=user.email, action="youtube.disconnected", resource_type="podcast", safe_metadata={})); await db.commit()
     return {"ok": True}
 
+MAX_DIRECT = 4 * 1024 ** 3
+
+@router.post("/youtube/from-computer")
+async def publish_from_computer(file: UploadFile = File(...), title: str = Form("Podcast"), description: str = Form(""), privacy: str = Form(""), tags: str = Form(""),
+                                has_video: str = Form("1"), user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
+    """Post a recording that is still on the person's own computer. The file is passed on to YouTube and then deleted: nothing is kept in iSift."""
+    lim = await _gate(db, user); await rs.apply_overrides(db)
+    if not lim.get("youtube_post"): raise HTTPException(403, "Posting to YouTube is part of the paid plans (Standard and Business). Upgrade to post your podcasts with one click.")
+    c = await _conn(db, user.id)
+    if not c.get("refresh_token"): raise HTTPException(409, "YouTube is not connected yet. Connect your channel first.")
+    podwork.purge()
+    name = (file.content_type or "").lower(); wav = "wav" in name or (file.filename or "").lower().endswith(".wav")
+    ext = "wav" if wav else "mp4" if "mp4" in name else "webm"
+    dst = podwork.asset_dir(user.id) / f"yt-{uuid.uuid4().hex[:12]}.{ext}"; size = 0
+    try:
+        with open(dst, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_DIRECT: raise HTTPException(413, "This recording is larger than 4 GB, which is too big to post from here.")
+                f.write(chunk)
+        if size == 0: raise HTTPException(422, "The recording was empty.")
+    except BaseException:
+        dst.unlink(missing_ok=True); raise
+    meta = yt.clean_meta(title or "Podcast", description, privacy or c.get("default_privacy") or "private", [t.strip() for t in tags.split(",") if t.strip()])
+    jid = await podwork.job_new(db, user.id, "youtube", title=meta["snippet"]["title"], privacy=meta["status"]["privacyStatus"])
+    db.add(AuditLog(actor=user.email, action="youtube.post", resource_type="podcast", safe_metadata={"privacy": meta["status"]["privacyStatus"], "from": "computer"})); await db.commit()
+    mime = {"wav": "audio/wav", "mp4": "video/mp4"}.get(ext, "video/webm")
+    podwork.spawn(jid, _run_publish(jid, user.id, "", meta, local=dst, local_mime=mime, local_video=has_video not in ("0", "false", "")))
+    return {"job_id": jid}
+
 @router.post("/{group_id}/youtube")
 async def publish(group_id: str, body: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):
     lim = await _gate(db, user); await rs.apply_overrides(db)
@@ -196,17 +226,18 @@ async def _tell_posted(name: str, email: str, meta: dict, url: str) -> bool:
     try: return bool(await webinars.send_mail(email, f"Posted to YouTube: {title}"[:150], body))
     except Exception: return False
 
-async def _run_publish(jid: str, uid: str, rid: str, meta: dict) -> None:
+async def _run_publish(jid: str, uid: str, rid: str, meta: dict, local: Path | None = None, local_mime: str = "", local_video: bool = True) -> None:
     from app.core.db import SessionLocal
     made = None
     try:
         async with SessionLocal() as db:
-            rec = await db.get(PodcastRecording, rid); c = await _conn(db, uid); await rs.apply_overrides(db)
+            rec = await db.get(PodcastRecording, rid) if rid else None; c = await _conn(db, uid); await rs.apply_overrides(db)
             owner = await db.get(User, uid); who = ((owner.display_name or "") if owner else "", (owner.email or "") if owner else "")
         cid, sec, _ = _client(c)
         await podwork.job_set(jid, message="Getting the video ready…", percent=1)
-        path = await podwork.local_copy(rec); mime = rec.mimetype or "video/webm"
-        if not rec.has_video:
+        if local: path, mime, has_video = local, local_mime or "video/webm", local_video                    # a recording sent straight from the person's computer
+        else: path = await podwork.local_copy(rec); mime = rec.mimetype or "video/webm"; has_video = rec.has_video
+        if not has_video:
             made = path.with_name(path.stem + "-yt.mp4")
             await podwork.job_set(jid, message="Adding a picture to your sound-only podcast…")
             if not await asyncio.to_thread(_picture_for_sound, path, made): raise yt.YouTubeError("This podcast has sound only, and a picture could not be added for YouTube.")
@@ -226,3 +257,4 @@ async def _run_publish(jid: str, uid: str, rid: str, meta: dict) -> None:
         await podwork.job_set(jid, status="error", message="Posting failed: " + str(exc)[:160])
     finally:
         if made: made.unlink(missing_ok=True)
+        if local: local.unlink(missing_ok=True)                                         # nothing is kept on the server
