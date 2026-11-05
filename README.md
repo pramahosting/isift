@@ -7,14 +7,8 @@ Full implementation pack for Windows local evaluation and organization-specific 
 1. Extract the ZIP pack to a writable folder.
 2. Install Node.js 18+ and Python 3.11+ if they are not already installed.
 3. Double-click `app.cmd`. On first launch it installs the app packages, creates a local SQLite database, starts the API, worker, and frontend, and opens the browser when ready.
-4. Sign in with admin ID `admin` and password `Meeting$1`, or choose **Sign up** to create your own account (name, email, password). New accounts are regular members; only `admin` (and any email listed in `ADMIN_EMAILS`) can open Admin Console.
-5. Open Meetings and choose **Load mock data**.
 
 No Docker Desktop or database URL is needed for the local demo. First launch needs internet access to install Python and npm packages. The SQLite file and logs stay in this extracted folder. Use `app-stop.cmd` to stop the processes and `app-logs.cmd` to inspect logs. Local SQLite is for single-computer evaluation; connected deployments continue to use PostgreSQL/Neon through `DATABASE_URL` and the supplied Docker Compose deployment example.
-
-## Settings
-
-Sign in as admin and open **Admin Console**. Every integration value (Groq AI, Microsoft Entra/Graph, Power Automate, failure email) can be edited there. The current value is shown under each field with its source (saved here, server environment or default). Secrets are encrypted in the database and shown masked. Changes apply immediately to the API and worker, with no restart, and **Reset to default** returns a value to the `.env` setting. The database connection and auth mode stay read-only and are set in the server environment.
 
 ## Meetings: discussion groups and boardroom table
 
