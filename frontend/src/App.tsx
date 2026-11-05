@@ -365,6 +365,8 @@ const PLAN_ROWS:{k:string;label:string;bool?:boolean;hint?:string}[]=[
  {k:'cloud_recording',label:'Cloud recording (stored in the cloud, link emailed to the host)',bool:true},
  {k:'podcast',label:'HD podcast recording (Podcast Studio; Basic saves on the person\u2019s own computer)',bool:true},
  {k:'cloud_podcast',label:'Cloud podcast storage (kept in the cloud at original quality)',bool:true},
+ {k:'podcast_edit',label:'Podcast video editor (cut, join, insert a clip, voice-over, background). Needs cloud podcast storage',bool:true},
+ {k:'youtube_post',label:'Post a podcast to YouTube with one click. Needs cloud podcast storage',bool:true},
  {k:'multi_share',label:'Several people sharing at once, pointer and pen',bool:true},
  {k:'watch_together',label:'Watch a video or document together',bool:true},
  {k:'open_room',label:'Open room (always-open meeting link)',bool:true},
