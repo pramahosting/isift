@@ -82,6 +82,11 @@ export function PostToYouTube({request,groupId,title,onClose,openSettings}:{requ
   const post=async()=>{
     setErr('');setBusy(true);
     try{
+      if(st&&!st.connected){                                   // first time: Google's approval window opens, then the post carries on by itself
+        const c=await connectYouTube(request);
+        if(!c.ok){setErr(c.message||'Google sign-in did not finish.');return}
+        const s2:Status=await request('/podcasts/youtube');if(alive.current)setSt(s2);
+      }
       const r=await request(`/podcasts/${groupId}/youtube`,{method:'POST',body:JSON.stringify({title:t,description:desc,privacy:priv,tags:tags.split(',').map(x=>x.trim()).filter(Boolean)})});
       setJob({id:r.job_id,status:'working',percent:0,message:'Starting…'});
       const j=await followJob(request,r.job_id,x=>alive.current&&setJob(x));if(alive.current)setJob(j);
@@ -92,15 +97,14 @@ export function PostToYouTube({request,groupId,title,onClose,openSettings}:{requ
   return <div className="pod-modal" role="dialog" aria-modal="true" aria-label="Post to YouTube"><div className="pod-modal-card">
     <button className="pod-x" onClick={onClose} aria-label="Close" disabled={working}><X size={18}/></button>
     <h3><Youtube size={18}/> Post to YouTube</h3>
-    {st&&!st.connected&&<><p className="muted">{st.can_connect?'Connect your YouTube channel once. After that, posting is one click.':'YouTube is not connected yet. Add your Google app details once in Podcast settings, then posting is one click.'}</p>
-      <div className="pod-ctl">{st.can_connect&&<button className="primary" disabled={busy} onClick={connectHere}><Youtube size={15}/> {busy?'Waiting for Google…':'Connect YouTube'}</button>}{(!st.can_connect||true)&&openSettings&&<button className="secondary" onClick={()=>{onClose();openSettings()}}>{st.can_connect?'Use my own Google app':'Open YouTube settings'}</button>}<button className="secondary" onClick={onClose}>Cancel</button></div></>}
-    {st&&st.connected&&!job&&<>
-      <p className="muted small">Posting to {st.channel||st.email||'your channel'}.</p>
+    {st&&!st.connected&&!st.can_connect&&<><p className="muted">YouTube is not connected yet. Add your Google app details once in Podcast settings, then posting is one click.</p><div className="pod-ctl">{openSettings&&<button className="primary" onClick={()=>{onClose();openSettings()}}>Open YouTube settings</button>}<button className="secondary" onClick={onClose}>Cancel</button></div></>}
+    {st&&(st.connected||st.can_connect)&&!job&&<>
+      <p className="muted small">{st.connected?`Posting to ${st.channel||st.email||'your channel'}.`:'The first time, a Google window asks you to approve access to your YouTube channel. Then the video posts by itself.'}</p>
       <label>Title<input value={t} maxLength={100} onChange={e=>setT(e.target.value)}/></label>
       <label>Description<textarea rows={4} value={desc} maxLength={5000} onChange={e=>setDesc(e.target.value)} placeholder="What is this episode about?"/></label>
       <label>Tags (separated by commas)<input value={tags} onChange={e=>setTags(e.target.value)} placeholder="podcast, interview"/></label>
       <label>Who can watch<select value={priv} onChange={e=>setPriv(e.target.value as any)}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label>
-      <div className="pod-ctl"><button className="primary" onClick={post} disabled={busy||!t.trim()}><Youtube size={15}/> Post now</button><button className="secondary" onClick={onClose}>Cancel</button></div></>}
+      <div className="pod-ctl"><button className="primary" onClick={post} disabled={busy||!t.trim()}><Youtube size={15}/> {busy&&!st.connected?'Waiting for Google…':st.connected?'Post now':'Connect and post'}</button>{!st.connected&&openSettings&&<button className="secondary" onClick={()=>{onClose();openSettings()}}>Use my own Google app</button>}<button className="secondary" onClick={onClose}>Cancel</button></div></>}
     {job&&<div className="pod-job" aria-live="polite">
       {working&&<><div className="pod-prog" role="progressbar" aria-valuenow={job.percent}><u style={{width:job.percent+'%'}}/><span>{job.message||'Working…'} {job.percent}%</span></div><small className="muted">Keep this window open until it finishes. A long video takes a few minutes.</small></>}
       {job.status==='done'&&<><p className="pod-ok"><Check size={16}/> {job.message}</p>{job.url&&<p><a href={job.url} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={12}/></a></p>}<div className="pod-ctl"><button className="primary" onClick={onClose}>Done</button></div></>}
