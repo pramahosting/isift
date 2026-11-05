@@ -15,6 +15,7 @@ Podcasters, video-show hosts, interviewers, content and audio teams.
 - **Podcast Studio** (Meetings > Podcast Studio): 48 kHz stereo audio (Opus 256 kbps or lossless 24-bit WAV), camera up to 4K at 30 fps, level meters, pause and resume.
 - Mixed master plus one separate track per microphone.
 - Save on the person's own computer or, on paid plans, in the cloud at original quality. Basic always saves locally.
+- Paid plans (Standard and Business) also get the **video editor** (cut, join, insert a clip inside a video, smooth the joins, voice-over, background change) and **one-click posting to YouTube**.
 - Booking pages for guests; guests join meetings free from a link; PDF signing for releases and sponsor agreements; AI minutes drafted for approval.
 
 ## 4. Sector requirements (verify)
@@ -25,8 +26,8 @@ Podcasters, video-show hosts, interviewers, content and audio teams.
 ## 5. Gaps to build
 - Remote guests recorded as separate local tracks (the studio records devices on the host's computer; remote guests are captured by the existing meeting recording).
 - Show-notes and chapter generation from a transcript.
-- RSS and publishing connectors (Spotify, Apple, YouTube).
-- Editing and loudness normalisation.
+- RSS and publishing connectors (Spotify, Apple). YouTube posting is built (paid plans).
+- Chapters and multi-track mixing in the editor (the editor has cut, join, insert, voice-over and loudness polish).
 
 ## 6. Starter templates
 Interview run sheet; guest release form; sponsor agreement; show notes.
