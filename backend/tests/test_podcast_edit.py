@@ -242,3 +242,23 @@ def test_link_is_emailed_after_posting(client, env, media, google, monkeypatch):
     async def boom(*a, **k): raise RuntimeError("smtp down")
     monkeypatch.setattr(webinars, "send_mail", boom); google.uploaded = 0
     j2 = wait(client, env, client.post(f"/api/v1/podcasts/{g['group_id']}/youtube", headers=env, json={}).json()["job_id"]); assert j2["status"] == "done" and not j2.get("emailed"), j2
+
+def test_post_straight_from_the_computer_keeps_nothing(client, env, media, google, monkeypatch):
+    from app.core.config import settings
+    from app.services import entitlements as ent, podwork
+    real = ent.limits
+    async def basic(*a, **k):
+        d = dict(await real(*a, **k)); d["cloud_podcast"] = False; d["youtube_post"] = True; return d
+    monkeypatch.setattr(ent, "limits", basic)                                   # a person whose plan keeps recordings on their own computer
+    state = connect(client, env, google); client.get("/api/v1/podcasts/youtube/callback", params={"code": "abc", "state": state})
+    data = (media / "main.webm").read_bytes()
+    r = client.post("/api/v1/podcasts/youtube/from-computer", headers=env, data={"title": "Local ep", "privacy": "private", "tags": "a, b", "has_video": "1"}, files={"file": ("master.webm", data, "video/webm")})
+    assert r.status_code == 200, r.text
+    j = wait(client, env, r.json()["job_id"]); assert j["status"] == "done" and j["url"].endswith("vid123"), j
+    assert google.meta["snippet"]["title"] == "Local ep" and google.meta["snippet"]["tags"] == ["a", "b"]
+    left = [p for p in (podwork.root() / "assets").rglob("yt-*")]; assert left == []                  # the temporary copy is deleted
+    ent.limits = real
+    async def free(*a, **k):
+        d = dict(await real(*a, **k)); d["youtube_post"] = False; return d
+    monkeypatch.setattr(ent, "limits", free)
+    assert client.post("/api/v1/podcasts/youtube/from-computer", headers=env, data={"title": "x"}, files={"file": ("m.webm", data, "video/webm")}).status_code == 403
