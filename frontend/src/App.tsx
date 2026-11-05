@@ -1,6 +1,7 @@
 import WebinarPublic from './WebinarPublic';
 import {WebinarsPage} from './Webinars';
 import {PodcastStudio} from './PodcastStudio';
+import {YouTubeAdmin} from './PodcastYouTube';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {UsersPage,DataImport,MachinePrompt,CalendarFinder} from './Admin';
 import {MarketingAdmin,WatchButton,PlaybookLink} from './Marketing';
@@ -270,6 +271,7 @@ function MeetingRow({m,onOpen,onGenerate,onFetchTranscript,onViewTranscript,onUp
 const ADMIN_TABS=[
  {id:'basics',label:'API and Settings',icon:Settings,desc:'Everything the app needs to start working: the setup checklist, API keys, email and calendar, and everyday defaults.',groups:[]},
  {id:'keys',hide:true,label:'API Keys',icon:Settings,desc:'',groups:['Groq AI (minutes, briefings, transcripts, email)','Where meeting recordings are kept (Cloudflare R2)','Power Automate']},
+ {id:'youtube',hide:true,label:'YouTube',icon:Settings,desc:'The Google app that lets everyone post podcasts to YouTube with one click.',groups:['YouTube (posting podcasts)']},
  {id:'other',hide:true,label:'Other Settings',icon:Settings,desc:'',groups:['Startup','Mock data']},
  {id:'mail',hide:true,label:'Email and calendar',icon:Mail,desc:'How calendars are read and how the app sends email.',groups:['Email sent by the app','Mail sign-in (Google, Microsoft, Yahoo)','isiftmail (our own email service)','Calendar']},
  {id:'users',label:'Customers',icon:Users,desc:'People, what each person may use, what each plan includes, and which modules are on.',groups:[]},
@@ -280,6 +282,7 @@ const ADMIN_TABS=[
  {id:'payments',hide:true,label:'Payments',icon:CreditCard,desc:'Square takes plan payments by card. Set it up once here; keys are stored encrypted and never reach browsers.',groups:['Payments (Square)']},
  {id:'meetings',label:'Meeting platforms',icon:Video,desc:'Teams, Zoom, Google Meet and the built-in video meetings, including the TURN relay (Cloudflare) for video and sound.',groups:['Microsoft Entra and Graph','Zoom','Google Meet','Video meetings','Webinars']}];
 const GROUP_TITLES:Record<string,[string,string]>={
+ 'YouTube (posting podcasts)':['Optional: a separate Google app for YouTube','Leave these empty to reuse the Google sign-in client from Email and calendar. Fill them in only if you want YouTube in its own Google project.'],
  'Webinars':['Webinars: how many can watch','Webinars use the built-in meeting rooms. Registration, panelists, Q&A and polls need no setup; large audiences need the video server under Video meetings.'],
  'Groq AI (minutes, briefings, transcripts, email)':['AI for minutes, briefings and sharing (Groq)','Writes minutes, action items, daily briefings, transcripts of recordings and the email for sharing a booking link. Uses the Groq model named below.'],
  'Startup':['When the app starts',''],'Mock data':['Sample data','Sample meetings and CSV import for trying the app. Turn off for real use.'],
@@ -450,8 +453,8 @@ function RunHistoryPanel({request}:any){
 function AdminSettings({settings,request,act,load,onModules,user,download,view,features,onUsers}:any){
  const [sub,setSub]=useState<'users'|'permissions'|'plans'|'modules'|'mailboxes'>('users');const [ops,setOps]=useState<'data'|'runs'|'meetings'>('meetings');
  const [t0]=useState(()=>{try{const t=sessionStorage.getItem('isift.admintab')||'';sessionStorage.removeItem('isift.admintab');return t}catch{return ''}});
- const [tab,setTab]=useState(()=>t0==='modules'||t0==='planfeatures'?'users':t0==='allmeetings'||t0==='runs'?'ops':t0==='pricing'||t0==='payments'||t0==='commercial'?'commercial':['mail','keys','other','basics'].includes(t0)||!t0?'basics':(ADMIN_TABS.some(x=>x.id===t0)?t0:'basics'));
- const [apiSub,setApiSub]=useState<'setup'|'keys'|'mail'|'other'>(()=>t0==='mail'||t0==='keys'||t0==='other'?t0:'setup');
+ const [tab,setTab]=useState(()=>t0==='modules'||t0==='planfeatures'?'users':t0==='allmeetings'||t0==='runs'?'ops':t0==='pricing'||t0==='payments'||t0==='commercial'?'commercial':['mail','keys','other','youtube','basics'].includes(t0)||!t0?'basics':(ADMIN_TABS.some(x=>x.id===t0)?t0:'basics'));
+ const [apiSub,setApiSub]=useState<'setup'|'keys'|'mail'|'youtube'|'other'>(()=>t0==='mail'||t0==='keys'||t0==='other'||t0==='youtube'?t0:'setup');
  const [comSub,setComSub]=useState<'pricing'|'payments'>(()=>t0==='payments'?'payments':'pricing');
  const gt=tab==='basics'?(apiSub==='setup'?'':apiSub):tab==='commercial'?comSub:tab;
  const [prefs,setPrefs]=useState(settings?.preferences||{});
@@ -479,9 +482,9 @@ function AdminSettings({settings,request,act,load,onModules,user,download,view,f
  const show=(f)=>f.kind==='select'?({entra:'Microsoft Entra app',key:'API key',open:'Anyone with the link',passcode:'Link and passcode',signed_in:'Signed-in people only'}[String(f.value)]||String(f.value)):f.kind==='bool'?(f.value?'On':'Off'):(f.kind==='secret'?(f.is_set?f.value:'Not set'):(f.value===''||f.value==null?'Not set':String(f.value)));
  const sourceText=(f)=>f.source==='saved'?'Saved here':f.source==='environment'?'From server environment':'Default';
  return <>
-  <div className="tabs" role="tablist" aria-label="Admin Console sections">{ADMIN_TABS.filter((t:any)=>!t.hide).map(t=>{const I=t.icon;return <button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><I size={16}/>{t.label}{(t.id==='basics'?['keys','mail','other'].reduce((n,i)=>n+tabDirty(i),0):t.id==='commercial'?tabDirty('payments'):tabDirty(t.id))>0&&<i className="dot" title="Unsaved changes"/>}</button>})}</div>
+  <div className="tabs" role="tablist" aria-label="Admin Console sections">{ADMIN_TABS.filter((t:any)=>!t.hide).map(t=>{const I=t.icon;return <button key={t.id} role="tab" aria-selected={tab===t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}><I size={16}/>{t.label}{(t.id==='basics'?['keys','mail','youtube','other'].reduce((n,i)=>n+tabDirty(i),0):t.id==='commercial'?tabDirty('payments'):tabDirty(t.id))>0&&<i className="dot" title="Unsaved changes"/>}</button>})}</div>
   <p className="tabdesc">{cur.desc}</p>
-  {tab==='basics'&&<div className="tabs subtabs" role="tablist" aria-label="API and Settings sections">{([['setup','Setup checklist'],['keys','API Keys'],['mail','Email and calendar'],['other','Other Settings']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={apiSub===id} className={apiSub===id?'on':''} onClick={()=>setApiSub(id)}>{l}{id!=='setup'&&tabDirty(id)>0&&<i className="dot" title="Unsaved changes"/>}</button>)}</div>}
+  {tab==='basics'&&<div className="tabs subtabs" role="tablist" aria-label="API and Settings sections">{([['setup','Setup checklist'],['keys','API Keys'],['mail','Email and calendar'],['youtube','YouTube'],['other','Other Settings']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={apiSub===id} className={apiSub===id?'on':''} onClick={()=>setApiSub(id)}>{l}{id!=='setup'&&tabDirty(id)>0&&<i className="dot" title="Unsaved changes"/>}</button>)}</div>}
   {tab==='commercial'&&<div className="tabs subtabs" role="tablist" aria-label="Commercial sections">{([['pricing','Pricing'],['payments','Payments']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={comSub===id} className={comSub===id?'on':''} onClick={()=>setComSub(id)}>{l}{id==='payments'&&tabDirty('payments')>0&&<i className="dot" title="Unsaved changes"/>}</button>)}</div>}
   {tab==='basics'&&apiSub==='setup'&&setup&&<section className="panel setup-list"><div className="panelhead"><h2>Setup checklist</h2><span className="muted small">{setup.ready?'Required items are done':'Required items still to do'}</span></div>{setup.items.map(i=><div key={i.key} className={`setup-row ${i.ok?'ok':i.required?'todo':'opt'}`}><b>{i.ok?'✓':i.required?'!':'–'}</b><div><span>{i.title}{!i.required&&<em> (optional)</em>}</span><small>{i.detail}</small></div></div>)}</section>}
   {gt==='other'&&<section className="panel"><div className="panelhead"><h2>Briefing and retention</h2><LockKeyhole size={18}/></div>
@@ -494,6 +497,7 @@ function AdminSettings({settings,request,act,load,onModules,user,download,view,f
    <button className="primary" onClick={savePrefs}><Save size={16}/> Save preferences</button></section>}
 
   {gt==='mail'&&<section className="panel"><div className="panelhead"><h2>Where people connect their own mail and calendar</h2><Mail size={18}/></div><p className="hint">Everyone adds their own accounts under <b>Connections</b>, so nothing here has to be set per person.</p><ul className="howto"><li><b>Gmail / Google Calendar:</b> paste the calendar’s secret iCal address.</li><li><b>Yahoo, iCloud, Fastmail:</b> connect with CalDAV and an app password.</li><li><b>Outlook.com / Microsoft 365:</b> paste the published calendar link, or turn on Microsoft 365 under Meeting platforms.</li><li><b>Calendar on a person’s own computer:</b> a website cannot read it directly. Use the calendar link above, or choose an .ics file (Chrome and Edge can keep it linked). Reading the computer’s calendar automatically only works when iSift runs on that same computer.</li></ul></section>}
+  {gt==='youtube'&&<YouTubeAdmin request={request}/>}
   {gt==='mail'&&<EmailTest request={request} email={user?.email}/>}
   {gt==='mail'&&<IsiftServerTest request={request}/>}
   {gt==='payments'&&<RefundsPanel request={request}/>}

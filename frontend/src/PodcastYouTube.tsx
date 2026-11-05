@@ -14,7 +14,19 @@ export async function followJob(request:Req,id:string,on:(j:Job)=>void):Promise<
   for(;;){const j:Job=await request(`/podcasts/jobs/${id}`);on(j);if(j.status!=='working')return j;await new Promise(r=>setTimeout(r,1200))}
 }
 
-type Status={connected:boolean;channel:string;email:string;connected_at:string;client_id:string;has_secret:boolean;can_connect:boolean;using_shared_app:boolean;redirect_uri:string;default_privacy:'private'|'unlisted'|'public'};
+/** Opens the Google sign-in window and waits for the answer. Used by the settings page and by the Post box, so a person can connect without leaving what they are doing. */
+export async function connectYouTube(request:Req):Promise<{ok:boolean;message:string}>{
+  const r=await request('/podcasts/youtube/connect',{method:'POST',body:JSON.stringify({origin:location.origin})});
+  const w=window.open(r.url,'isift-youtube','width=520,height=720,menubar=no,toolbar=no');
+  if(!w)return {ok:false,message:'The Google window was blocked. Allow pop-ups for this page and try again.'};
+  return new Promise(res=>{
+    const end=(v:{ok:boolean;message:string})=>{window.removeEventListener('message',on);clearInterval(t);res(v)};
+    const on=(e:MessageEvent)=>{if(e.origin!==location.origin||e.data?.type!=='isift-youtube')return;end({ok:!!e.data.ok,message:e.data.message||''})};
+    window.addEventListener('message',on);const t=setInterval(()=>{if(w.closed)end({ok:false,message:'The Google window was closed before sign-in finished.'})},700);
+  });
+}
+
+type Status={connected:boolean;channel:string;email:string;connected_at:string;client_id:string;has_secret:boolean;can_connect:boolean;using_shared_app:boolean;shared_ready?:boolean;redirect_uri:string;default_privacy:'private'|'unlisted'|'public'};
 
 /** Podcast settings > YouTube: the Google app details and sign-in used to post videos. */
 export function YouTubeSettings({request,cloudOk}:{request:Req;cloudOk:boolean}){
@@ -26,14 +38,7 @@ export function YouTubeSettings({request,cloudOk}:{request:Req;cloudOk:boolean})
     setErr('');setOk('');setBusy(true);
     try{
       if(cid.trim()!==st?.client_id||sec.trim())await request('/podcasts/youtube/credentials',{method:'PUT',body:JSON.stringify({client_id:cid.trim(),client_secret:sec.trim()})});
-      const r=await request('/podcasts/youtube/connect',{method:'POST',body:JSON.stringify({origin:location.origin})});
-      const w=window.open(r.url,'isift-youtube','width=520,height=720,menubar=no,toolbar=no');
-      if(!w){setErr('The Google window was blocked. Allow pop-ups for this page and try again.');return}
-      await new Promise<void>(res=>{
-        const end=()=>{window.removeEventListener('message',on);clearInterval(t);res()};
-        const on=(e:MessageEvent)=>{if(e.origin!==location.origin||e.data?.type!=='isift-youtube')return;end();if(e.data.ok)setOk(e.data.message||'YouTube connected.');else setErr(e.data.message||'Google sign-in did not finish.')};
-        window.addEventListener('message',on);const t=setInterval(()=>{if(w.closed)end()},700);
-      });
+      const r=await connectYouTube(request);if(r.ok)setOk(r.message||'YouTube connected.');else setErr(r.message||'Google sign-in did not finish.');
       setSec('');await load();
     }catch(e:any){setErr(e.message)}finally{setBusy(false)}
   };
@@ -82,11 +87,13 @@ export function PostToYouTube({request,groupId,title,onClose,openSettings}:{requ
       const j=await followJob(request,r.job_id,x=>alive.current&&setJob(x));if(alive.current)setJob(j);
     }catch(e:any){setErr(e.message)}finally{setBusy(false)}
   };
+  const connectHere=async()=>{setErr('');setBusy(true);try{const r=await connectYouTube(request);if(!r.ok)setErr(r.message||'Google sign-in did not finish.');else{const s:Status=await request('/podcasts/youtube');if(alive.current){setSt(s);setPriv(s.default_privacy)}}}catch(e:any){setErr(e.message)}finally{setBusy(false)}};
   const working=job?.status==='working';
   return <div className="pod-modal" role="dialog" aria-modal="true" aria-label="Post to YouTube"><div className="pod-modal-card">
     <button className="pod-x" onClick={onClose} aria-label="Close" disabled={working}><X size={18}/></button>
     <h3><Youtube size={18}/> Post to YouTube</h3>
-    {st&&!st.connected&&<><p className="muted">YouTube is not connected yet. Connect your channel once in Podcast settings, then this becomes a one-click button.</p><div className="pod-ctl">{openSettings&&<button className="primary" onClick={()=>{onClose();openSettings()}}>Open YouTube settings</button>}<button className="secondary" onClick={onClose}>Cancel</button></div></>}
+    {st&&!st.connected&&<><p className="muted">{st.can_connect?'Connect your YouTube channel once. After that, posting is one click.':'YouTube is not connected yet. Add your Google app details once in Podcast settings, then posting is one click.'}</p>
+      <div className="pod-ctl">{st.can_connect&&<button className="primary" disabled={busy} onClick={connectHere}><Youtube size={15}/> {busy?'Waiting for Google…':'Connect YouTube'}</button>}{(!st.can_connect||true)&&openSettings&&<button className="secondary" onClick={()=>{onClose();openSettings()}}>{st.can_connect?'Use my own Google app':'Open YouTube settings'}</button>}<button className="secondary" onClick={onClose}>Cancel</button></div></>}
     {st&&st.connected&&!job&&<>
       <p className="muted small">Posting to {st.channel||st.email||'your channel'}.</p>
       <label>Title<input value={t} maxLength={100} onChange={e=>setT(e.target.value)}/></label>
@@ -100,4 +107,31 @@ export function PostToYouTube({request,groupId,title,onClose,openSettings}:{requ
       {job.status==='error'&&<><p className="error" role="alert">{job.message}</p><div className="pod-ctl"><button className="primary" onClick={()=>setJob(null)}>Try again</button><button className="secondary" onClick={onClose}>Close</button></div></>}</div>}
     {err&&<p className="error" role="alert">{err}</p>}
   </div></div>;
+}
+
+/** Admin Console > API and Settings > YouTube: what to do in Google Cloud once, so everybody can post with one click. */
+export function YouTubeAdmin({request}:{request:Req}){
+  const [d,setD]=useState<any>(null),[chk,setChk]=useState<{ok:boolean;message:string}|null>(null),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[copied,setCopied]=useState('');
+  const load=useCallback(()=>request('/podcasts/admin/youtube-setup?origin='+encodeURIComponent(location.origin)).then(setD).catch((e:any)=>setErr(e.message)),[request]);
+  useEffect(()=>{load()},[load]);
+  const check=async()=>{setBusy(true);setChk(null);try{setChk(await request('/podcasts/admin/youtube-setup/check',{method:'POST'}))}catch(e:any){setErr(e.message)}finally{setBusy(false)}};
+  const copy=(t:string)=>{try{navigator.clipboard.writeText(t);setCopied(t);setTimeout(()=>setCopied(''),1500)}catch{}};
+  if(!d)return <section className="panel"><p className="muted">{err||'Loading…'}</p></section>;
+  const src=d.source==='youtube'?'the YouTube client saved below':d.source==='google'?'the Google sign-in client from Email and calendar':'no client yet';
+  const Row=({t,v}:{t:string;v:string})=><div className="pod-copyrow"><code>{v}</code><button type="button" className="textbtn" onClick={()=>copy(v)}><Copy size={12}/> {copied===v?'Copied':t}</button></div>;
+  return <section className="panel pod-yt-admin"><div className="panelhead"><h2><Youtube size={17}/> Post podcasts to YouTube</h2></div>
+    <p className="hint">Do this once and everyone on a paid plan can connect their channel and post with one click, without entering anything. People never give iSift a password.</p>
+    <p><b>Google app in use:</b> {src}. {d.source==='google'&&<span className="muted">The same Google app that signs people in for mail is reused, so there is nothing new to paste. To keep YouTube in its own Google project, add its Client ID and secret in the fields below.</span>}</p>
+    <ol className="pod-steps">
+      <li>Open the Google Cloud project of that Web client and <b>turn on YouTube Data API v3</b>: <a href={d.api_link} target="_blank" rel="noreferrer">open the API page <ExternalLink size={11}/></a></li>
+      <li>On the client (APIs &amp; Services &gt; Credentials), add this under <b>Authorised redirect URIs</b>. Keep the mail address that is already there:<Row t="Copy" v={d.redirect_uri}/></li>
+      <li>OAuth consent screen &gt; Data access: add these two permissions:{d.scopes.map((x:string)=><Row key={x} t="Copy" v={x}/>)}</li>
+      <li>OAuth consent screen: make sure the app is <b>Published</b> (not "Testing"), or only listed test users can connect.</li>
+      <li>Press <b>Check Google client</b> below.</li>
+      <li>Optional, for public videos: ask Google to verify the app and pass the YouTube API compliance audit. Until then, posted videos arrive private and people publish them in YouTube Studio.</li></ol>
+    <div className="pod-ctl"><button className="primary" onClick={check} disabled={busy||!d.ready}>{busy?<Loader2 size={15} className="spin"/>:<Check size={15}/>} Check Google client</button></div>
+    {!d.ready&&<p className="pod-warn">No Google Client ID and secret are saved yet. Save the Google sign-in client under Email and calendar, or a YouTube client in the fields below.</p>}
+    {chk&&<p className={chk.ok?'pod-ok':'error'} role="status">{chk.ok?<Check size={15}/>:null} {chk.message}{chk.ok&&' This checks the Client ID and secret only; the steps above still need doing in Google Cloud.'}</p>}
+    {err&&<p className="error">{err}</p>}
+  </section>;
 }
