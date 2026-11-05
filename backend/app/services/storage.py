@@ -56,7 +56,7 @@ async def store_file(path: Path, owner, rid: str, has_video: bool, keep_original
     size = path.stat().st_size
     if configured():
         out, mime, ext = path, ("video/webm" if has_video else "audio/webm"), "webm"
-        if mime_in: out, mime, ext = path, mime_in, ("wav" if mime_in == "audio/wav" else "webm")
+        if mime_in: out, mime, ext = path, mime_in, {"audio/wav": "wav", "video/mp4": "mp4"}.get(mime_in, "webm")
         if has_video and not keep_original:             # podcast recordings keep their original quality: no re-encode
             mp4 = path.with_suffix(".mp4")
             if await asyncio.to_thread(transcode_mp4, path, mp4): out, mime, ext = mp4, "video/mp4", "mp4"

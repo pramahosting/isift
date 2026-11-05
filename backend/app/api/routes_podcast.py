@@ -67,7 +67,7 @@ async def config(user: User = Depends(principal), db: AsyncSession = Depends(get
     from app.services import storage
     lim = await _gate(db, user)
     cloud = bool(lim.get("cloud_podcast"))
-    return {"allowed": True, "cloud_allowed": cloud, "default_destination": "local",
+    return {"allowed": True, "cloud_allowed": cloud, "edit_allowed": bool(lim.get("podcast_edit")) and cloud, "youtube_allowed": bool(lim.get("youtube_post")) and cloud, "default_destination": "local",
             "cloud_note": "" if cloud else "Your plan saves podcast recordings on this computer. Upgrade to Standard or Business to also keep them in the cloud.",
             "cloud_storage": "r2" if storage.configured() else "database", "max_file_mb": MAX_FILE_BYTES // (1024 * 1024), "max_tracks": MAX_TRACKS, "quality": QUALITY}
 
@@ -128,7 +128,7 @@ async def _mine(db, rid: str, user: User) -> PodcastRecording:
 
 def _name(r: PodcastRecording) -> str:
     safe = "".join(c if c.isalnum() or c in " .-_" else "_" for c in f"{r.title} {r.label}").strip()[:80] or "podcast"
-    return safe + (".wav" if r.mimetype == "audio/wav" else ".webm")
+    return safe + {"audio/wav": ".wav", "video/mp4": ".mp4"}.get(r.mimetype or "", ".webm")
 
 @router.get("/{rid}/file")
 async def podcast_file(rid: str, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

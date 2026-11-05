@@ -72,7 +72,11 @@ from app.api.routes_push import router as push_router
 app.include_router(push_router)
 from app.api.routes_media import router as media_router
 from app.api.routes_podcast import router as podcast_router
+from app.api.routes_youtube import router as youtube_router
+from app.api.routes_podcast_edit import router as podcast_edit_router
 app.include_router(media_router)
+app.include_router(youtube_router)           # before the podcast routes: /podcasts/youtube must not be read as a podcast id
+app.include_router(podcast_edit_router)
 app.include_router(podcast_router)
 
 @app.on_event("startup")

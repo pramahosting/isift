@@ -10,7 +10,7 @@ KEY = "modules_disabled"
 MODULES = [
     ("meetings", "Meetings", "Meeting list, hosting and joining video meetings, and scheduling a meeting."),
     ("webinars", "Webinars", "Registration pages, panelists and view-only attendees, Q&A, polls, raise hand, reports and reminder emails (Meetings > Webinars)."),
-    ("podcast", "Podcast Studio", "HD podcast recording (Meetings > Podcast Studio): studio-quality audio and up to 4K video, one separate track per microphone, saved on the person's own computer or, on paid plans, in the cloud."),
+    ("podcast", "Podcast Studio", "HD podcast recording (Meetings > Podcast Studio): studio-quality audio and up to 4K video, one separate track per microphone, saved on the person's own computer or, on paid plans, in the cloud. On paid plans it also has a video editor (cut, join, insert a clip, voice-over, background) and one-click posting to YouTube (Podcast settings > YouTube)."),
     ("transcripts", "Transcripts", "Read and fetch what was said in a meeting."),
     ("minutes", "Minutes", "AI-written meeting minutes, reviewed by a person."),
     ("actions", "Action items", "Owners, due dates and status for follow-ups."),
