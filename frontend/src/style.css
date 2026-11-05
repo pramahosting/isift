@@ -2191,8 +2191,9 @@ html,body{max-width:100%;overflow-x:hidden}
 .hero-watch{min-height:50px;padding:0 22px;font-size:14px;border-radius:999px;margin:0 0 0 12px;display:inline-flex;align-items:center;gap:8px;vertical-align:top}
 @media(max-width:520px){.hero-watch{margin:10px 0 0 0}}
 .video-backdrop{z-index:1200}
-.video-dialog{position:relative;width:min(960px,94vw);background:#000;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px #0008}
-.video-dialog video{display:block;width:100%;max-height:82vh;background:#000}
+.video-dialog{position:relative;--padv:40px;width:min(960px,calc(100vw - var(--padv)),calc((100vh - var(--padv))*var(--ar,1.7778)));width:min(960px,calc(100vw - var(--padv)),calc((100dvh - var(--padv))*var(--ar,1.7778)));background:#000;border-radius:14px;overflow:hidden;box-shadow:0 20px 60px #0008}
+/* the box takes the shape of the video (--ar = width / height) and never grows past the window (the backdrop keeps 20px on every side), so it fits phones in either direction, tablets and desktops, and follows a resized window or a rotated device */
+.video-dialog video{display:block;width:100%;height:auto;aspect-ratio:var(--ar,1.7778);max-height:calc(100vh - var(--padv));max-height:calc(100dvh - var(--padv));background:#000;object-fit:contain}
 .video-dialog .modal-close{position:absolute;top:8px;right:8px;z-index:2;background:#0009;color:#fff;border-radius:50%;width:34px;height:34px}
 /* Admin: Sales & Marketing table */
 .mkt-table .urow{grid-template-columns:minmax(220px,2.4fr) minmax(100px,.8fr) 80px 100px minmax(110px,.9fr) minmax(100px,.8fr) minmax(180px,1.2fr)}

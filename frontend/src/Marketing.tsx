@@ -59,15 +59,15 @@ const landing=()=>landingP||(landingP=fetch(`${API}/marketing/landing`).then(r=>
 
 /** The Watch button on the landing page. It only appears once a video is on the landing page (Admin Console, Sales & Marketing). */
 export function WatchButton(){
-  const [v,setV]=useState<any>(null),[open,setOpen]=useState(false);
+  const [v,setV]=useState<any>(null),[open,setOpen]=useState(false),[ar,setAr]=useState(16/9);
   useEffect(()=>{landing().then(d=>setV(d.video||null))},[]);
   useEffect(()=>{if(!open)return;const k=(e:KeyboardEvent)=>{if(e.key==='Escape')setOpen(false)};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[open]);
   if(!v)return null;
   return <>
     <button type="button" className="hero-watch" onClick={()=>setOpen(true)}><span className="hw-ic"><Play size={14} fill="currentColor"/></span> Watch video</button>
-    {open&&<div className="modal-backdrop video-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section className="video-dialog" role="dialog" aria-modal="true" aria-label="iSift video">
+    {open&&<div className="modal-backdrop video-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setOpen(false)}}><section className="video-dialog" style={{['--ar' as any]:ar}} role="dialog" aria-modal="true" aria-label="iSift video">
       <button type="button" className="modal-close" onClick={()=>setOpen(false)} aria-label="Close video">×</button>
-      <video src={`${API}/marketing/${v.id}/file?v=${v.v}`} controls autoPlay playsInline preload="auto"/></section></div>}</>;
+      <video src={`${API}/marketing/${v.id}/file?v=${v.v}`} controls autoPlay playsInline preload="auto" onLoadedMetadata={e=>{const t=e.currentTarget;if(t.videoWidth&&t.videoHeight)setAr(t.videoWidth/t.videoHeight)}}/></section></div>}</>;
 }
 
 /** A download link for the playbook, shown on the landing page once a document is chosen there. */
