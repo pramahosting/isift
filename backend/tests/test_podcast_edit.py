@@ -198,3 +198,32 @@ def test_editor_and_youtube_are_paid_plan_features(client, env, media, monkeypat
     monkeypatch.setattr(ent, "limits", edit_only)
     assert client.post(f"/api/v1/podcasts/edit/open/{rid}", headers=env).status_code == 200
     assert client.post(f"/api/v1/podcasts/{g['group_id']}/youtube", headers=env, json={}).status_code == 403
+
+# ------------------------------------------------------------------ admin: one Google app for everyone
+def test_admin_youtube_setup_reuses_mail_sign_in_client(client, env, google):
+    from app.services import youtube as yt
+    def save(**kw):
+        r = client.patch("/api/v1/admin/integration-settings", headers=env, json={"values": kw}); assert r.status_code == 200, r.text
+    save(google_oauth_client_id="mail.apps.googleusercontent.com", google_oauth_client_secret="mailsecret")
+    d = client.get("/api/v1/podcasts/admin/youtube-setup?origin=https://app.example.com", headers=env).json()
+    assert d["ready"] and d["source"] == "google" and d["redirect_uri"] == "https://app.example.com/api/v1/podcasts/youtube/callback"
+    assert any(x.endswith("youtube.upload") for x in d["scopes"]) and d["mail_redirect_uri"].endswith("/api/v1/oauth/callback")
+    # a YouTube-specific app wins over the mail one
+    save(youtube_oauth_client_id="yt.apps.googleusercontent.com", youtube_oauth_client_secret="ytsecret")
+    d = client.get("/api/v1/podcasts/admin/youtube-setup", headers=env).json()
+    assert d["source"] == "youtube" and d["client_id"] == "yt.apps.googleusercontent.com"
+    # status for ordinary users says a shared app is ready
+    assert client.get("/api/v1/podcasts/youtube", headers=env).json()["shared_ready"] is True
+    r = client.post("/api/v1/podcasts/admin/youtube-setup/check", headers=env); assert r.status_code == 200, r.text
+    assert r.json()["message"] and "ok" in r.json()
+
+def test_check_accepts_what_google_says_for_a_good_client(client, env, google, monkeypatch):
+    import asyncio
+    from app.services import youtube as yt
+    def fake(err, desc=""):
+        h = lambda req: httpx.Response(400, json={"error": err, "error_description": desc})
+        monkeypatch.setattr(yt, "http", lambda timeout=60: httpx.AsyncClient(transport=httpx.MockTransport(h), timeout=timeout))
+    for good in ("invalid_request", "invalid_grant", "redirect_uri_mismatch"):
+        fake(good); assert asyncio.run(yt.check_client("a.apps.googleusercontent.com", "s"))[0] is True
+    fake("invalid_client"); assert asyncio.run(yt.check_client("a", "s"))[0] is False
+    fake("weird", "something odd"); ok, msg = asyncio.run(yt.check_client("a", "s")); assert not ok and "something odd" in msg
