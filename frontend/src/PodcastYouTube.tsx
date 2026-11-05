@@ -114,7 +114,7 @@ export function YouTubeAdmin({request}:{request:Req}){
   const [d,setD]=useState<any>(null),[chk,setChk]=useState<{ok:boolean;message:string}|null>(null),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[copied,setCopied]=useState('');
   const load=useCallback(()=>request('/podcasts/admin/youtube-setup?origin='+encodeURIComponent(location.origin)).then(setD).catch((e:any)=>setErr(e.message)),[request]);
   useEffect(()=>{load()},[load]);
-  const check=async()=>{setBusy(true);setChk(null);try{setChk(await request('/podcasts/admin/youtube-setup/check',{method:'POST'}))}catch(e:any){setErr(e.message)}finally{setBusy(false)}};
+  const check=async()=>{setBusy(true);setChk(null);try{setChk(await request('/podcasts/admin/youtube-setup/check?origin='+encodeURIComponent(location.origin),{method:'POST'}))}catch(e:any){setErr(e.message)}finally{setBusy(false)}};
   const copy=(t:string)=>{try{navigator.clipboard.writeText(t);setCopied(t);setTimeout(()=>setCopied(''),1500)}catch{}};
   if(!d)return <section className="panel"><p className="muted">{err||'Loading…'}</p></section>;
   const src=d.source==='youtube'?'the YouTube client saved below':d.source==='google'?'the Google sign-in client from Email and calendar':'no client yet';
