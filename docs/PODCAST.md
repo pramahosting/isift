@@ -23,7 +23,21 @@ Podcast Studio is a tab under Meetings, next to Booking and Webinars. Recordings
 
 ## Posting to YouTube with one click
 
-Set it up once in **Podcast settings > YouTube**. YouTube never accepts a password, so the person gives iSift the **Client ID** and **Client secret** of their own Google Cloud app (an administrator can instead set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` once for everybody), presses **Connect YouTube** and approves access in the Google window. iSift keeps only an encrypted refresh token. The page shows the exact redirect address to add to the Google app (`<your address>/api/v1/podcasts/youtube/callback`) and the steps to create the app.
+Set it up once in **Podcast settings > YouTube**. YouTube never accepts a password, so the person gives iSift the **Client ID** and **Client secret** of their own Google Cloud app (or an administrator sets one Google app for everybody, see below), presses **Connect YouTube** and approves access in the Google window. iSift keeps only an encrypted refresh token. The page shows the exact redirect address to add to the Google app (`<your address>/api/v1/podcasts/youtube/callback`) and the steps to create the app.
+
+### Administrator: one Google app for everybody
+
+Admin Console > **API and Settings > YouTube** is the one place to set this up. By default iSift reuses the Google sign-in client already saved under Email and calendar (`GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`), so nothing new has to be pasted. To keep YouTube in its own Google project, save `YOUTUBE_OAUTH_CLIENT_ID` and `YOUTUBE_OAUTH_CLIENT_SECRET` on the same page; those win when both exist. A person's own app (Podcast settings > YouTube) wins over both.
+
+The page lists what to do once in Google Cloud and has a **Check Google client** button:
+
+1. Turn on **YouTube Data API v3** in the project (a link is given).
+2. Add `<your address>/api/v1/podcasts/youtube/callback` to the client's Authorised redirect URIs. Keep the existing `/api/v1/oauth/callback` one for mail.
+3. On the OAuth consent screen add the scopes `youtube.upload` and `youtube.readonly`.
+4. Publish the consent screen (in Testing mode only listed test users can connect).
+5. Optional, for public videos: Google's app verification and YouTube API compliance audit. Until then videos arrive private.
+
+With a shared app in place a person just presses **Post to YouTube**; if their channel is not connected yet, **Connect YouTube** appears in that same box, so they never visit settings.
 
 After that, **Post to YouTube** is one button: after saving a recording to the cloud, on every podcast in My cloud podcasts, and on a finished edit. A small box is pre-filled with the title; the person adds a description and tags, chooses Private, Unlisted or Public (the default is chosen in settings) and presses Post now. Large files go up in pieces and resume after a dropped connection. A sound-only podcast gets a moving sound-wave picture, because YouTube needs a picture. Disconnecting also asks Google to forget the permission.
 
