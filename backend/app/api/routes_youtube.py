@@ -11,7 +11,7 @@ stores a password. Posting is then one button on any cloud podcast or edited vid
   DELETE /podcasts/youtube               disconnect
   POST   /podcasts/{group_id}/youtube    upload the video; progress is read from GET /podcasts/jobs/{id}
 """
-import asyncio, html, json, shutil, subprocess, uuid
+import asyncio, html, json, logging, shutil, subprocess, uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -27,6 +27,7 @@ from app.models import User, PodcastRecording, IntegrationSetting, AuditLog
 from app.api.routes_podcast import _gate
 from app.services import youtube as yt, podwork
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/podcasts", tags=["podcast-youtube"])
 KEY = lambda uid: f"youtube:{uid}"
 
@@ -214,17 +215,19 @@ def _picture_for_sound(src: Path, dst: Path) -> bool:
     except Exception:
         dst.unlink(missing_ok=True); return False
 
-async def _tell_posted(name: str, email: str, meta: dict, url: str) -> bool:
+async def _tell_posted(name: str, email: str, meta: dict, url: str) -> tuple[bool, str]:
     """Email the person the link to the video on YouTube. Never raises: a failed email must not undo a good post."""
-    if not email: return False
-    from app.services import webinars
+    if not email: return False, "your account has no email address"
+    from app.services import webinars, signup
     sn = meta.get("snippet", {}); title = sn.get("title") or "your podcast"; priv = (meta.get("status") or {}).get("privacyStatus", "private")
     note = {"private": "It is private for now. To make it public, open YouTube Studio > Content, click the video, and change Visibility.",
             "unlisted": "It is unlisted: anyone with the link can watch it, but it does not appear in search."}.get(priv, "It is public.")
     body = (f"Hi {name or 'there'},\n\nYour podcast \"{title}\" has been posted to YouTube.\n\nWatch it here: {url}\n\n{note}\n"
             "YouTube can take a few minutes to finish processing before the best quality is available.\n\n— iSift")
-    try: return bool(await webinars.send_mail(email, f"Posted to YouTube: {title}"[:150], body))
-    except Exception: return False
+    try: ok = bool(await webinars.send_mail(email, f"Posted to YouTube: {title}"[:150], body))
+    except Exception: ok = False
+    if ok: return True, ""
+    return False, ("no email account is set up yet in Admin Console > Email" if not signup.app_sender() else "the mail server did not accept it, so check the Email settings in Admin Console")
 
 async def _run_publish(jid: str, uid: str, rid: str, meta: dict, local: Path | None = None, local_mime: str = "", local_video: bool = True) -> None:
     from app.core.db import SessionLocal
@@ -247,10 +250,11 @@ async def _run_publish(jid: str, uid: str, rid: str, meta: dict, local: Path | N
         async def prog(p: int): await podwork.job_set(jid, percent=p)                 # awaited, so it can never land after the "done" note
         res = await yt.upload(token, path, meta, mime, on_progress=prog)
         await podwork.job_set(jid, message="Posted. Emailing you the link…", percent=100, url=res["url"], video_id=res["id"])
-        try: emailed = await asyncio.wait_for(_tell_posted(who[0], who[1], meta, res["url"]), 25)         # never keeps the person waiting long
-        except Exception: emailed = False
+        try: emailed, why = await asyncio.wait_for(_tell_posted(who[0], who[1], meta, res["url"]), 25)         # never keeps the person waiting long
+        except Exception: emailed, why = False, "the mail server took too long"
+        if not emailed: log.warning("YouTube link email to %s was not sent: %s", who[1], why)
         await podwork.job_set(jid, status="done", percent=100, url=res["url"], video_id=res["id"], emailed=emailed,
-                              message="Posted to YouTube." + (" We emailed you the link." if emailed else "") + (" It is private until you make it public in YouTube Studio." if meta["status"]["privacyStatus"] == "private" else ""))
+                              message="Posted to YouTube." + (f" We emailed the link to {who[1]}." if emailed else f" The link could not be emailed ({why}).") + (" It is private until you make it public in YouTube Studio." if meta["status"]["privacyStatus"] == "private" else ""))
     except yt.YouTubeError as exc:
         await podwork.job_set(jid, status="error", message=str(exc))
     except Exception as exc:
