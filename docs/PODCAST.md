@@ -41,6 +41,8 @@ With a shared app in place a person just presses **Post to YouTube**; if their c
 
 After that, **Post to YouTube** is one button: after saving a recording to the cloud, on every podcast in My cloud podcasts, and on a finished edit. A small box is pre-filled with the title; the person adds a description and tags, chooses Private, Unlisted or Public (the default is chosen in settings) and presses Post now. Large files go up in pieces and resume after a dropped connection. A sound-only podcast gets a moving sound-wave picture, because YouTube needs a picture. Disconnecting also asks Google to forget the permission.
 
+When the video is up, iSift **emails the person the YouTube link** (from the account set in Admin Console > Email), with a note on whether it is private, unlisted or public. If no email account is set up or the mail server is down, the post still succeeds and the link stays in the Post box.
+
 Posting works from podcasts kept in the cloud, because the server uploads the file. Google keeps videos uploaded through an app that has not passed Google's verification private, so a new app can post at once but public posting needs Google to verify the app (a one-off review the app owner requests).
 
 ## Editing videos
