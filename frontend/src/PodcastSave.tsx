@@ -10,13 +10,15 @@ export type SaveCfg={cloud_allowed:boolean;cloud_note:string;youtube_allowed?:bo
 
 /** After a recording: choose where to keep it (this computer, always on Basic, or the cloud on paid plans) and save. Used by Podcast Studio and by studio sessions in a meeting room. */
 export function TakeSaver({take,title,token,cfg,onSaved,onDiscard,onCloud,onEdit,openSettings}:{take:Take;title:string;token:string;cfg:SaveCfg;onSaved:(saved:boolean)=>void;onDiscard:(saved:boolean)=>void;onCloud?:()=>void;onEdit?:(gid:string)=>void;openSettings?:()=>void}){
-  const [gid,setGid]=useState(''),[postOpen,setPostOpen]=useState(false),[withTracks,setWithTracks]=useState(true),[dest,setDest]=useState<'local'|'cloud'>('local'),[keepCopy,setKeepCopy]=useState(true),[prog,setProg]=useState(-1),[msg,setMsg]=useState(''),[err,setErr]=useState(''),[done,setDone]=useState(false);
+  const [gid,setGid]=useState(''),[postOpen,setPostOpen]=useState(false),[withTracks,setWithTracks]=useState(false),[dest,setDest]=useState<'local'|'cloud'>('local'),[keepCopy,setKeepCopy]=useState(true),[prog,setProg]=useState(-1),[msg,setMsg]=useState(''),[err,setErr]=useState(''),[done,setDone]=useState(false);
   const cloudOk=cfg.cloud_allowed;const req=useMemo(()=>makeRequest(token),[token]);
   const names=()=>{const b=slug(title);const d=new Date().toISOString().slice(0,16).replace(/[T:]/g,'-');return {master:`${b} ${d} master.${take.ext}`,track:(x:{label:string;ext:string})=>`${b} ${d} ${slug(x.label)}.${x.ext}`}};
-  const saveLocal=async()=>{const n=names();saveBlob(take.master,n.master);if(withTracks)for(const x of take.tracks){await wait(500);saveBlob(x.blob,n.track(x))}};
+  // one microphone: its audio is already inside the video, so a separate file would only repeat it. Separate files are only for several microphones, and only when asked for.
+  const extra=withTracks&&take.tracks.length>1?take.tracks:[];
+  const saveLocal=async()=>{const n=names();saveBlob(take.master,n.master);for(const x of extra){await wait(500);saveBlob(x.blob,n.track(x))}};
   const upload=()=>new Promise<string>((ok,no)=>{
     const f=new FormData();f.append('title',title||'Podcast');f.append('duration_s',String(take.seconds));f.append('width',String(take.width));f.append('height',String(take.height));f.append('audio_kbps',String(take.audioKbps));
-    f.append('master',take.master,`master.${take.ext}`);take.tracks.forEach(x=>{f.append('tracks',x.blob,`track.${x.ext}`);f.append('track_labels',x.label)});
+    f.append('master',take.master,`master.${take.ext}`);extra.forEach(x=>{f.append('tracks',x.blob,`track.${x.ext}`);f.append('track_labels',x.label)});
     const x=new XMLHttpRequest();x.open('POST',API+'/podcasts');x.setRequestHeader('Authorization',`Bearer ${token}`);
     x.upload.onprogress=e=>{if(e.lengthComputable)setProg(Math.round(e.loaded/e.total*100))};
     x.onload=()=>{let j:any={};try{j=JSON.parse(x.responseText)}catch{}x.status<300?ok(String(j.group_id||'')):no(new Error(j.detail||`The upload failed (${x.status}).`))};x.onerror=()=>no(new Error('Cannot reach the iSift server.'));x.send(f)});
@@ -24,16 +26,16 @@ export function TakeSaver({take,title,token,cfg,onSaved,onDiscard,onCloud,onEdit
     setErr('');setMsg('');
     try{
       if(dest==='cloud'){if(keepCopy)await saveLocal();setProg(0);setGid(await upload());setProg(-1);setMsg('Saved in the cloud'+(keepCopy?' and on this computer.':'.')+' Find it under My cloud podcasts in Podcast Studio.');onCloud?.()}
-      else{await saveLocal();setMsg(`Saved on this computer: ${1+(withTracks?take.tracks.length:0)} file${withTracks&&take.tracks.length?'s':''} in your Downloads folder.`)}
+      else{await saveLocal();setMsg(`Saved on this computer: ${1+extra.length} file${extra.length?'s':''} in your Downloads folder.`)}
       setDone(true);onSaved(true);
     }catch(e:any){setProg(-1);setErr((e?.message||'Could not save.')+(dest==='cloud'?' Your recording is still here: save it on this computer instead.':''))}
   };
   return <div className="pod-save">
-    <p>{clock(take.seconds)} long. {take.hasVideo?`Video ${take.width}×${take.height}, `:'Audio only, '}{take.audioLabel}. Master {prettyBytes(take.master.size)}{take.tracks.length?`, plus ${take.tracks.length} separate track${take.tracks.length>1?'s':''}`:''}.</p>
+    <p>{clock(take.seconds)} long. {take.hasVideo?`Video ${take.width}×${take.height}, `:'Audio only, '}{take.audioLabel}. Master {prettyBytes(take.master.size)}{take.tracks.length>1?`, with ${take.tracks.length} microphones`:''}.</p>
     <h4>Where do you want to keep it?</h4>
     <label className={`pod-dest${dest==='local'?' on':''}`}><input type="radio" name="dest" checked={dest==='local'} onChange={()=>setDest('local')}/><HardDrive size={18}/><span><b>On this computer</b><small>Saved to your Downloads folder. Nothing is stored on iSift.</small></span></label>
     <label className={`pod-dest${dest==='cloud'?' on':''}${cloudOk?'':' off'}`}><input type="radio" name="dest" disabled={!cloudOk} checked={dest==='cloud'} onChange={()=>setDest('cloud')}/><Cloud size={18}/><span><b>In the cloud</b><small>{cloudOk?'Kept at original quality with your other recordings. Counts towards your storage.':cfg.cloud_note||'Not included in your plan.'}</small></span></label>
-    {take.tracks.length>0&&<label className="pod-check"><input type="checkbox" checked={withTracks} onChange={e=>setWithTracks(e.target.checked)}/> Also save the {take.tracks.length} separate track{take.tracks.length>1?'s':''} (one file each; the master already has everyone mixed). Turn this off for just one file.</label>}
+    {take.tracks.length>1&&<label className="pod-check"><input type="checkbox" checked={withTracks} onChange={e=>setWithTracks(e.target.checked)}/> Also save each microphone as its own audio file ({take.tracks.length} files). Not needed for most podcasts: the video already has everyone's voice.</label>}
     {dest==='cloud'&&<label className="pod-check"><input type="checkbox" checked={keepCopy} onChange={e=>setKeepCopy(e.target.checked)}/> Also save a copy on this computer</label>}
     {prog>=0&&<div className="pod-prog" role="progressbar" aria-valuenow={prog}><u style={{width:prog+'%'}}/><span>Uploading {prog}%</span></div>}
     {err&&<p className="error" role="alert">{err}</p>}
