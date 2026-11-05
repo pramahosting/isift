@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import principal
+from app.core.security import principal, require_admin
 from app.core import runtime_settings as rs
 from app.models import User, PodcastRecording, IntegrationSetting, AuditLog
 from app.api.routes_podcast import _gate
@@ -56,8 +56,25 @@ async def status(origin: str = "", user: User = Depends(principal), db: AsyncSes
     c = await _conn(db, user.id); cid, sec, shared = _client(c)
     redirect = (_origin(origin) if origin else settings.frontend_origin.rstrip("/")) + "/api/v1/podcasts/youtube/callback"
     return {"connected": bool(c.get("refresh_token")), "channel": c.get("channel", ""), "email": c.get("email", ""), "connected_at": c.get("connected_at", ""),
-            "client_id": c.get("client_id", ""), "has_secret": bool(c.get("client_secret")), "can_connect": bool(cid and sec), "using_shared_app": bool(cid and sec and shared),
+            "client_id": c.get("client_id", ""), "has_secret": bool(c.get("client_secret")), "can_connect": bool(cid and sec), "using_shared_app": bool(cid and sec and shared), "shared_ready": bool(yt.platform_client()[0] and yt.platform_client()[1]),
             "redirect_uri": redirect, "default_privacy": c.get("default_privacy", "private")}
+
+@router.get("/admin/youtube-setup")
+async def admin_setup(origin: str = "", admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """What the administrator still has to do in Google Cloud so everybody can post to YouTube with one click."""
+    await rs.apply_overrides(db)
+    cid, sec = yt.platform_client(); src = yt.platform_source()
+    base = (_origin(origin) if origin else settings.frontend_origin.rstrip("/"))
+    return {"source": src, "client_id": cid, "ready": bool(cid and sec), "redirect_uri": base + "/api/v1/podcasts/youtube/callback",
+            "mail_redirect_uri": base + "/api/v1/oauth/callback", "scopes": ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
+            "api_link": "https://console.cloud.google.com/apis/library/youtube.googleapis.com"}
+
+@router.post("/admin/youtube-setup/check")
+async def admin_check(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    await rs.apply_overrides(db)
+    cid, sec = yt.platform_client()
+    if not (cid and sec): return {"ok": False, "message": "No Google Client ID and secret are saved yet. Save the Google sign-in client (Email and calendar) or a YouTube client here, then check again."}
+    ok, msg = await yt.check_client(cid, sec); return {"ok": ok, "message": msg}
 
 @router.put("/youtube/credentials")
 async def save_credentials(body: dict, user: User = Depends(principal), db: AsyncSession = Depends(get_db)):

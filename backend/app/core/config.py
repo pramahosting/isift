@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     r2_prefix: str = "isift-video"
     ms_signin_client_id: str = ""
     google_oauth_client_id: str = ""
+    youtube_oauth_client_id: str = ""
+    youtube_oauth_client_secret: str = ""
     google_oauth_client_secret: str = ""
     yahoo_oauth_client_id: str = ""
     yahoo_oauth_client_secret: str = ""

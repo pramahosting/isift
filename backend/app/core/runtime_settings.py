@@ -42,6 +42,8 @@ FIELDS = [
  {"key":"square_currency","label":"Billing currency","group":"Payments (Square)","kind":"select","options":["USD","AUD","GBP","EUR","CAD","NZD"],"help":"Plan prices are shown and charged in this currency. It must match the currency of the Square location."},
  {"key":"google_oauth_client_id","label":"Google OAuth client ID","kind":"text","group":"Mail sign-in (Google, Microsoft, Yahoo)","help":"Google Cloud > APIs and Services > Credentials > OAuth client (Web). Redirect address: your app address + /api/v1/oauth/callback."},
  {"key":"google_oauth_client_secret","label":"Google OAuth client secret","kind":"secret","group":"Mail sign-in (Google, Microsoft, Yahoo)"},
+ {"key":"youtube_oauth_client_id","label":"YouTube OAuth client ID (optional)","kind":"text","group":"YouTube (posting podcasts)","help":"Leave empty to use the Google sign-in client above for YouTube too. To keep YouTube in its own Google project, paste that project's Web OAuth client ID here. Redirect address to register: your app address + /api/v1/podcasts/youtube/callback."},
+ {"key":"youtube_oauth_client_secret","label":"YouTube OAuth client secret (optional)","kind":"secret","group":"YouTube (posting podcasts)"},
  {"key":"ms_oauth_client_id","label":"Microsoft OAuth client ID","kind":"text","group":"Mail sign-in (Google, Microsoft, Yahoo)"},
  {"key":"ms_oauth_client_secret","label":"Microsoft OAuth client secret","kind":"secret","group":"Mail sign-in (Google, Microsoft, Yahoo)"},
  {"key":"ms_oauth_tenant","label":"Microsoft tenant (common = any account)","kind":"text","group":"Mail sign-in (Google, Microsoft, Yahoo)"},

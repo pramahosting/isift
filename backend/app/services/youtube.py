@@ -29,7 +29,25 @@ def http(timeout: float = 60) -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=timeout)
 
 def platform_client() -> tuple[str, str]:
+    """The Google app set up once by an administrator for everybody: a YouTube-only one if given, otherwise the Google sign-in app used for mail."""
+    if settings.youtube_oauth_client_id and settings.youtube_oauth_client_secret: return settings.youtube_oauth_client_id, settings.youtube_oauth_client_secret
     return settings.google_oauth_client_id or "", settings.google_oauth_client_secret or ""
+
+def platform_source() -> str:
+    if settings.youtube_oauth_client_id and settings.youtube_oauth_client_secret: return "youtube"
+    return "google" if settings.google_oauth_client_id and settings.google_oauth_client_secret else "none"
+
+async def check_client(client_id: str, client_secret: str) -> tuple[bool, str]:
+    """Is this Client ID and secret accepted by Google? A made-up sign-in code is sent: a good client answers "invalid_grant", a wrong one "invalid_client"."""
+    try:
+        async with http(20) as c:
+            r = await c.post(TOKEN, data={"grant_type": "authorization_code", "code": "isift-check", "redirect_uri": "https://example.invalid/cb", "client_id": client_id, "client_secret": client_secret})
+    except httpx.HTTPError as exc: return False, f"Could not reach Google ({type(exc).__name__})."
+    try: e = (r.json() or {}).get("error", "")
+    except Exception: e = ""
+    if e in ("invalid_grant", "redirect_uri_mismatch"): return True, "Google accepts this Client ID and secret."
+    if e == "invalid_client": return False, "Google does not recognise this Client ID and secret. Check them in Google Cloud > APIs & Services > Credentials."
+    return False, f"Google answered unexpectedly ({r.status_code} {e or 'no reason given'})."
 
 def pkce_pair() -> tuple[str, str]:
     import base64, secrets
