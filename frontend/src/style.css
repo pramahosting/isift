@@ -2392,4 +2392,5 @@ html,body{max-width:100%;overflow-x:hidden}
 .pod-kept{display:flex;gap:4px;align-items:center;margin-top:4px;color:#2f7d5b;font-size:12px;font-weight:500}
 .pod-savebar{align-items:center;margin-top:12px}.pod-unsaved{color:#b45309;font-size:13px}
 
-.hero-free{margin-top:16px}.hero-free b{display:inline-block;background:#fff4d6;color:#7a4b00;border:1.5px solid #f5b921;border-radius:999px;padding:7px 15px;font-size:14px;font-weight:800;letter-spacing:0}
+.hero-assurance .nocard-b{color:#000;font-weight:800}
+@media(max-width:380px){.hero-copy h1{font-size:24px}}
