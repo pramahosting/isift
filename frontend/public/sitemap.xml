@@ -4,6 +4,13 @@
        which Google ignores, so they are NOT listed. See the notes in the reply. -->
   <url><loc>https://www.isift.au/</loc><lastmod>2026-11-07</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
 
+  <!-- Comparison pages -->
+  <url><loc>https://www.isift.au/compare/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/compare/zoom/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/compare/teams/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/compare/google-meet/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/compare/zoho-meeting/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+
   <!-- User manuals (real PDF files) -->
   <url><loc>https://www.isift.au/manuals/meetings-and-sharing.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://www.isift.au/manuals/webinars.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
