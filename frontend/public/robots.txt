@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://isift.au/sitemap.xml
+Sitemap: https://www.isift.au/sitemap.xml
