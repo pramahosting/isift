@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Only addresses Google can crawl today. iSift pages like #/pricing use a # address,
+       which Google ignores, so they are NOT listed. See the notes in the reply. -->
+  <url><loc>https://isift.au/</loc><lastmod>2026-11-07</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
+
+  <!-- User manuals (real PDF files) -->
+  <url><loc>https://isift.au/manuals/meetings-and-sharing.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://isift.au/manuals/webinars.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://isift.au/manuals/booking-and-follow-up.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://isift.au/manuals/mail-calendar-contacts.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://isift.au/manuals/documents-and-whiteboard.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://isift.au/manuals/administration.pdf</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+</urlset>
