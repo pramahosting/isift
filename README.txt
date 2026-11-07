@@ -1,1 +1,1 @@
-Unzip into repo root (isift-main/). Adds /compare/ and 4 comparison pages and replaces frontend/public/sitemap.xml (keep your other pack files). Rebuild, redeploy, then in Search Console request indexing for each /compare/ URL.
+Unzip into repo root, overwriting frontend/src/Legal.tsx and Landing.tsx. Adds crawlable /compare/ links to the footer and the Compare section. Rebuild and redeploy.

@@ -109,11 +109,12 @@ export function LegalFooter(_p:{tagline?:boolean}={}){
   const [map,setMap]=useState(false);const [form,setForm]=useState<FormKind|null>(null);
   const open=(k:FormKind)=>(e:React.MouseEvent)=>{e.preventDefault();setForm(k)};
   return <footer className="site-footer">
-    <div className="sf-top"><div className="sf-help"><b>Need a hand?</b>
+    <div className="sf-top"><div className="sf-help"><b>Compare iSift:</b><a href="/compare/zoom/">Zoom</a><a href="/compare/teams/">Teams</a><a href="/compare/google-meet/">Google Meet</a><a href="/compare/zoho-meeting/">Zoho Meeting</a></div><div className="sf-help"><b>Need a hand?</b>
       {(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}
       <a href={`mailto:${LEGAL.email}`}><Mail size={13}/> {LEGAL.email}</a></div></div>
     {map&&<nav id="sf-sitemap" className="sf-sitemap" aria-label="Sitemap">
       <div><h4>iSift</h4><a href="#/">Home</a><a href="#/pricing">Plans and pricing</a></div>
+      <div><h4>Compare</h4><a href="/compare/">All comparisons</a><a href="/compare/zoom/">iSift vs Zoom</a><a href="/compare/teams/">iSift vs Teams</a><a href="/compare/google-meet/">iSift vs Google Meet</a><a href="/compare/zoho-meeting/">iSift vs Zoho Meeting</a></div>
       <div><h4>Legal</h4>{LEGAL_LINKS.map(l=><a key={l.slug} href={`#/${l.slug}`}>{l.label}</a>)}</div>
       <div><h4>Support</h4>{(Object.keys(FORMS) as FormKind[]).map(k=><a key={k} href={`mailto:${LEGAL.email}`} onClick={open(k)}>{FORMS[k].label}</a>)}<a href={`mailto:${LEGAL.email}`}>Email {LEGAL.email}</a></div>
     </nav>}
