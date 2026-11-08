@@ -1,1 +1,1 @@
-Unzip into repo root, overwriting frontend/src/Legal.tsx and Landing.tsx. Adds crawlable /compare/ links to the footer and the Compare section. Rebuild and redeploy.
+Unzip into repo root (overwrites frontend/public/compare/*). Redesigned compare pages with logo. Rebuild and redeploy. Sitemap unchanged.
