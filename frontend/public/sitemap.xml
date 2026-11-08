@@ -1,21 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- Only addresses Google can crawl today. iSift pages like #/pricing use a # address,
-       which Google ignores, so they are NOT listed. See the notes in the reply. -->
-  <url><loc>https://www.isift.au/</loc><lastmod>2026-11-07</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
-
-  <!-- Comparison pages -->
-  <url><loc>https://www.isift.au/compare/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://www.isift.au/compare/zoom/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://www.isift.au/compare/teams/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://www.isift.au/compare/google-meet/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
-  <url><loc>https://www.isift.au/compare/zoho-meeting/</loc><lastmod>2026-11-07</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
-
-  <!-- User manuals (real PDF files) -->
-  <url><loc>https://www.isift.au/manuals/meetings-and-sharing.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://www.isift.au/manuals/webinars.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://www.isift.au/manuals/booking-and-follow-up.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://www.isift.au/manuals/mail-calendar-contacts.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://www.isift.au/manuals/documents-and-whiteboard.pdf</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://www.isift.au/manuals/administration.pdf</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://www.isift.au/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://www.isift.au/compare/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/features/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/industries/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://www.isift.au/compare/google-meet/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/compare/teams/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/compare/zoho-meeting/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/compare/zoom/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/ai-meeting-minutes/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/booking-pages/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/document-converter/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/email-from-your-own-address/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/live-co-editing/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/media-converter/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/pdf-editor-and-signing/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/podcast-studio/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/features/webinars/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/construction/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/education/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/financial-services/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/government/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/healthcare/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/manufacturing/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/nonprofit/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/podcasters/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/professional-services/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/real-estate/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/retail/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/industry/startups/</loc><lastmod>2026-11-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.isift.au/manuals/meetings-and-sharing.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://www.isift.au/manuals/webinars.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://www.isift.au/manuals/booking-and-follow-up.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://www.isift.au/manuals/mail-calendar-contacts.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://www.isift.au/manuals/documents-and-whiteboard.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://www.isift.au/manuals/administration.pdf</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
 </urlset>
