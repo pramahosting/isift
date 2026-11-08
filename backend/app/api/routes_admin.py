@@ -1,7 +1,7 @@
 """User administration, mock data loading and CSV import."""
 import asyncio
 import csv, io, logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
@@ -15,7 +15,8 @@ from app.services import datasets as ds
 
 from app.services import virtual_room as vrm
 from app.services import entitlements as ent
-from app.services import billing
+from app.services import billing, store
+from app.services import meeting_log as mlog
 router = APIRouter(prefix="/api/v1")
 log = logging.getLogger("isift")
 BUILTIN_ADMIN = "admin@isift.au"
@@ -245,6 +246,46 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db: As
         await db.rollback(); log.exception("user delete failed")
         raise HTTPException(409, f"This user could not be deleted because other records still depend on them ({type(ex).__name__}). Disable the account instead, and tell support which user this was.")
     return {"deleted": True, "meetings_removed": len(ids)}
+
+def _iso(v):
+    try: return datetime.fromisoformat(v)
+    except Exception: return None
+
+@router.get("/admin/usage")
+async def usage_report(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Real iSift meetings (not calendar entries): who held them, when, and for how long."""
+    items = await mlog.read(db)
+    now = datetime.now(timezone.utc)
+    users = (await db.execute(select(User).order_by(User.email))).scalars().all()
+    cal = dict((await db.execute(select(Meeting.owner_id, func.count()).group_by(Meeting.owner_id))).all())
+    by: dict[str, list[dict]] = {}
+    for it in items: by.setdefault((it.get("host") or "").lower(), []).append(it)
+    rows = []
+    for u in users:
+        mine = by.get((u.email or "").lower(), [])
+        d = await store.get(db, ent._stat_key(u.email), {}) or {}
+        months = d.get("months") or {}
+        held = sum(int((m or {}).get("meetings", 0)) for m in months.values())          # every meeting the person hosted, kept for 13 months
+        mins = sum(float((m or {}).get("minutes", 0)) for m in months.values())
+        last = max((_iso(i.get("started_at")) for i in mine if _iso(i.get("started_at"))), default=None)
+        rows.append({"email": u.email, "name": u.display_name or "", "last_login_at": u.last_login_at, "meetings_held": held,
+                     "minutes_hosted": round(mins, 1), "avg_minutes": round(mins / held, 1) if held else 0,
+                     "last_meeting_at": last, "calendar_entries": cal.get(u.id, 0)})
+    rows.sort(key=lambda r: (-r["meetings_held"], r["email"]))
+    def since(days): return [i for i in items if (_iso(i.get("started_at")) or now) >= now - timedelta(days=days)]
+    w, m = since(7), since(30)
+    summary = {"meetings_7d": len(w), "meetings_30d": len(m), "minutes_30d": round(sum(float(i.get("minutes", 0)) for i in m), 1),
+               "hosts_30d": len({i.get("host") for i in m}), "logged_since": (_iso(items[0]["started_at"]) if items else None)}
+    recent = [{"title": i.get("title", ""), "host": i.get("host", ""), "started_at": i.get("started_at"), "ended_at": i.get("ended_at"), "minutes": i.get("minutes", 0)} for i in reversed(items[-200:])]
+    return {"summary": summary, "people": rows, "recent": recent}
+
+@router.get("/admin/usage/export", response_class=PlainTextResponse)
+async def usage_export(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    items = await mlog.read(db)
+    buf = io.StringIO(); w = csv.writer(buf)
+    w.writerow(["started_at_utc", "ended_at_utc", "minutes", "host", "title"])
+    for i in reversed(items): w.writerow([i.get("started_at", ""), i.get("ended_at", ""), i.get("minutes", 0), i.get("host", ""), i.get("title", "")])
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv")
 
 @router.get("/admin/users/export", response_class=PlainTextResponse)
 async def export_users(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):

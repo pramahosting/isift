@@ -3,6 +3,34 @@ import {UserPlus,Pencil,Trash2,Download,Upload,Search,Ban,CheckCircle2,X,Databas
 
 const when=v=>{if(!v)return 'Never';try{return new Date(v).toLocaleString(undefined,{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})}catch{return '—'}};
 
+/* ---------------- Usage: real iSift meetings, when and for how long ---------------- */
+const mins=(v:number)=>{const m=Math.round(Number(v)||0);if(m<60)return `${m} min`;const h=Math.floor(m/60);return `${h} h ${m%60} min`};
+export function UsagePanel({request,download}:any){
+ const [data,setData]=useState<any>(null),[err,setErr]=useState('');
+ const load=useCallback(()=>{setErr('');request('/admin/usage').then(setData).catch((e:any)=>setErr(e.message))},[request]);
+ useEffect(()=>{load()},[load]);
+ const s=data?.summary;
+ return <>
+  <div className="pagehead"><div><p className="eyebrow">ADMINISTRATION</p><h1>Usage</h1><p>Real iSift meetings: who held them, when, and for how long. Calendar entries are not counted here.</p></div>
+   <div className="headactions"><button className="secondary" onClick={load}><RefreshCw size={16}/> Refresh</button><button className="secondary" onClick={()=>download('/admin/usage/export','meetings.csv')}><Download size={16}/> Export CSV</button></div></div>
+  {err&&<div className="alert" role="alert">{err}</div>}
+  {!data&&!err&&<p className="muted">Loading…</p>}
+  {data&&<>
+   <section className="panel"><div className="panelhead"><h2>Last 30 days</h2></div>
+    <p><b>{s.meetings_30d}</b> meetings this month, <b>{s.meetings_7d}</b> in the last 7 days. <b>{mins(s.minutes_30d)}</b> hosted by <b>{s.hosts_30d}</b> {s.hosts_30d===1?'person':'people'}.</p>
+    <p className="muted small">{s.logged_since?`Dates and times are recorded from ${when(s.logged_since)}. Meetings before that appear only in the totals per person.`:'Dates and times are recorded from the next meeting that ends. Earlier meetings appear only in the totals per person.'}</p></section>
+   <section className="panel"><div className="panelhead"><h2>By person</h2></div>
+    <div className="plantable-wrap"><table className="plantable"><thead><tr><th>Person</th><th>Meetings held</th><th>Time hosted</th><th>Average</th><th>Last meeting</th><th>Last sign-in</th><th>Calendar entries</th></tr></thead>
+     <tbody>{data.people.map((p:any)=><tr key={p.email}><td>{p.name?<><b>{p.name}</b><br/></>:null}{p.email}</td><td>{p.meetings_held}</td><td>{p.meetings_held?mins(p.minutes_hosted):'—'}</td><td>{p.meetings_held?mins(p.avg_minutes):'—'}</td><td>{p.last_meeting_at?when(p.last_meeting_at):'—'}</td><td>{when(p.last_login_at)}</td><td>{p.calendar_entries}</td></tr>)}</tbody></table></div>
+    <p className="muted small">“Meetings held” counts iSift meetings the person hosted (kept for 13 months). “Calendar entries” counts events in their calendar, including ones synced from Google or Microsoft, and is not the number of meetings held.</p></section>
+   <section className="panel"><div className="panelhead"><h2>Recent meetings</h2></div>
+    {data.recent.length===0?<p className="muted">No meeting has ended since logging began. Run one and it will appear here.</p>:
+    <div className="plantable-wrap"><table className="plantable"><thead><tr><th>Started</th><th>Ended</th><th>Length</th><th>Host</th><th>Title</th></tr></thead>
+     <tbody>{data.recent.map((r:any,i:number)=><tr key={i}><td>{when(r.started_at)}</td><td>{when(r.ended_at)}</td><td>{mins(r.minutes)}</td><td>{r.host}</td><td>{r.title||'—'}</td></tr>)}</tbody></table></div>}</section>
+  </>}
+ </>;
+}
+
 /* ---------------- Users ---------------- */
 export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:any){
  const [users,setUsers]=useState<any[]|null>(null),[q,setQ]=useState(''),[err,setErr]=useState(''),[msg,setMsg]=useState('');

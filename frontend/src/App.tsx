@@ -3,7 +3,7 @@ import {WebinarsPage} from './Webinars';
 import {PodcastStudio} from './PodcastStudio';
 import {YouTubeAdmin} from './PodcastYouTube';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {UsersPage,DataImport,MachinePrompt,CalendarFinder} from './Admin';
+import {UsersPage,UsagePanel,DataImport,MachinePrompt,CalendarFinder} from './Admin';
 import {MarketingAdmin,WatchButton,PlaybookLink} from './Marketing';
 import {refreshLinkedCalendar} from './linkedCalendar';
 import {MinutesCard} from './Minutes';
@@ -451,7 +451,7 @@ function RunHistoryPanel({request}:any){
  return <section className="panel"><div className="panelhead"><h2>Run history</h2><History size={18}/></div>{runs===null?<p className="hint">Loading…</p>:runs.length?runs.map((r:any)=><div className="statusrow" key={r.id}><div><b>{r.workflow_name}</b><p className="muted">{fmt(r.created_at)}{r.safe_error?` · ${r.safe_error}`:''}</p></div><Badge tone={r.status==='completed'?'green':r.status==='failed'?'red':'amber'}>{r.status}</Badge></div>):<Empty text="No workflow runs yet."/>}</section>
 }
 function AdminSettings({settings,request,act,load,onModules,user,download,view,features,onUsers}:any){
- const [sub,setSub]=useState<'users'|'permissions'|'plans'|'modules'|'mailboxes'>('users');const [ops,setOps]=useState<'data'|'runs'|'meetings'>('meetings');
+ const [sub,setSub]=useState<'users'|'usage'|'permissions'|'plans'|'modules'|'mailboxes'>('users');const [ops,setOps]=useState<'data'|'runs'|'meetings'>('meetings');
  const [t0]=useState(()=>{try{const t=sessionStorage.getItem('isift.admintab')||'';sessionStorage.removeItem('isift.admintab');return t}catch{return ''}});
  const [tab,setTab]=useState(()=>t0==='modules'||t0==='planfeatures'?'users':t0==='allmeetings'||t0==='runs'?'ops':t0==='pricing'||t0==='payments'||t0==='commercial'?'commercial':['mail','keys','other','youtube','basics'].includes(t0)||!t0?'basics':(ADMIN_TABS.some(x=>x.id===t0)?t0:'basics'));
  const [apiSub,setApiSub]=useState<'setup'|'keys'|'mail'|'youtube'|'other'>(()=>t0==='mail'||t0==='keys'||t0==='other'||t0==='youtube'?t0:'setup');
@@ -511,8 +511,9 @@ function AdminSettings({settings,request,act,load,onModules,user,download,view,f
    {ops==='data'&&(features?.mock_data?<DataImport request={request} download={download} isAdmin={user?.role==='admin'} onDone={load}/>:<section className="panel"><div className="panelhead"><h2>Data import</h2></div><Empty text="Sample data is switched off. Turn it on under Run the app to load sample meetings or import a CSV."/></section>)}
   </>}
   {tab==='users'&&<>
-   <div className="tabs subtabs" role="tablist" aria-label="Users sections">{([['users','Users'],['permissions','Permissions'],['plans','Plans'],['modules','Modules'],['mailboxes','Mailboxes']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={sub===id} className={sub===id?'on':''} onClick={()=>setSub(id)}>{l}</button>)}</div>
+   <div className="tabs subtabs" role="tablist" aria-label="Users sections">{([['users','Users'],['usage','Usage'],['permissions','Permissions'],['plans','Plans'],['modules','Modules'],['mailboxes','Mailboxes']] as const).map(([id,l])=><button key={id} role="tab" aria-selected={sub===id} className={sub===id?'on':''} onClick={()=>setSub(id)}>{l}</button>)}</div>
    {sub==='users'&&<UsersPage view="list" request={request} download={download} me={user} canCreate={!!features?.user_management} onChanged={onUsers}/>}
+   {sub==='usage'&&<UsagePanel request={request} download={download}/>}
    {sub==='permissions'&&<UsersPage view="permissions" request={request} download={download} me={user} canCreate={!!features?.user_management} onChanged={onUsers}/>}
    {sub==='modules'&&<><p className="hint">What is switched off here is off for everyone, whatever their plan. To change what one plan includes, use the Plans tab. A person's own special permission is set under Permissions, Edit.</p><ModulesPanel request={request} act={act} onChanged={onModules}/></>}
    {sub==='mailboxes'&&<MailboxesPanel request={request} act={act}/>}

@@ -986,7 +986,13 @@ async def room_socket(ws: WebSocket, code: str):
                 if state.get("host_email"):
                     try:
                         from app.services import entitlements as _ent
-                        async with SessionLocal() as _db: await _ent.add_meeting_minutes(_db, state["host_email"], (time.time() - state["started"]) / 60)     # counts towards the host's monthly hours
+                        async with SessionLocal() as _db:
+                            await _ent.add_meeting_minutes(_db, state["host_email"], (time.time() - state["started"]) / 60)     # counts towards the host's monthly hours
+                            try:                                                                                                  # and is written to the admin usage log (when it ran, for how long)
+                                from app.services import meeting_log as _ml
+                                _rm = (await _db.execute(select(Room).where(Room.code == code))).scalars().first()
+                                await _ml.record(_db, title=(_rm.title if _rm else ""), host_email=state["host_email"], started_ts=state["started"], ended_ts=time.time())
+                            except Exception: log.exception("Could not log the meeting")
                     except Exception: log.exception("Could not count meeting minutes")
 
 HOST_SUCCESSION_SECONDS = 20     # how long an open room waits for its host to come back before the next person takes over
