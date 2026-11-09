@@ -68,6 +68,8 @@ app.include_router(support_router)
 app.include_router(rsvp_router)
 from app.api.routes_marketing import router as marketing_router
 app.include_router(marketing_router)
+from app.api.routes_visits import router as visits_router
+app.include_router(visits_router)
 from app.api.routes_push import router as push_router
 app.include_router(push_router)
 from app.api.routes_media import router as media_router

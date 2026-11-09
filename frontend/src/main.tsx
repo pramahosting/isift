@@ -7,6 +7,12 @@ import {HelpToaster} from './notify.tsx';
 import InstallCallout from './InstallCallout.tsx';
 import {applyPrefs} from './prefs.ts';
 applyPrefs();
+// A visit that arrives on a tagged link (?utm_source=linkedin&utm_content=day3): count it once, and keep the tag so a later sign-up can be matched to it.
+try{const q=new URLSearchParams(location.search);const t={source:q.get('utm_source')||'',medium:q.get('utm_medium')||'',campaign:q.get('utm_campaign')||'',content:q.get('utm_content')||''};
+  if(t.source||t.campaign||t.content){let vid=localStorage.getItem('isift.vid');if(!vid){vid=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem('isift.vid',vid)}
+    if(!localStorage.getItem('isift.utm'))localStorage.setItem('isift.utm',JSON.stringify(t));
+    const API=import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
+    fetch(API+'/track/visit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...t,vid}),keepalive:true}).catch(()=>{})}}catch{}
 // A meeting link handed over from the browser arrives as /?isift=web+isift://room/CODE (or a shortcut /#/start): open that meeting.
 try{const q=new URLSearchParams(location.search).get('isift')||'';const m=decodeURIComponent(q).match(/room\/([A-Za-z0-9]+)/);if(m){history.replaceState(null,'',location.pathname+'#/room/'+m[1])}}catch{}
 

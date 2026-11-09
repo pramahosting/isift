@@ -31,6 +31,25 @@ export function UsagePanel({request,download}:any){
  </>;
 }
 
+/* ---------------- Traffic: which tagged link brought visits and sign-ups ---------------- */
+export function TrafficPanel({request}:any){
+ const [data,setData]=useState<any>(null),[err,setErr]=useState('');
+ const load=useCallback(()=>{setErr('');request('/admin/traffic').then(setData).catch((e:any)=>setErr(e.message))},[request]);
+ useEffect(()=>{load()},[load]);
+ return <>
+  <div className="pagehead"><div><p className="eyebrow">ADMINISTRATION</p><h1>Traffic</h1><p>Which link brought people to iSift, and how many of them signed up. Links need tags such as ?utm_source=linkedin&amp;utm_content=day3.</p></div>
+   <div className="headactions"><button className="secondary" onClick={load}><RefreshCw size={16}/> Refresh</button></div></div>
+  {err&&<div className="alert" role="alert">{err}</div>}
+  {!data&&!err&&<p className="muted">Loading…</p>}
+  {data&&<section className="panel"><div className="panelhead"><h2>By link</h2></div>
+   <p><b>{data.total_visits}</b> visits and <b>{data.total_signups}</b> sign-ups from tagged links{data.since?<> since {when(data.since)}</>:null}.</p>
+   {data.rows.length===0?<p className="muted">No tagged visit yet. Open a tagged link in a private window to test it.</p>:
+   <div className="plantable-wrap"><table className="plantable"><thead><tr><th>Source</th><th>Medium</th><th>Link / post</th><th>Visits</th><th>Last 7 days</th><th>Sign-ups</th><th>Sign-up rate</th><th>Last visit</th></tr></thead>
+    <tbody>{data.rows.map((r:any,i:number)=><tr key={i}><td>{r.source||'—'}</td><td>{r.medium||'—'}</td><td>{r.content||'—'}</td><td>{r.visits}</td><td>{r.visits_7d}</td><td>{r.signups}{r.people.length?<><br/><span className="muted small">{r.people.join(', ')}</span></>:null}</td><td>{r.rate==null?'—':r.rate+'%'}</td><td>{r.last_visit?when(r.last_visit):'—'}</td></tr>)}</tbody></table></div>}
+   <p className="muted small">A visit is counted once a day per browser. A sign-up is the first tagged link a person arrived with before they signed in. Nothing about the visitor is stored beyond a random browser code.</p></section>}
+ </>;
+}
+
 /* ---------------- Users ---------------- */
 export function UsersPage({request,download,me,canCreate,onChanged,view='list'}:any){
  const [users,setUsers]=useState<any[]|null>(null),[q,setQ]=useState(''),[err,setErr]=useState(''),[msg,setMsg]=useState('');
