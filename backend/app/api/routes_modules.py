@@ -64,6 +64,11 @@ def module_required(module_id: str):
 
 @router.get("/plan-matrix")
 async def plan_matrix(db: AsyncSession = Depends(get_db)):
+    return await _plan_matrix(db)
+
+from app.core.ttlcache import ttl_cache
+@ttl_cache(30)
+async def _plan_matrix(db: AsyncSession):
     """Public. What each plan includes right now (limits and modules, after the administrator's changes), so the landing page, price list and comparison always match Admin Console."""
     from app.services import entitlements as ent
     off = await disabled(db); cfg = await ent.plan_config(db)

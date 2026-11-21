@@ -1,3 +1,4 @@
+import os
 """Web Push: alerts that reach a computer or phone even when iSift is closed (the way Zoom does it).
 A person turns notifications on once in the browser; their device is remembered here. Then:
   * a meeting is about to start / is starting now,
@@ -147,4 +148,4 @@ async def loop():
             async with SessionLocal() as db: await tick(db)
         except asyncio.CancelledError: raise
         except Exception: log.exception("Push check failed")
-        await asyncio.sleep(30)
+        await asyncio.sleep(float(os.environ.get("PUSH_LOOP_SECONDS","30")))

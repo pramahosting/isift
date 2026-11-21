@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 import jwt
 from app.core.config import settings
-from app.core.db import get_db
+from app.core.db import get_db, SessionLocal
 from app.core.security import principal, require_admin, hash_password, verify_password
 from app.core import runtime_settings as rs
 from app.models import User, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, WorkflowRun, Job, IntegrationSetting, AuditLog, LocalAccount
@@ -429,12 +429,20 @@ async def test_integrations(user:User=Depends(require_admin)):
     result["recording_storage_r2"]=await _st.test_r2()
     return result
 
+_health_cache={"at":0.0,"body":None}
 @api.get("/health")
-async def health(db:AsyncSession=Depends(get_db)):
+async def health(deep:bool=False):
+    """Probes (Docker, Northflank liveness/readiness) call this every few seconds, so by default it does NOT touch the database: a database
+    that is allowed to sleep stays asleep. Use /health?deep=1 for a real database check (the answer is kept for 60 seconds)."""
     import time as _t
+    from app.core.db import failover
+    if not deep: return {"status":"ok","build":"2026-10-21-speed","database_checked":False}
+    if _health_cache["body"] and _t.time()-_health_cache["at"]<60: return _health_cache["body"]
     t0=_t.perf_counter(); first=second=None
     try:
-        await db.execute(select(func.count()).select_from(User)); first=(_t.perf_counter()-t0)*1000; db_ok=True      # includes taking a connection from the pool
-        t1=_t.perf_counter(); await db.execute(select(func.count()).select_from(User)); second=(_t.perf_counter()-t1)*1000   # one question on a ready connection = the distance to the database
+        async with SessionLocal() as db:
+            await db.execute(select(func.count()).select_from(User)); first=(_t.perf_counter()-t0)*1000; db_ok=True      # includes taking a connection from the pool
+            t1=_t.perf_counter(); await db.execute(select(func.count()).select_from(User)); second=(_t.perf_counter()-t1)*1000   # one question on a ready connection = the distance to the database
     except Exception: db_ok=False
-    return {"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","db_first_ms":None if first is None else round(first),"db_query_ms":None if second is None else round(second),"build":"2026-10-21-speed","integrations":integration_status()}
+    body={"status":"ok" if db_ok else "degraded","database":"ok" if db_ok else "unavailable","db_first_ms":None if first is None else round(first),"db_query_ms":None if second is None else round(second),"build":"2026-10-21-speed","integrations":integration_status(),"database_failover":failover.status()}
+    _health_cache.update(at=_t.time(),body=body); return body

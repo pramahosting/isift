@@ -45,3 +45,19 @@ Push to the repository; Northflank rebuilds and starts a new container. Keep ins
 - Very large cloud uploads (a long meeting is hundreds of MB) pass through the platform's HTTP proxy, which may have a request-size or time limit. If cloud uploads fail on long meetings, the local copy on the host's computer is unaffected; ask Northflank for the limit on your plan.
 - The worker runs inside the web container. If you later want to separate it, run a second service with the command `python -m app.workers.runner` and `RUN_WORKER=false` on the web service.
 - Backups are your responsibility: enable backups on the PostgreSQL add-on or Neon.
+
+
+## 7. Database quota, standby databases and idle usage (Neon)
+**Why quota ran out with nobody using iSift:** a serverless database (Neon) only stops billing compute after about 5 minutes with no queries.
+The health check, the worker's polling and the push loop were querying every few seconds, so it never slept. Now:
+- `/api/v1/health` does **not** use the database (probes are free). `/api/v1/health?deep=1` checks it (cached 60 s).
+- The worker is woken the moment a job is saved and otherwise looks only every `WORKER_IDLE_MAX_SECONDS` (300 s when `RUN_WORKER=true`, 15 s as a separate service). Admin settings are cached in memory (`WORKER_SETTINGS_SECONDS`, 300 s). Price list and plan matrix are cached 30 s.
+- Set `PUSH_LOOP_SECONDS=300` (or `PUSH_LOOP=false` if nobody uses push) so the push loop does not keep the database awake.
+- Keep `DB_POOL_SIZE` small (3 is plenty for one instance).
+
+**Standby databases (several Neon accounts):** put the extra addresses in `DATABASE_STANDBY_URLS` (comma or newline separated). When the main
+database refuses connections because of quota (or is unreachable) the app moves to the next one by itself, logs `DATABASE FAILOVER`, and
+`/api/v1/health?deep=1` shows `database_failover`. It does **not** switch back by itself, because the copies would differ. After a failover set
+`DATABASE_ACTIVE_INDEX` to the number now in use (0 = `DATABASE_URL`, 1 = first standby, ...) so a restart does not go back to an older copy.
+Standbys only have the data copied to them: run `python tools/sync_standby.py` as a daily Northflank **cron job** (same environment variables).
+A failover loses what was written since the last copy, so run it as often as you can afford.

@@ -10,9 +10,17 @@ from app.models import Base, Job, Meeting, Transcript, TranscriptSegment, Minute
 from app.integrations.graph import graph, GraphUnavailable
 from app.services.ai import generate_minutes
 from app.services.transcript_utils import parse_vtt
+from app.core.jobsignal import job_event
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log=logging.getLogger("isift.worker")
+# Idle polling: start at MIN seconds, double up to MAX while there is no work. Raise MAX to let a serverless
+# database (Neon etc.) suspend between jobs. Env: WORKER_IDLE_MAX_SECONDS (default 300 embedded, 15 separate).
+WORKER_IDLE_MIN_SECONDS=float(os.environ.get("WORKER_IDLE_MIN_SECONDS","2"))
+# Embedded worker (RUN_WORKER=true): jobs wake it instantly (see jobsignal), so it can sleep long. Separate worker service: poll more often.
+_EMBEDDED=os.environ.get("RUN_WORKER","").lower()=="true"
+WORKER_IDLE_MAX_SECONDS=max(WORKER_IDLE_MIN_SECONDS,float(os.environ.get("WORKER_IDLE_MAX_SECONDS","300" if _EMBEDDED else "15")))
+IDLE_SETTINGS_SECONDS=float(os.environ.get("WORKER_SETTINGS_SECONDS","300"))   # admin settings are cached in memory this long (saving them in the same process applies them at once)
 
 async def transcribe_audio(path:str,filename:str)->dict:
     from app.services.llm import transcribe, AIUnavailable
@@ -154,7 +162,7 @@ async def process_one():
                     try: os.unlink(payload["path"])
                     except FileNotFoundError: pass
             else:
-                row.status="queued"; row.available_at=datetime.now(timezone.utc)+timedelta(seconds=min(600,2**attempts*5))
+                delay=min(600,2**attempts*5); row.status="queued"; row.available_at=datetime.now(timezone.utc)+timedelta(seconds=delay); asyncio.get_running_loop().call_later(delay+1,job_event.set)
                 if run: run.status="retrying"
                 await db.commit()
     return True
@@ -180,19 +188,21 @@ async def retention_sweep():
             except OSError: log.exception("Audio retention cleanup failed for an artifact")
 
 async def main():
-    last_web=0; last_sweep=0; last_bill=0; last_settings=0; last_cal=0.0; last_cal_date=None; sync_task=None
+    last_web=0; last_sweep=0; last_bill=0; last_settings=0; last_cal=0.0; last_cal_date=None; last_utc_date=None; sync_task=None; idle=WORKER_IDLE_MIN_SECONDS; errors=0
     from app.core.runtime_settings import apply_overrides
     from app.services.calendar_sync import auto_sync, user_timezone
     while True:
         try:
-            if datetime.now(timezone.utc).timestamp()-last_settings>10:
+            if datetime.now(timezone.utc).timestamp()-last_settings>IDLE_SETTINGS_SECONDS:
                 async with SessionLocal() as sdb: await apply_overrides(sdb)
                 last_settings=datetime.now(timezone.utc).timestamp()
             minutes=settings.calendar_sync_minutes
             if minutes>0:
                 nowts=datetime.now(timezone.utc).timestamp()
-                async with SessionLocal() as cdb: today=datetime.now(await user_timezone(cdb)).date()
-                if nowts-last_cal>=minutes*60 or today!=last_cal_date:
+                # Only touch the database when a sync is due (the date check used to open a session every loop).
+                if nowts-last_cal>=minutes*60 or last_cal_date is None or datetime.now(timezone.utc).date()!=last_utc_date:
+                    async with SessionLocal() as cdb: today=datetime.now(await user_timezone(cdb)).date()
+                    last_utc_date=datetime.now(timezone.utc).date()
                     if not (sync_task and not sync_task.done()):
                         async def _sync():
                             async with SessionLocal() as cdb: await auto_sync(cdb)
@@ -209,8 +219,16 @@ async def main():
                 from app.services.webinars import run_reminders
                 async with SessionLocal() as wdb: await run_reminders(wdb)
                 last_web=datetime.now(timezone.utc).timestamp()
-            if not worked: await asyncio.sleep(2)
-        except SQLAlchemyError: log.exception("Database error in worker"); await asyncio.sleep(5)
-        except Exception: log.exception("Worker loop error"); await asyncio.sleep(5)
+            if worked: idle=WORKER_IDLE_MIN_SECONDS
+            else:
+                try: await asyncio.wait_for(job_event.wait(),timeout=idle)      # a new job wakes us at once; otherwise we only look now and then
+                except asyncio.TimeoutError: pass
+                job_event.clear()
+                idle=min(WORKER_IDLE_MAX_SECONDS,idle*2)
+        except SQLAlchemyError:
+            log.exception("Database error in worker"); errors+=1; await asyncio.sleep(min(300,5*2**min(errors,6)))
+        except Exception:
+            log.exception("Worker loop error"); errors+=1; await asyncio.sleep(min(300,5*2**min(errors,6)))
+        else: errors=0
 
 if __name__=="__main__": asyncio.run(main())

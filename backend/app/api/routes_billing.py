@@ -15,7 +15,11 @@ async def _do(coro):
 @router.get("/billing/plans")
 async def plans(response: Response, db: AsyncSession = Depends(get_db)):
     response.headers["Cache-Control"] = "no-store, max-age=0"       # prices change in Admin Console: no browser or CDN (Cloudflare) may keep an old copy
-    return await B.plans_view(db)
+    return await _plans_cached(db)
+
+from app.core.ttlcache import ttl_cache
+@ttl_cache(30)
+async def _plans_cached(db): return await B.plans_view(db)
 
 # ---------------- price list (Admin Console > Commercial > Pricing) ----------------
 def _clean_price(d: dict, base: dict | None = None) -> dict:

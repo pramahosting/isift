@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="after")
     @classmethod
     def _db_url(cls, v): return normalise_database_url(v)
+    database_standby_urls: str = ""     # extra PostgreSQL addresses (e.g. other Neon accounts), comma or newline separated; used in order if the main one runs out of quota
+    database_active_index: int = 0      # which address to start on: 0 = DATABASE_URL, 1 = first standby ... (set this after a failover so a restart does not go back to an older copy)
     frontend_origin: str = "http://localhost:5173"
     auth_mode: str = "local"
     allow_local_auth: bool = True
