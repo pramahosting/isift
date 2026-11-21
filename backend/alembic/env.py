@@ -20,7 +20,13 @@ def do_run_migrations(connection):
     with context.begin_transaction(): context.run_migrations()
 
 async def run_migrations_online():
-    connectable=async_engine_from_config(config.get_section(config.config_ini_section,{}),prefix="sqlalchemy.",poolclass=pool.NullPool,connect_args=pg_connect_args(settings.database_url))
+    if settings.database_url.startswith("sqlite"):
+        connectable=async_engine_from_config(config.get_section(config.config_ini_section,{}),prefix="sqlalchemy.",poolclass=pool.NullPool,connect_args=pg_connect_args(settings.database_url))
+    else:
+        # same failover as the app: if the main database is out of quota, migrate the next one in DATABASE_STANDBY_URLS
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from app.core.db import failover, _create_connection
+        connectable=create_async_engine(failover.urls[0],async_creator=_create_connection,poolclass=pool.NullPool)
     async with connectable.connect() as connection: await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 
