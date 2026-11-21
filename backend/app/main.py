@@ -103,6 +103,12 @@ async def start_embedded_worker():
         app.state.worker=asyncio.create_task(runner.main())
 
 @app.on_event("startup")
+async def start_db_sync():
+    """While a standby database is in use, watches for the main database to come back and moves the data back to it (see services/dbsync.py)."""
+    from app.services import dbsync
+    app.state.dbsync=asyncio.create_task(dbsync.loop())
+
+@app.on_event("startup")
 async def start_push_loop():
     """Meeting, invitation and new-mail notifications to devices that turned them on (web push)."""
     if os.environ.get("PUSH_LOOP","true").lower()!="false":

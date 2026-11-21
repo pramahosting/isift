@@ -59,5 +59,10 @@ The health check, the worker's polling and the push loop were querying every few
 database refuses connections because of quota (or is unreachable) the app moves to the next one by itself, logs `DATABASE FAILOVER`, and
 `/api/v1/health?deep=1` shows `database_failover`. It does **not** switch back by itself, because the copies would differ. After a failover set
 `DATABASE_ACTIVE_INDEX` to the number now in use (0 = `DATABASE_URL`, 1 = first standby, ...) so a restart does not go back to an older copy.
-Standbys only have the data copied to them: run `python tools/sync_standby.py` as a daily Northflank **cron job** (same environment variables).
-A failover loses what was written since the last copy, so run it as often as you can afford.
+Nothing is copied on a timer. Data moves only at two moments:
+1. **Failover** (main out of quota, app moves to a standby): the app tries once to copy the old database into the new one. An exhausted database usually cannot be read, so the standby then simply carries on with what it has.
+2. **Fail-back:** while a standby is in use, the main database is tried every `DB_FAILBACK_MINUTES` (default 30; 0 = off). As soon as it accepts connections, everything in the standby is merged into it and the app switches back (a second quick pass catches rows written meanwhile). Set `DATABASE_ACTIVE_INDEX=0` afterwards.
+
+A copy is a **merge**: rows are inserted or updated by primary key and nothing is deleted, so data that only exists in the older database is kept. A row that would break another unique rule (same e-mail under a different id) is skipped and counted. `DB_SYNC_SKIP_TABLES=a,b` leaves out big tables.
+Admin can also merge by hand: `POST /api/v1/admin/db-sync?source=1&target=0` and read the result with `GET /api/v1/admin/db-sync`; or `python tools/sync_standby.py --from 1 --to 0`.
+Because a quota-exhausted database cannot be read, data written to it before the failover reaches the standby only if you merge it later (`--from 0 --to 1`, once the main works again; fail-back does the standby-to-main direction by itself).

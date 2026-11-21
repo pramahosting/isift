@@ -63,7 +63,11 @@ else:
             conn.isift_idx = i
             if i != failover.active:
                 log.error("DATABASE FAILOVER: now using database %d (%s). Update DATABASE_URL / DATABASE_ACTIVE_INDEX so a restart keeps it.", i, make_url(failover.urls[i]).host)
-                failover.active = i
+                prev = failover.active; failover.active = i
+                try:
+                    from app.services import dbsync
+                    asyncio.get_running_loop().create_task(dbsync.on_failover(prev, i))     # one-off: copy the old database into the new one if it can still be read
+                except Exception: log.exception("could not start the failover copy")
             return conn
         raise last
 

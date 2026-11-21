@@ -429,6 +429,22 @@ async def test_integrations(user:User=Depends(require_admin)):
     result["recording_storage_r2"]=await _st.test_r2()
     return result
 
+@api.post("/admin/db-sync")
+async def db_sync_now(source:int,target:int,admin:User=Depends(require_admin)):
+    """Merge database `source` into database `target` now (0 = DATABASE_URL, 1 = first standby, ...). Runs in the background; read the result with GET."""
+    import asyncio as _a
+    from app.services import dbsync
+    from app.core.db import failover
+    n=len(failover.urls)
+    if source==target or not (0<=source<n and 0<=target<n): raise HTTPException(422,f"Pick two different database numbers between 0 and {n-1}.")
+    _a.create_task(dbsync.merge(source,target)); return {"started":True}
+
+@api.get("/admin/db-sync")
+async def db_sync_status(admin:User=Depends(require_admin)):
+    from app.services import dbsync
+    from app.core.db import failover
+    return {"database_failover":failover.status(),"last":dbsync.last}
+
 _health_cache={"at":0.0,"body":None}
 @api.get("/health")
 async def health(deep:bool=False):
