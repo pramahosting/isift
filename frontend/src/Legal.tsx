@@ -2,7 +2,7 @@ import React,{useEffect,useState} from 'react';
 import {Sun,ArrowLeft,ArrowUp,ChevronDown,X,Mail} from 'lucide-react';
 
 // Who is behind the service. Change these two lines and every page updates.
-export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026',owner:'Headstart Finances Australia Pty Ltd',abn:'88 656 265 860',ownerSite:'https://hsfinances.com.au'};
+export const LEGAL={service:'iSift',email:'info@isift.au',site:'www.isift.au',updated:'17 October 2026',owner:'Prama AI',abn:'51 935 866 575',ownerSite:'https://www.prama-ai.com'};
 
 export type LegalSlug='terms'|'privacy'|'trust'|'acceptable-use'|'legal-compliance';
 export const LEGAL_LINKS:{slug:LegalSlug;label:string}[]=[

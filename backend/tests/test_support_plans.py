@@ -32,7 +32,7 @@ def test_assistant_matches_the_pricing_page_and_plan_settings(client, monkeypatc
     # the Pricing page row says the same thing
     row = re.search(r"\['Open room, Commbox, booking pages','(\w+)','(\w+)','(\w+)'\]", PRICING.read_text())
     assert row and row.groups() == ("No", "Yes", "Yes")
-    assert "Headstart Finances Australia Pty Ltd" in s and "88 656 265 860" in s and "hsfinances.com.au" in s
+    assert "Prama AI" in s and "51 935 866 575" in s and "prama-ai.com" in s
 
 def test_plain_answer_without_groq_says_commbox_is_not_in_basic(client, monkeypatch):
     from app.core.config import settings
@@ -40,7 +40,7 @@ def test_plain_answer_without_groq_says_commbox_is_not_in_basic(client, monkeypa
     r = _ask(client, "does the free plan have commbox")["reply"]
     assert "Standard and Business" in r and "not in Basic" in r
     who = _ask(client, "Who runs this company?")["reply"]
-    assert "Headstart Finances Australia Pty Ltd" in who and "hsfinances.com.au" in who
+    assert "Prama AI" in who and "prama-ai.com" in who
 
 def test_assistant_follows_a_plan_change_made_by_the_administrator(client, monkeypatch):
     ah, _ = login(client); seen = _capture(monkeypatch)

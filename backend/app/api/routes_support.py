@@ -13,7 +13,7 @@ from app.core.db import get_db
 
 router = APIRouter(prefix="/api/v1", tags=["support"])
 SUPPORT_EMAIL = "info@isift.au"
-OWNER_NAME, OWNER_ABN, OWNER_SITE = "Headstart Finances Australia Pty Ltd", "88 656 265 860", "https://hsfinances.com.au"
+OWNER_NAME, OWNER_ABN, OWNER_SITE = "Prama AI", "51 935 866 575", "https://www.prama-ai.com"
 
 KNOWLEDGE = f"""You are the iSift assistant on the iSift website (www.isift.au). Answer visitors' questions about iSift helpfully and briefly
 (2 to 4 sentences unless asked for more). Use only the facts below. Never invent features, prices, dates, certifications or promises.
