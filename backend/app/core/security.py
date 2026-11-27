@@ -79,13 +79,16 @@ async def principal(request: HTTPConnection, credentials: HTTPAuthorizationCrede
     now = datetime.now(timezone.utc)
     if not user.last_login_at or (now - (user.last_login_at if user.last_login_at.tzinfo else user.last_login_at.replace(tzinfo=timezone.utc))).total_seconds() > 300:
         user.last_login_at = now
-    try:
-        await db.commit()
-    except IntegrityError:
-        # Two requests from the same new user arrived together; the other one created the row first.
-        await db.rollback()
-        user = (await db.execute(select(User).where(User.entra_subject == subject))).scalar_one()
-    if fresh or db.is_modified(user): await db.refresh(user)       # one query less on every request: an existing person was just read
+    # Only write when something really changed: a COMMIT is a round trip to the (remote) database on every single request.
+    if fresh or db.is_modified(user):
+        try:
+            await db.commit()
+        except IntegrityError:
+            # Two requests from the same new user arrived together; the other one created the row first.
+            await db.rollback()
+            user = (await db.execute(select(User).where(User.entra_subject == subject))).scalar_one()
+        else:
+            if fresh: await db.refresh(user)
     return user
 
 def require_admin(user: User = Depends(principal)) -> User:
@@ -93,11 +96,18 @@ def require_admin(user: User = Depends(principal)) -> User:
     return user
 
 
-import hmac, os as _os
+import hmac, os as _os, asyncio
 def hash_password(password: str) -> str:
     salt = _os.urandom(16); iters = 200_000
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iters)
     return f"pbkdf2_sha256${iters}${salt.hex()}${digest.hex()}"
+
+async def hash_password_async(password: str) -> str:
+    """PBKDF2 is CPU-heavy (200k rounds): run it in a thread so the event loop (other requests, live meetings) keeps going."""
+    return await asyncio.to_thread(hash_password, password)
+
+async def verify_password_async(password: str, stored: str) -> bool:
+    return await asyncio.to_thread(verify_password, password, stored)
 
 def verify_password(password: str, stored: str) -> bool:
     try:

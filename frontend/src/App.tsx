@@ -2,15 +2,13 @@ import WebinarPublic from './WebinarPublic';
 import {WebinarsPage} from './Webinars';
 import {PodcastStudio} from './PodcastStudio';
 import {YouTubeAdmin} from './PodcastYouTube';
-import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {UsersPage,UsagePanel,TrafficPanel,DataImport,MachinePrompt,CalendarFinder} from './Admin';
+import React,{useCallback,useEffect,useRef,useState,lazy,Suspense} from 'react';
 import {MarketingAdmin,WatchButton,PlaybookLink} from './Marketing';
 import {refreshLinkedCalendar} from './linkedCalendar';
 import {MinutesCard} from './Minutes';
 import {TranscriptsPage} from './Transcripts';
 import {LegalPage,LegalFooter,isLegalHash} from './Legal';
 import SupportChat from './SupportChat';
-import {RoomPage} from './Room';
 import {RsvpPage} from './Rsvp';
 import {TimeZoneChip,currentTz} from './timezone';
 import {MeetingForm,MeetingDetail,DeleteMeeting,EditMeetingModal} from './MeetingDetail';
@@ -21,9 +19,7 @@ import {IndustriesSection,IndustryPage} from './Industries';
 import {OutcomeSection,WhySection,CompareSection,TrustSection,NewSection,BetterSection,ManualsSection,ManualViewer} from './Landing';
 import {SchedulingPage,BookingPublic,BookingManage,ShareLauncher} from './Scheduling';
 import {TeamActions} from './Team';
-import {MailApp} from './MailApp';
 import {HostDialog,TestAV,PmiCard,ChatPage,ContactsPage,NotesPage} from './Workspace';
-import {SignEdit} from './SignEdit';
 import {AccountPage} from './Account';
 import {PricingPage,PLAN_LABEL,HomePricing} from './Pricing';
 import {usePlanMatrix,plansWith,namesOf} from './planMatrix';
@@ -31,7 +27,6 @@ import {BillingPage,RefundsPanel} from './Billing';
 import {Notifications} from './Notifications';
 import {Reminders} from './Reminders';
 import {ConnectAll} from './ConnectAll';
-import {AddAccount} from './MailApp';
 import {DocConverter} from './DocConverter';
 import {MediaConverter} from './MediaConverter';
 import {HomeWorkspace} from './HomeWorkspace';
@@ -39,6 +34,18 @@ import {JoinWindowButton,RecordingsTable,JoinById,ConnectionsPage,JoinButton,pro
 import {UsageTiles} from './UsageTiles';
 import {Podcast,FileDown,Phone,FileSignature,Plus,Bell,UserCircle,Tag,Send,Pencil,Trash2,MessageSquare,Contact,PenLine,Table2,Presentation,Files,ChevronsLeft,ChevronsRight,Headphones,Home,AppWindow,Users,Database,Menu,X,LayoutDashboard,CalendarDays,FileText,ListChecks,Sun,History,Settings,RefreshCw,LogIn,ShieldCheck,AlertTriangle,CheckCircle2,Clock3,ExternalLink,Save,Play,Upload,ChevronRight,LockKeyhole,LoaderCircle,Eye,EyeOff,LogOut,Sparkles,Mic,Zap,ArrowUp,Link2,Check,Video,Mail,CalendarPlus,CreditCard,ChevronDown,Film} from 'lucide-react';
 import type {User,Meeting,ActionItem,Briefing,WorkflowRun} from './contracts';
+// Big screens are downloaded only when they are opened, so the first page load is much smaller.
+import {lz} from './lazyload';
+const RoomPage=lz(()=>import('./Room'),'RoomPage');
+const SignEdit=lz(()=>import('./SignEdit'),'SignEdit');
+const MailApp=lz(()=>import('./MailApp'),'MailApp');
+const AddAccount=lz(()=>import('./MailApp'),'AddAccount');
+const UsersPage=lz(()=>import('./Admin'),'UsersPage');
+const UsagePanel=lz(()=>import('./Admin'),'UsagePanel');
+const TrafficPanel=lz(()=>import('./Admin'),'TrafficPanel');
+const DataImport=lz(()=>import('./Admin'),'DataImport');
+const MachinePrompt=lz(()=>import('./Admin'),'MachinePrompt');
+const CalendarFinder=lz(()=>import('./Admin'),'CalendarFinder');
 
 const API=import.meta.env.VITE_API_BASE||(import.meta.env.VITE_DEMO_MODE==='true'?'http://127.0.0.1:8000/api/v1':'/api/v1');
 const COMM=['Commbox','Mail','Calendar','Contacts'];
@@ -169,7 +176,7 @@ export default function App({initialToken,msal}){
  useEffect(()=>{if(!user)return;const k='isift.calsetup.'+user.id;try{if(localStorage.getItem(k))return}catch{return}const t=setTimeout(async()=>{try{const a=await request('/mailbox/accounts');if(!((a?.accounts||[]).length))setCalSetup(true);else localStorage.setItem(k,'1')}catch{}},2500);return()=>clearTimeout(t)},[user?.id]);
  // Like Zoom: pull in the connected calendars on opening iSift, when you return to it, and every 5 minutes, so meetings made elsewhere appear without pressing Refresh.
  useEffect(()=>{if(!token)return;let last=0;const pull=()=>{if(Date.now()-last<60000)return;last=Date.now();request('/connections/sync',{method:'POST'}).then(()=>refreshMeetings()).catch(()=>{})};const first=setTimeout(pull,3000);const t=setInterval(pull,300000);const f=()=>{if(document.visibilityState==='visible')pull()};document.addEventListener('visibilitychange',f);return()=>{clearTimeout(first);clearInterval(t);document.removeEventListener('visibilitychange',f)}},[token,request,refreshMeetings]);
- useEffect(()=>{if(!token)return;refreshMeetings();const t=setInterval(()=>{if(document.visibilityState==='visible')refreshMeetings()},30000);const f=()=>{if(document.visibilityState==='visible')refreshMeetings()};document.addEventListener('visibilitychange',f);window.addEventListener('focus',f);return()=>{clearInterval(t);document.removeEventListener('visibilitychange',f);window.removeEventListener('focus',f)}},[token,page,refreshMeetings]);   // bookings made by guests appear without a reload
+ useEffect(()=>{if(!token)return;refreshMeetings();const t=setInterval(()=>{if(document.visibilityState==='visible')refreshMeetings()},120000);const f=()=>{if(document.visibilityState==='visible')refreshMeetings()};document.addEventListener('visibilitychange',f);window.addEventListener('focus',f);return()=>{clearInterval(t);document.removeEventListener('visibilitychange',f);window.removeEventListener('focus',f)}},[token,page,refreshMeetings]);   // bookings made by guests appear without a reload
  useEffect(()=>{if(page!=='Meetings'){setNewMeeting(null);setPrefill(null)}},[page]);   // the Schedule form only shows after pressing Schedule
  const openDetail=(id:string,edit=false)=>{setDetailId(id);setDetailEdit(edit);setNewMeeting(null);setPage('Meeting')};
  const ownMeeting=(m:any)=>/^(room|local|zoom|teams|meet):/.test(m.external_id||'');

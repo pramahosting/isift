@@ -148,4 +148,4 @@ async def loop():
             async with SessionLocal() as db: await tick(db)
         except asyncio.CancelledError: raise
         except Exception: log.exception("Push check failed")
-        await asyncio.sleep(float(os.environ.get("PUSH_LOOP_SECONDS","30")))
+        await asyncio.sleep(float(os.environ.get("PUSH_LOOP_SECONDS","300")))

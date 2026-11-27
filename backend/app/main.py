@@ -42,6 +42,8 @@ async def keep_errors_readable(request: Request, call_next):
         logging.getLogger("app").exception("Unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse({"detail": f"Server error: {type(exc).__name__}: {str(exc)[:300]}"}, status_code=500)
 
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)      # the web app's scripts and the API's JSON go out compressed (the page was sent as-is before)
 app.add_middleware(CORSMiddleware,allow_origins=sorted({settings.frontend_origin,settings.frontend_origin.replace("//localhost","//127.0.0.1"),settings.frontend_origin.replace("//127.0.0.1","//localhost")}),allow_credentials=True,allow_methods=["GET","POST","PATCH","PUT","DELETE"],allow_headers=["Authorization","Content-Type","X-Correlation-ID","X-Timezone"])
 app.include_router(api)
 app.include_router(admin_router)
@@ -130,7 +132,16 @@ if _web and (Path(_web)/"index.html").is_file():
         return go
     for _slug in ("terms","privacy","trust","acceptable-use","legal-compliance"):
         app.add_api_route(f"/{_slug}",_legal(_slug),methods=["GET"],include_in_schema=False)     # shareable addresses, e.g. for Google and Microsoft app settings
-    app.mount("/",StaticFiles(directory=_web,html=True),name="web")
+    class CachedStatic(StaticFiles):
+        """Built files under /assets have a hash in their name, so browsers may keep them for a year; the page itself and the service worker are always re-checked."""
+        async def get_response(self, path, scope):
+            resp = await super().get_response(path, scope)
+            if resp.status_code == 200:
+                if path.startswith("assets/"): resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                elif path in ("", ".", "index.html", "sw.js"): resp.headers["Cache-Control"] = "no-cache"
+                elif path.startswith("mediapipe/"): resp.headers["Cache-Control"] = "public, max-age=2592000"
+            return resp
+    app.mount("/",CachedStatic(directory=_web,html=True),name="web")
 else:
     @app.get("/")
     async def root(): return {"name":settings.app_name,"version":"1.0.0"}

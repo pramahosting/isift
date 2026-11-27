@@ -1,4 +1,4 @@
-import asyncio, logging, time
+import asyncio, logging, os, time
 from sqlalchemy import event, exc
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
@@ -47,7 +47,7 @@ else:
     def _connect_kwargs(url: str) -> dict:
         _args, kw = engine.dialect.create_connect_args(make_url(url))
         kw = dict(kw); kw.pop("prepared_statement_cache_size", None)
-        kw.update(pg_connect_args(url)); kw.setdefault("timeout", 20)
+        kw.update(pg_connect_args(url)); kw.setdefault("timeout", float(os.environ.get("DB_CONNECT_TIMEOUT", "6")))
         return kw
 
     async def _create_connection():
@@ -71,7 +71,7 @@ else:
             return conn
         raise last
 
-    engine = create_async_engine(failover.urls[0], async_creator=_create_connection, pool_pre_ping=True, pool_size=settings.db_pool_size, max_overflow=settings.db_pool_size * 2)
+    engine = create_async_engine(failover.urls[0], async_creator=_create_connection, pool_pre_ping=False, pool_recycle=int(os.environ.get("DB_POOL_RECYCLE", "240")), pool_timeout=10, pool_size=settings.db_pool_size, max_overflow=settings.db_pool_size * 2)
 
     @event.listens_for(engine.sync_engine, "checkout")
     def _drop_other_database(dbapi_conn, _record, _proxy):

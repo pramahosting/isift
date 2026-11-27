@@ -1,7 +1,10 @@
 /* A file everyone in the meeting sees live. The owner shares a note, document, spreadsheet, presentation or whiteboard; the owner (or a host) lets one person at a time edit it, and every change appears for everyone as it happens. */
 import React,{useEffect,useRef,useState} from 'react';
-import {Board} from './Whiteboard';
-import {WordEditor,SheetEditor,DeckEditor} from './DocsEditors';
+import {lz} from './lazyload';
+const Board=lz(()=>import('./Whiteboard'),'Board');
+const WordEditor=lz(()=>import('./DocsEditors'),'WordEditor');
+const SheetEditor=lz(()=>import('./DocsEditors'),'SheetEditor');
+const DeckEditor=lz(()=>import('./DocsEditors'),'DeckEditor');
 
 export type CollabState={kind:string;title:string;owner:string;owner_name:string;holder:string;holder_name:string;rev:number;note:string;content:string};
 export const COLLAB_KINDS:[string,string][]=[['doc','Notes'],['wp','Documents'],['sheet','Spreadsheets'],['deck','Presentations'],['board','Whiteboards']];

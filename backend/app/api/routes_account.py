@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import principal, hash_password, verify_password
+from app.core.security import principal, hash_password_async, verify_password_async
 from app.models import User, LocalAccount, AuditLog
 from app.services import store, billing, datasets as ds
 
@@ -104,13 +104,13 @@ async def change_password(payload: dict, user: User = Depends(principal), db: As
     if new == cur: raise HTTPException(422, "Choose a password that is different from the current one.")
     acct = await _local_account(db, user.email)
     if acct:
-        if not verify_password(cur, acct.password_hash): raise HTTPException(403, "The current password is not right.")
-        acct.password_hash = hash_password(new)
+        if not await verify_password_async(cur, acct.password_hash): raise HTTPException(403, "The current password is not right.")
+        acct.password_hash = await hash_password_async(new)
     elif _builtin(user):
         saved = await store.get(db, "admin_password", {})
-        ok = verify_password(cur, saved["hash"]) if saved.get("hash") else secrets.compare_digest(cur, settings.local_admin_password)
+        ok = (await verify_password_async(cur, saved["hash"])) if saved.get("hash") else secrets.compare_digest(cur, settings.local_admin_password)
         if not ok: raise HTTPException(403, "The current password is not right.")
-        await store.put(db, "admin_password", {"hash": hash_password(new)}, commit=False)
+        await store.put(db, "admin_password", {"hash": await hash_password_async(new)}, commit=False)
     else: raise HTTPException(409, "You sign in with Microsoft, so your password is managed there.")
     db.add(AuditLog(actor=user.email, action="account.password", resource_type="account", safe_metadata={})); await db.commit()
     return {"message": "Password changed. Use it the next time you sign in."}

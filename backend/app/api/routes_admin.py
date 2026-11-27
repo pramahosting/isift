@@ -9,7 +9,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import get_db
-from app.core.security import principal, require_admin, hash_password
+from app.core.security import principal, require_admin, hash_password_async
 from app.models import User, LocalAccount, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, AuditLog
 from app.services import datasets as ds
 
@@ -148,7 +148,7 @@ async def update_user(user_id: str, data: UserPatch, admin: User = Depends(requi
         if builtin: raise HTTPException(409, "The built-in administrator password is set by the system.")
         acct = await _account(db, u)
         if not acct: raise HTTPException(400, "This user signs in with Microsoft; there is no password to change.")
-        acct.password_hash = hash_password(data.password); changed.append("password")
+        acct.password_hash = await hash_password_async(data.password); changed.append("password")
     if data.virtual_room is not None and data.virtual_room != await vrm.account_on(db, u.email):
         await vrm.set_account(db, u.email, data.virtual_room); changed.append("virtual_room")
     if data.limits is not None:

@@ -196,15 +196,22 @@ async def apply_events(db: AsyncSession, user_id: str, raw: list[dict], start: d
     """Add/update eligible meetings from a list of calendar events (Graph event shape)."""
     selected = [e for e in raw if eligible(e)]
     seen: set[str] = set(); added = updated = 0
+    # One query for every event already stored (was one query per event: slow against a remote database).
+    existing: dict[str, Meeting] = {}
+    ids = [e["id"] for e in selected]
+    for i in range(0, len(ids), 200):
+        for m in (await db.execute(select(Meeting).where(Meeting.owner_id == user_id, Meeting.external_id.in_(ids[i:i + 200])))).scalars().all():
+            existing.setdefault(m.external_id, m)
     for e in selected:
         ext = e["id"]; seen.add(ext)
         start_at = graph_datetime(e["start"]["dateTime"]); end_at = graph_datetime(e["end"]["dateTime"])
         title = e.get("subject") or "Meeting"
         organizer = ((e.get("organizer") or {}).get("emailAddress") or {}).get("address", "")
-        row = (await db.execute(select(Meeting).where(Meeting.owner_id == user_id, Meeting.external_id == ext))).scalar_one_or_none()
+        row = existing.get(ext)
         if not row:
-            db.add(Meeting(owner_id=user_id, external_id=ext, title=title, organizer=organizer, account=account, start_at=start_at, end_at=end_at,
-                           sensitivity=e.get("sensitivity", "normal"), join_url=e.get("onlineMeetingUrl"), status="scheduled")); added += 1
+            row = Meeting(owner_id=user_id, external_id=ext, title=title, organizer=organizer, account=account, start_at=start_at, end_at=end_at,
+                           sensitivity=e.get("sensitivity", "normal"), join_url=e.get("onlineMeetingUrl"), status="scheduled")
+            db.add(row); existing[ext] = row; added += 1
         else:
             changed = (row.title != title or as_utc(row.start_at) != as_utc(start_at) or as_utc(row.end_at) != as_utc(end_at) or row.organizer != organizer or row.status == "cancelled")
             if account and row.account != account: row.account = account

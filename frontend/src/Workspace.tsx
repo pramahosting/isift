@@ -1,5 +1,7 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {Board,ShapeShelf} from './Whiteboard';
+import {lz} from './lazyload';
+const Board=lz(()=>import('./Whiteboard'),'Board');
+const ShapeShelf=lz(()=>import('./Whiteboard'),'ShapeShelf');
 import {Mail,LogIn,Upload,Video,MessageSquare,Users,Plus,Trash2,Send,Copy,Mic,MonitorUp,X,UserPlus,FileText,PenLine,Undo2,Eraser,Check,Share2,Table2,Presentation,ChevronsLeft,ChevronsRight} from 'lucide-react';
 
 const baseUrl=()=>location.origin+location.pathname;
@@ -11,7 +13,9 @@ import {Modal} from './Modal';
 import {useSplit} from './Splitter';
 import {FilePicker} from './FilePicker';
 import {ShareDialog,SharedBanner,CommentsPanel} from './Sharing';
-import {WordEditor,SheetEditor,DeckEditor} from './DocsEditors';
+const WordEditor=lz(()=>import('./DocsEditors'),'WordEditor');
+const SheetEditor=lz(()=>import('./DocsEditors'),'SheetEditor');
+const DeckEditor=lz(()=>import('./DocsEditors'),'DeckEditor');
 
 /** Zoom-style "Host": choose video on/off, share-screen-only, or the personal meeting ID, then start. */
 export function HostDialog({request,onClose}:{request:any;onClose:()=>void}){

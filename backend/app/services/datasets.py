@@ -12,7 +12,7 @@ from app.core.tz import zone
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.models import (User, LocalAccount, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing,
                         WorkflowRun, Job, AuditLog)
 
@@ -137,7 +137,7 @@ async def create_local_user(db: AsyncSession, email: str, name: str, password: s
     if role not in ("admin", "user"): raise ValueError("Role must be admin or user.")
     if password and not (8 <= len(password) <= 128): raise ValueError("Password must be 8 to 128 characters.")
     if (await db.execute(select(LocalAccount).where(LocalAccount.email == email))).scalar_one_or_none(): raise ValueError("A user with this email already exists.")
-    acct = LocalAccount(email=email, display_name=(name or email)[:200], password_hash=hash_password(password or secrets.token_urlsafe(24)))
+    acct = LocalAccount(email=email, display_name=(name or email)[:200], password_hash=await hash_password_async(password or secrets.token_urlsafe(24)))
     db.add(acct); await db.flush()
     user = User(entra_subject=acct.id, email=email, display_name=acct.display_name, role=role, role_override="admin" if role == "admin" else None, is_active=active)
     db.add(user); await db.flush()

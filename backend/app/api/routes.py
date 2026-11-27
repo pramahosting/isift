@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 import jwt
 from app.core.config import settings
 from app.core.db import get_db, SessionLocal
-from app.core.security import principal, require_admin, hash_password, verify_password
+from app.core.security import principal, require_admin, hash_password, verify_password, hash_password_async, verify_password_async
 from app.core import runtime_settings as rs
 from app.models import User, Meeting, Transcript, TranscriptSegment, Minutes, ActionItem, Briefing, WorkflowRun, Job, IntegrationSetting, AuditLog, LocalAccount
 from app.schemas.contracts import UserOut, MeetingOut, MinutesUpdate, ActionUpdate, SettingsUpdate, DeliveryCallback
@@ -67,7 +67,7 @@ async def _local_login_inner(payload:dict,db:AsyncSession):
     if username.lower()=="admin":
         from app.services import store
         saved=await store.get(db,"admin_password",{})      # set from My account > Password; otherwise the LOCAL_ADMIN_PASSWORD setting
-        if (verify_password(password,saved["hash"]) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@isift.au","Pramod Singh")
+        if ((await verify_password_async(password,saved["hash"])) if saved.get("hash") else secrets.compare_digest(password,settings.local_admin_password)): return _local_token("local-admin","admin@isift.au","Pramod Singh")
         raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     account=(await db.execute(select(LocalAccount).where(LocalAccount.email==username.lower()))).scalar_one_or_none()
     if not account:
@@ -79,7 +79,7 @@ async def _local_login_inner(payload:dict,db:AsyncSession):
             if live: raise HTTPException(401,{"message":"Your sign-up is not complete yet. Enter the 6-digit code we emailed you to finish, or press Send a new code if it did not arrive.","code":"signup_incomplete"})
             raise HTTPException(401,{"message":"Your sign-up was never completed and its code has expired. Please sign up again.","code":"signup_expired"})
         raise HTTPException(401,{"message":"No account was found for that user ID or email.","code":"no_account"})
-    if not verify_password(password,account.password_hash): raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
+    if not await verify_password_async(password,account.password_hash): raise HTTPException(401,{"message":"Incorrect user ID or password.","code":"bad_password"})
     row=(await db.execute(select(User).where(User.entra_subject==account.id))).scalar_one_or_none()
     if row and row.is_active is False: raise HTTPException(403,{"message":"This account is disabled. Contact an administrator.","code":"disabled"})
     return _local_token(account.id,account.email,account.display_name or account.email)

@@ -2,7 +2,7 @@
 import asyncio, hashlib, hmac, logging, re, secrets
 from datetime import datetime, timedelta, timezone
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.services import store, countries
 
 log = logging.getLogger("isift")
@@ -91,7 +91,7 @@ async def start(db, p: dict) -> dict:
     old = await store.get(db, _key(d["email"]), {})
     if old and datetime.fromisoformat(old["sent"]) + RESEND_AFTER > _now(): raise SignupError("A code was just sent. Wait a few seconds before asking for another.", "wait", 429)
     code = f"{secrets.randbelow(10**6):06d}"
-    rec = {"first": d["first"], "last": d["last"], "country": d["country"], "phone": d["phone"], "pw": hash_password(d["password"]), "code": _h(d["email"], code), "tries": 0,
+    rec = {"first": d["first"], "last": d["last"], "country": d["country"], "phone": d["phone"], "pw": await hash_password_async(d["password"]), "code": _h(d["email"], code), "tries": 0,
            "sent": _now().isoformat(), "expires": (_now() + TTL).isoformat(), "sends": int(old.get("sends", 0)) + 1 if old else 1}
     rec["codes"] = ([rec["code"]] + [c for c in old.get("codes", [old.get("code")]) if c])[:3]       # a slow mailbox may deliver an earlier email last: the last 3 codes all work
     if rec["sends"] > MAX_SENDS: raise SignupError("Too many codes were requested. Try again later.", "wait", 429)
