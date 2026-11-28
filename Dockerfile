@@ -23,4 +23,4 @@ RUN mkdir -p /data/audio && useradd -m app && chown -R app /data /app
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD python -c "import urllib.request,os; urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % os.environ.get('PORT','8000'))"
-CMD ["sh", "-c", "alembic upgrade head || echo 'WARNING: database migration did not finish (database unavailable?). Starting the app anyway.'; exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "alembic upgrade head || echo 'WARNING: database migration did not finish (database unavailable?). Starting the app anyway.'; exec sh prama-start.sh uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
