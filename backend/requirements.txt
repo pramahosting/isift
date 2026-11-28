@@ -26,3 +26,8 @@ openpyxl==3.1.5
 python-pptx==1.0.2
 beautifulsoup4==4.13.4
 pywebpush==2.0.0
+# Prama Monitor (OpenTelemetry tracing). Only active when the OTEL_* variables are set in Northflank.
+opentelemetry-distro==0.66b2
+opentelemetry-exporter-otlp-proto-http==1.45.2
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-instrumentation-httpx==0.66b2
